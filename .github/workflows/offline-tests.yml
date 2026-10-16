@@ -18,16 +18,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: npm
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -51,11 +51,38 @@ jobs:
       - name: Test the extracted app with file URLs and networking disabled
         env:
           DASHBOARD_ROOT: ${{ runner.temp }}/dashboard-unpacked/grade-analysis-dashboard
-        run: npm run test:browser
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          npm run test:browser 2>&1 | tee test-results/browser-run.log
+
+      - name: Summarize browser results
+        if: ${{ always() }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          lines = ['## Offline browser tests', '']
+          for name in ['browser-results.json', 'onboarding/onboarding-results.json']:
+              report = Path('test-results') / name
+              if report.exists():
+                  result = json.loads(report.read_text())
+                  lines.append(f'- {name}: {len(result["checks"])} checks passed')
+              else:
+                  lines.append(f'- {name}: no successful result produced')
+          log = Path('test-results/browser-run.log')
+          if log.exists():
+              lines += ['', '```text', *log.read_text().splitlines()[-100:], '```']
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('\n'.join(lines) + '\n')
+          PY
 
       - name: Upload browser reports and screenshots
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: offline-browser-results
           path: test-results/

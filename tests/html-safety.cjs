@@ -12,6 +12,7 @@ module.exports = async function checkHtmlSafety(page, fixture) {
     window.__htmlInjectionExecuted = false;
     applyJsonText(JSON.stringify(value), 'fictional-tagged-classes.json', null);
   }, tagged);
+  await page.locator('[data-tab="overview"]').click();
   const gap = page.locator('#kpiGrid .kpi').filter({ has: page.locator('.kpi-label', { hasText: 'クラス間の差' }) });
   assert.equal(await gap.count(), 1);
   assert.ok((await gap.locator('small').textContent()).includes(payload));
@@ -30,6 +31,7 @@ module.exports = async function checkHtmlSafety(page, fixture) {
       ui.rtiSelectedIv = 'fictional-iv';
       renderRti();
     }, value);
+    await page.locator('[data-tab="rti"]').click();
     const row = page.locator('#rtiLogWrap tbody tr');
     assert.equal(await row.locator('td').nth(6).textContent(), baseline == null ? '—' : baseline + '%');
     if (baseline != null) assert.ok((await page.locator('#rtiEsNote').textContent()).includes(`開始時 ${baseline}%`));
