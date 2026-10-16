@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>成績分析ダッシュボード 使い方ガイド</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232458a6'/%3E%3Cpath d='M8 24V16h4v8zm6 0V11h4v13zm6 0V6h4v18z' fill='white'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --primary: #2458a6;
+      --primary-dark: #183f7b;
+      --primary-light: #eef4ff;
+      --accent: #16715c;
+      --danger: #c0392b;
+      --warn: #985900;
+      --bg: #f4f6f9;
+      --surface: #ffffff;
+      --border: #e6e8f0;
+      --text: #1a1a2e;
+      --text-sub: #536276;
+      --shadow: 0 1px 3px rgba(40, 20, 28, 0.07), 0 1px 2px rgba(40, 20, 28, 0.04);
+      --radius: 14px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Yu Gothic UI', 'Yu Gothic', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.8;
+    }
+
+    /* ヘッダー */
+    .hero {
+      background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+      color: #fff;
+      padding: 48px 24px 40px;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-size: 26px;
+      margin-bottom: 8px;
+    }
+
+    .hero p {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+
+    /* 目次 */
+    .toc {
+      max-width: 760px;
+      margin: -24px auto 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px 28px;
+    }
+
+    .toc strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .toc ol {
+      padding-left: 22px;
+      columns: 2;
+      font-size: 14px;
+    }
+
+    .toc a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    .toc a:hover {
+      text-decoration: underline;
+    }
+
+    /* 本文 */
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+    }
+
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px 32px;
+      margin-bottom: 24px;
+    }
+
+    h2 {
+      font-size: 19px;
+      color: var(--primary-dark);
+      border-bottom: 2px solid var(--primary-light);
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+    }
+
+    h2 .num {
+      display: inline-grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      background: var(--primary);
+      color: #fff;
+      border-radius: 8px;
+      font-size: 15px;
+      margin-right: 10px;
+      vertical-align: -4px;
+    }
+
+    h3 {
+      font-size: 15px;
+      margin: 20px 0 8px;
+    }
+
+    p {
+      margin-bottom: 12px;
+    }
+
+    ul, ol {
+      padding-left: 24px;
+      margin-bottom: 12px;
+    }
+
+    li {
+      margin-bottom: 4px;
+    }
+
+    /* 部品 */
+    kbd {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      padding: 1px 7px;
+      font-family: inherit;
+      font-size: 13px;
+    }
+
+    .tag {
+      display: inline-block;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      border-radius: 6px;
+      padding: 1px 8px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .note {
+      background: var(--primary-light);
+      border-left: 4px solid var(--primary);
+      border-radius: 0 8px 8px 0;
+      padding: 12px 16px;
+      margin: 14px 0;
+      font-size: 14px;
+    }
+
+    .warn {
+      background: #fdf3e7;
+      border-left: 4px solid var(--warn);
+      border-radius: 0 8px 8px 0;
+      padding: 12px 16px;
+      margin: 14px 0;
+      font-size: 14px;
+    }
+
+    .danger {
+      background: #faeceb;
+      border-left: 4px solid var(--danger);
+      border-radius: 0 8px 8px 0;
+      padding: 12px 16px;
+      margin: 14px 0;
+      font-size: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin: 12px 0;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--bg);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .steps li {
+      counter-increment: step;
+      position: relative;
+      padding-left: 40px;
+      margin-bottom: 10px;
+    }
+
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 2px;
+      display: grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      background: var(--primary);
+      color: #fff;
+      border-radius: 50%;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .qa dt {
+      font-weight: 700;
+      margin-top: 16px;
+    }
+
+    .qa dt::before {
+      content: "Q. ";
+      color: var(--primary);
+    }
+
+    .qa dd {
+      margin-left: 0;
+      padding-left: 24px;
+    }
+
+    .qa dd::before {
+      content: "A. ";
+      color: var(--accent);
+      font-weight: 700;
+      margin-left: -24px;
+      padding-right: 4px;
+    }
+
+    footer {
+      text-align: center;
+      color: var(--text-sub);
+      font-size: 13px;
+      padding-bottom: 40px;
+    }
+    a:focus-visible, button:focus-visible { outline:3px solid #2458a6; outline-offset:3px; }
+    .hero { background:#183f7b; } .hero h1 { font-size:clamp(22px,4vw,30px); }
+    @media(max-width:600px) { .toc ol { columns:1; } main { padding:24px 16px; } .section { padding:20px 16px; } table { display:block; overflow:auto; } }
+  </style>
+</head>
+
+<body>
+  <p style="padding:12px 24px;background:white"><a href="../Index.html">← アプリに戻る</a></p>
+
+  <div class="hero">
+    <h1>成績分析ダッシュボード：使い方ガイド</h1>
+    <p>テスト結果の記録から弱点分析まで、これ1つで</p>
+  </div>
+
+  <nav class="toc">
+    <strong>目次</strong>
+    <ol>
+      <li><a href="#about">どんなツール？</a></li>
+      <li><a href="#start">初回登録・続き・サンプル</a></li>
+      <li><a href="#file">データファイルの基本</a></li>
+      <li><a href="#screen">画面の見方（7つのタブ）</a></li>
+      <li><a href="#test">テストを登録する</a></li>
+      <li><a href="#input">点数を入力する</a></li>
+      <li><a href="#analysis">分析を授業に活かす</a></li>
+      <li><a href="#correlation">アンケートと成績の相関を調べる</a></li>
+      <li><a href="#faq">よくある質問</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <section id="about">
+      <h2><span class="num">1</span>どんなツール？</h2>
+      <p>定期テストや単元テストの点数を記録して、<strong>グラフで自動分析</strong>するツールです。インターネット上に成績を送ることはなく、データはすべて<strong>自分で選んだファイルの中だけ</strong>に保存されます。</p>
+      <ul>
+        <li>クラス全体の得点分布・平均点の推移がひと目でわかる</li>
+        <li>生徒一人ひとりの成績推移を折れ線グラフで追える（面談資料に）</li>
+        <li>「どの分野・どの問題が弱いか」を自動で指摘してくれる</li>
+        <li>Excelからのコピー＆貼り付けで一気に入力できる</li>
+      </ul>
+      <div class="note">配布用ZIPを<strong>すべて展開</strong>して、<strong>Index.html をダブルクリック</strong>すると起動します。ターミナル・npm・HTTPサーバーは不要です。Index.html と files フォルダは離さずに保管してください。必要なライブラリは同梱しています。</div>
+    </section>
+
+    <section id="start">
+      <h2><span class="num">2</span>初回登録・続き・サンプル</h2>
+      <p>ZIPをすべて展開し、<strong>Index.html</strong> をダブルクリックしてブラウザで開きます。目的に合う入口を選んでください。</p>
+      <table>
+        <tr><th>初回登録</th><td>「初めて使う」から「生徒を登録して始める」を開きます。Excelで名簿だけでも、名簿と最初の合計点をまとめても登録できます。</td></tr>
+        <tr><th>続きから使う</th><td>「保存したJSONを開く」で保存した最新版を選びます。名簿を登録し直す必要はありません。開いた後のヘッダーでは「JSONを開く」です。</td></tr>
+        <tr><th>サンプル体験</th><td>「サンプルで試す」を押します。自分の保存データとは別の、60名・英語10回の架空データです。</td></tr>
+      </table>
+      <h3>① 生徒登録 → ② テスト・アンケート追加 → ③ 分析</h3>
+      <ol class="steps">
+        <li>「初めて使う」→「① 初回登録用Excelを発行」を押す</li>
+        <li>Excelの「初回登録」シートに<strong>クラス・番号・氏名</strong>を記入する。最初の合計点もある場合は、テスト情報と点数を同じExcelに記入する</li>
+        <li>「② 記入したExcelを読み込む」で保存したExcelを選び、<strong>プレビューで生徒数・テストの有無・点数を確認</strong>してから「確認した内容で登録」を押す</li>
+        <li>追加するデータは、登録後の案内から「テスト用Excelを発行」または「アンケート用Excelを発行」を押す。名簿と生徒IDは自動で入るので、定義と値を記入する</li>
+        <li>同じデータを開いたまま「テストを取り込む」または「アンケートを取り込む」で読み込み、内容を確認して「分析を見る」へ進む</li>
+        <li>最後に右上の「保存」または <kbd>Ctrl+S</kbd>（Macは <kbd>⌘S</kbd>）でJSONをダウンロードし、保存完了を確認する</li>
+      </ol>
+      <div class="note">①生徒登録と②最初のテスト追加は、初回Excel一枚でまとめて行えます。<strong>合計点が全員空欄なら名簿だけ</strong>を登録し、空のテストは作りません。点数が空欄の生徒を0点にはしません。</div>
+      <h3>初回Excelの書き方</h3>
+      <table>
+        <tr><th>1行目</th><td>B1にデータ名を記入します。</td></tr>
+        <tr><th>2行目</th><td>B2＝テスト名、D2＝教科、F2＝満点（初期値100）、H2＝学年、J2＝実施日です。最初の点数を入れる場合に確認します。</td></tr>
+        <tr><th>3行目</th><td>列の見出しです。変更しないでください。</td></tr>
+        <tr><th>4行目以降</th><td>A列＝クラス、B列＝番号、C列＝氏名、D列＝合計点（任意）。生徒ごとに一行使い、クラス・番号・氏名は必ず記入します。</td></tr>
+      </table>
+      <p>同じクラスと番号の重複は修正してから取り込みます。同姓同名でも、クラスと番号が異なれば別の生徒として登録できます。反映時に生徒ごとのIDが作られ、後のExcelにも引き継がれます。すでに作業中の場合は先にJSONを保存してください。データを置き換える確認が出たら、保存と内容を確かめてから進めます。</p>
+      <h3>名簿を貼り付ける方法も使えます</h3>
+      <p>初回登録の案内にある「Excelを使わず名簿を入力」から、データ名と名簿を入力する方法も残しています。Excelの「氏名・クラス」の2列をコピーし、一行に一人ずつ貼り付けて「作成する」を押します。その後は同じJSONへテストや指標を追加して保存します。</p>
+      <p>サンプルは現在2年A・B・C組各20名、計60名の<strong>英語</strong>です。同じ60名の1年時5回・2年時5回を、リスニング・語彙・文法・読解・ライティング（各20点、計100点）で記録しています。その他の指標は家庭学習アンケートです。<strong>実在する生徒・学校の情報は一切使っていません。</strong>1年時の組履歴を持ちますが、クラス絞り込みは現在の2年時の組で10回すべてを集計します。配布フォルダ内の <span class="tag">files/sample-data.json</span>も「JSONを開く」から読み込めます。</p>
+      <p><strong>関係を見やすくした架空のデモデータで、実際の教育効果や因果関係を示すものではありません。</strong>計画的家庭学習・復習の5段階回答は、人工的な学力プロフィールと関連させ、ばらつきと例外を残しています。統計計算や判定基準を変えたものではありません。「相関分析」の横軸に［5段階］の計画または復習、縦軸にテスト、クラスに「全クラス」を選んで確認できます。最新の2年第5回は60名中59名が集計対象です。全体でも期待度数が小さいマスが多く、検定結果は参考です。少人数のクラス別ではさらに注意が必要なので、検定欄の注意表示も確認してください。</p>
+      <p>次回は、アプリを開いて「JSONを開く」から<strong>自分が保存した最新版</strong>を選びます。サンプルボタンでは保存済みの作業内容は開かれません。更新したサンプルを再読み込みしても、以前保存したJSONファイルの内容は自動変更しません。</p>
+    </section>
+
+    <section id="file">
+      <h2><span class="num">3</span>データファイルの基本</h2>
+      <p>成績はすべて <strong>JSONファイル1つ</strong>に入ります。「1学級（または1学年）＝1ファイル」が使いやすい単位です。</p>
+      <h3>開く・保存する</h3>
+      <table>
+        <tr>
+          <th>開く</th>
+          <td>起動後に「JSONを開く」でファイルを選ぶ</td>
+        </tr>
+        <tr>
+          <th>保存</th>
+          <td><kbd>Ctrl+S</kbd>（Macは <kbd>⌘S</kbd>） または右上の「保存」ボタン。Index.html を直接開いた場合は JSON がダウンロードされます。ブラウザのダウンロード一覧で保存完了を確認してください。</td>
+        </tr>
+        <tr>
+          <th>未保存の確認</th>
+          <td>編集すると右上に <strong style="color:var(--warn)">● 未保存の変更</strong> と表示。保存すると <strong style="color:var(--accent)">✓ 保存済み</strong> に変わります</td>
+        </tr>
+      </table>
+      <div class="warn"><strong>保存せずにタブを閉じようとすると警告が出ます。</strong>「● 未保存の変更」が出ているうちは、こまめに <kbd>Ctrl+S</kbd> を押す習慣をおすすめします。</div>
+      <div class="danger"><strong>個人情報の取り扱いに注意。</strong>実名入りのJSONファイルは校内の決められた保存場所に置き、USBメモリやメール・チャットでの持ち出しは学校のルールに従ってください。</div>
+
+      <h3>複数教科で1ファイルを共有するとき</h3>
+      <p>1つの学年ファイルを各教科の先生が共有する場合は、<strong>同時には開かず、順番に使う</strong>のが原則です。「成績入力」タブの<strong>教科</strong>で自分の教科に絞ると、他教科のテストが混ざらず安全です。</p>
+      <div class="warn">このアプリは共有ファイルをロックしたり、複数人の変更を自動で統合したりしません。共有する場合は順番に使い、作業後に保存した最新版を次の人へ渡してください。</div>
+      <h3>バックアップ</h3>
+      <p>直接開いた場合はダウンロードしたJSONを自分で保管します。同名のファイルに「(1)」などが付くことがあるので、次回は最新版を選んでください。</p>
+      <p>右上の <span class="tag">バックアップ</span> ボタンを押すと、<strong>日付つきの控え（◯◯_backup_日時.json）がダウンロード</strong>されます。テスト入力のあとや学期末など、節目に押しておくと、万一ファイルを壊しても元に戻せます。ダウンロードフォルダから所定の保存場所へ移しておきましょう。</p>
+    </section>
+
+    <section id="screen">
+      <h2><span class="num">4</span>画面の見方（7つのタブ）</h2>
+      <table>
+        <tr>
+          <th>概要</th>
+          <td>選んだテストの平均点・中央値・最高/最低点、得点分布のグラフ、分野別の得点率、テストごとの平均点推移。<strong>まず開く場所</strong>です</td>
+        </tr>
+        <tr>
+          <th>成績入力</th>
+          <td>点数を入力する表。テストの追加・削除もここから行います</td>
+        </tr>
+        <tr>
+          <th>個人推移</th>
+          <td>左の名簿から生徒を選ぶと成績推移の折れ線が表示。複数選ぶと比較でき、<strong>1名だけ選ぶと分野別の個人カルテ</strong>が出ます</td>
+        </tr>
+        <tr>
+          <th>分野・問題分析</th>
+          <td>分野別・問題別の得点率と、ばらつき（箱ひげ図）。最も弱い分野・問題を自動で指摘します</td>
+        </tr>
+        <tr>
+          <th>相関分析</th>
+          <td>読書量・学習時間・アンケート結果などの「指標」を入力し、成績との関係を散布図と相関係数で確認できます</td>
+        </tr>
+        <tr>
+          <th>支援（RTI）</th>
+          <td>得点率による3層の支援候補を確認し、支援の追加・完了・再開と開始前後の推移を記録します。判定は支援を検討するための目安です</td>
+        </tr>
+        <tr>
+          <th>データ一覧</th>
+          <td>全生徒のテスト点・指標・平均を一覧表で表示。列の見出しクリックで並べ替え、得点率による色付け、Excel書き出しができます</td>
+        </tr>
+      </table>
+      <p>どのタブにも「クラス」の絞り込みがあります。学年全体のファイルでも、クラス単位の分析がすぐできます。</p>
+    </section>
+
+    <section id="test">
+      <h2><span class="num">5</span>テストを登録する</h2>
+      <ol class="steps">
+        <li>「成績入力」タブで <span class="tag">＋ テストを追加</span> を押す</li>
+        <li>テスト名・教科・実施学年・実施日・満点を入力（実施日は後から過去のテストを追加するときの並び順に使います）</li>
+        <li><strong>分野</strong>を登録（例：知識・技能 40点／読解 35点／表現 25点）</li>
+        <li><strong>問題</strong>を登録し、それぞれがどの分野に属するか選ぶ（例：問1（語彙）15点 → 知識・技能）</li>
+        <li>「追加する」を押す</li>
+      </ol>
+      <div class="note">問題まで登録しておくと、<strong>問題の点数を入れるだけで合計点・分野別点が自動計算</strong>され、分野・問題分析がフルに使えます。急ぐときは分野・問題なし（合計点のみ）でも作成できます。</div>
+    </section>
+
+    <section id="input">
+      <h2><span class="num">6</span>点数を入力する</h2>
+      <h3>手で入力する</h3>
+      <p>「成績入力」タブの表に直接打ち込みます。<kbd>Tab</kbd> で右のセルへ移動できます。配点を超える値を入れるとセルが赤くなり、その値は成績データへ保存されません。</p>
+      <h3>入力用Excelを発行して配る</h3>
+      <p>「成績入力」タブの <span class="tag">入力用Excelを発行</span> を押すと、選択中のテスト・クラスの<strong>出席番号と氏名が入った .xlsx</strong>がダウンロードされます。空欄に点数を入れて返してもらい、その点数列をコピーして表に貼り付ければ完成です。採点の分担入力や、他の先生への依頼に使えます。</p>
+      <div class="warn">発行したExcelには氏名が入ります。配布・回収・保存は学校のルールに従ってください。</div>
+
+      <h3>登録した生徒に新しいテストを追加する</h3>
+      <p>画面でテストを1問ずつ登録しなくても、<strong>テンプレート→Excelで記入→取込</strong>の流れで、テストの定義と全員分の点数を一度に登録できます。</p>
+      <ol class="steps">
+        <li>保存した続きなら先に「JSONを開く」で同じデータを開き、「成績入力」タブの <span class="tag">① テンプレを発行</span> を押す（登録済みの名簿と生徒IDが入った .xlsx がダウンロードされます）</li>
+        <li>Excelで開き、1行目にテスト名・教科・満点・実施学年・実施日、4行目に問題名、2〜3行目に各問題の分野と配点を記入（問題列を増やす場合は末尾の生徒ID列より前に追加します）</li>
+        <li>生徒の行に点数を入力（欠席の生徒は「欠」と記入）して保存</li>
+        <li>番号・氏名・クラスと最後の生徒ID列は変更せず保存し、<span class="tag">② 記入後に取込</span> でそのファイルを選ぶ。確認画面で内容を確かめて反映するとテストが追加される</li>
+      </ol>
+      <p>新しいテンプレートは<strong>生徒IDで照合</strong>します。別のJSONから発行したExcelを混ぜず、ID列を消したり書き換えたりしないでください。従来のIDがないテンプレートでは、名簿の情報から生徒を一人に特定できる場合だけ取り込めます。重複・曖昧な照合・未登録の生徒・不正な値は修正してから取り込み直してください。エラー時はファイル全体の反映を止めます。</p>
+
+      <h3>Excelから貼り付ける（おすすめ）</h3>
+      <ol class="steps">
+        <li>Excel側で、表と同じ並び（行＝生徒、列＝問題）になるように点数の範囲をコピー</li>
+        <li>ダッシュボードの表で、貼り付け開始位置のセルをクリック</li>
+        <li><kbd>Ctrl+V</kbd> で貼り付け</li>
+      </ol>
+      <ul>
+        <li>貼り付けた位置を起点に、右方向＝問題、下方向＝生徒の順で流し込まれます</li>
+        <li>空セルは無視されるので、既存の値が消えることはありません</li>
+        <li>欠席者は空欄のままでOK（平均点などの計算から自動で除外されます）</li>
+      </ul>
+    </section>
+
+    <section id="analysis">
+      <h2><span class="num">7</span>分析を授業に活かす</h2>
+      <table>
+        <tr>
+          <th>授業改善</th>
+          <td>「分野・問題分析」の弱点バナーで最も得点率の低い分野を確認 → 次の単元の重点に。箱ひげ図でばらつきが大きい問題は、できる子とできない子の差が開いているサイン</td>
+        </tr>
+        <tr>
+          <th>面談・所見</th>
+          <td>「個人推移」で生徒を1名選ぶと、本人の推移＋分野別カルテが表示。<span class="tag">面談カルテを印刷</span> を押せば、テスト記録・推移グラフ・メモ欄つきのA4カルテが印刷でき、三者面談でそのまま配れます</td>
+        </tr>
+        <tr>
+          <th>学年会・教科会</th>
+          <td>「概要」のクラス絞り込みでクラス間の平均点推移を比較。資料が必要なら画面ごとブラウザの印刷機能（<kbd>Ctrl+P</kbd>）で</td>
+        </tr>
+      </table>
+    </section>
+
+    <section id="correlation">
+      <h2><span class="num">8</span>アンケートと成績の相関を調べる</h2>
+      <p>「読書が好きな子は読解力が高い？」「学習時間と成績は関係している？」——そんな仮説を、データで確かめられます。</p>
+      <h3>指標を登録して入力する</h3>
+      <ol class="steps">
+        <li>「相関分析」タブで <span class="tag">＋ 指標を追加</span> を押す</li>
+        <li>指標名（例：読書量（冊/月））と種類を選ぶ。アンケートなら「5段階（1〜5）」がおすすめ</li>
+        <li>下の表に値を入力する。Excelの縦1列をコピーして貼り付けることもできます</li>
+      </ol>
+      <h3>登録した生徒にアンケートを追加する</h3>
+      <ol class="steps">
+        <li>保存した続きなら「JSONを開く」で同じデータを先に開き、「相関分析」の <span class="tag">① テンプレを発行</span> を押す。登録済みの名簿と生徒IDが入った .xlsx がダウンロードされる</li>
+        <li><strong>「指標」シート</strong>を開く。「記入例」シートへ入力しない</li>
+        <li><strong>2行目のD列・E列の仮の見出しを実際の質問名に変更</strong>する（例：平日の英語学習時間（分）、復習の頻度）</li>
+        <li><strong>3行目以降</strong>の各生徒の行へ回答値を入力する。A列の番号・B列の氏名・C列のクラス、最後の<strong>生徒ID列は変更しない</strong>。未回答は0でなく空欄にする</li>
+        <li>Excelを保存し、「相関分析」の <span class="tag">② 記入後に取込</span> で選ぶ。プレビューの質問名・人数・値を確認してから反映する</li>
+        <li>JSONを保存する。次回もそのJSONを開けば、名簿・テスト・アンケートをまとめて再開できる</li>
+      </ol>
+      <p>値がすべて1〜5の整数なら「5段階アンケート」、それ以外は「数値」として自動で登録されます。既にある指標と同じ名前なら、値の上書き（更新）になります。</p>
+      <div class="note">発行しただけのテンプレートには回答は入りません。<strong>質問名と各生徒の回答値をExcelへ記入してから</strong>取り込みます。空のままのテンプレートや、名簿が異なる別のJSONから発行したExcelを選ばないでください。</div>
+      <h3>取り込みでエラーが出たとき</h3>
+      <p>表示されたシート・行・項目をExcelで確認します。仮の質問名、回答が全員空欄、数値でない値、重複する生徒行、変更されたID、照合できない生徒がないかを確かめてください。エラーがある場合は<strong>一部だけを反映せず、取り込み全体を止めます</strong>。Excelを直して取り込み直すか、同じJSONから新しいテンプレートを発行してください。任意のアンケートExcelの形式を自動で読み替える機能ではありません。</p>
+      <h3>相関を見る</h3>
+      <ol class="steps">
+        <li>横軸（X）に調べたい指標、縦軸（Y）にテストを選ぶ</li>
+        <li>散布図の上に<strong>相関係数 r</strong> と強さの目安（強い・中程度・弱い）が表示されます</li>
+        <li>点はクラスごとに色分けされ、点にマウスを乗せると生徒名がわかります</li>
+      </ol>
+      <table>
+        <tr><th>r の目安</th><td>±0.7以上＝強い相関 ／ ±0.4以上＝中程度 ／ ±0.2以上＝弱い ／ それ未満＝ほとんどなし</td></tr>
+        <tr><th>使い方の例</th><td>「勉強が好き（1〜5）」アンケート × 期末テスト → 学習意欲と成績の関係を学年会の資料に</td></tr>
+      </table>
+      <div class="warn"><strong>相関≠因果。</strong>「読書量と読解力に相関がある」ことは「読書をさせれば読解力が上がる」ことを保証しません。指導の仮説づくりの材料として使ってください。</div>
+
+      <h3>効果量とカイ二乗検定</h3>
+      <table>
+        <tr>
+          <th>効果量（Cohen's d）</th>
+          <td><strong>変化や差の大きさを、点数のばらつきを物差しにして測り直した標準化指標</strong>です。「平均が3点上がった」が大きい変化なのか誤差なのかを判断できます。目安：±0.2未満＝ごく小さい／0.5前後＝中くらい／0.8以上＝大きい。教育介入では d=0.4 前後が「1年間の通常授業以上の効果」の目安とされます（Hattie）。<br><br>
+          アプリでは次の<strong>5か所</strong>に自動表示されます：<br>
+          ① <strong>概要</strong>：平均点の前回比（クラス全体の伸びの大きさ）<br>
+          ② <strong>概要</strong>：クラス間の差（1組と3組の差は大きいのか）<br>
+          ③ <strong>分野・問題分析</strong>：前回比で伸びた／下がった分野<br>
+          ④ <strong>支援（RTI）</strong>：支援開始後の個人の伸び（クラスのばらつき基準）<br>
+          ⑤ <strong>相関分析</strong>：アンケート高評価群と低評価群の平均点差<br>
+          画面上の「効果量とは？」や d の値をクリックすると、いつでも説明が読めます</td>
+        </tr>
+        <tr>
+          <th>カイ二乗検定</th>
+          <td>「相関分析」で横軸に<strong>5段階アンケート</strong>、縦軸に<strong>テスト</strong>を選ぶと、回答×成績帯（低・中・高）のクロス集計表と検定結果が自動表示されます。5段階のようなカテゴリデータでは相関係数より適切な方法です。「関連あり（5%水準で有意）」＝偶然では説明しにくい偏りがある、という意味。関連の強さは Cramér's V（0.1未満=ごく弱い／0.3=弱い／0.5=中程度）で示します</td>
+        </tr>
+      </table>
+      <p>成績帯の区切りは「支援（RTI）」のしきい値と共通です（設定から変更できます）。</p>
+    </section>
+
+    <section id="faq">
+      <h2><span class="num">9</span>よくある質問</h2>
+      <dl class="qa">
+        <dt>保存ボタンを押したのに、どこに保存された？</dt>
+        <dd>Index.html を直接開いた場合、JSON がダウンロードされます。ブラウザのダウンロード一覧を確認し、最新版を所定の保存場所へ移してください。次回はそのJSONを開きます。</dd>
+        <dt>共用PCでも使える？</dt>
+        <dd>保存したJSONを開けば、別のPCでも続きから使えます。成績をブラウザへ自動保存はしませんが、ダウンロードしたJSON・Excel・バックアップはPCに残ります。共用PCでは保管先と利用後のファイルの扱いを確認してください。</dd>
+        <dt>途中で生徒が転入・転出したら？</dt>
+        <dd>右上の「名簿管理」→「名簿を編集」で、「＋ 生徒を追加（転入）」や ✕ ボタンで対応できます。転出した生徒を削除すると、その生徒の成績も一緒に消える点だけ注意してください。</dd>
+        <dt>クラス替えで新しいクラス・番号にしたい</dt>
+        <dd>「名簿管理」→「クラス替え一括取込」に新年度名簿（氏名・クラス・番号）を貼り付けて「照合する」→「反映する」だけです。<strong>氏名で照合して内部IDは変えない</strong>ので、去年までの成績はそのまま引き継がれ、新しいクラス・番号で並び替わります。</dd>
+        <dt>誤ってテストを削除してしまった</dt>
+        <dd>削除はファイル保存するまで確定しません。<strong>保存せずに</strong>ページを再読み込みして、ファイルを開き直せば元に戻ります。普段からのバックアップも有効です。</dd>
+        <dt>1つのテストに複数教科を入れたい</dt>
+        <dd>テストは「1テスト＝1教科」で登録します。5教科の定期テストは、教科ごとに5つのテストとして登録してください。</dd>
+      </dl>
+    </section>
+
+  </main>
+
+  <section style="max-width:760px;margin:24px auto;padding:24px;background:white">
+    <h2>支援記録と管理者モード</h2>
+    <p>右上の「教員モード」から4〜8桁のPINを設定すると、名簿管理・削除・しきい値設定が使えます。PINは誤操作防止用で、ログインや暗号化ではありません。JSONを読める人は内容を確認できます。</p>
+    <p>支援（RTI）タブの生徒カードを選び、内容・開始日・対象教科を記入します。一覧の「推移を表示」で支援後の推移を確認し、完了・再開できます。変更後はJSONを保存してください。</p>
+    <h2>キーボードとグラフ</h2>
+    <p>Tabで操作を移動します。分析タブでは左右矢印・Home・End、生徒一覧ではSpaceまたはEnterで選択できます。グラフの下の「グラフのデータを表で確認」を開くと、描画した値を文字で確認できます。データ一覧も数値のまま読めます。</p>
+    <h2>データの保管</h2>
+    <p>ブラウザを閉じると未保存の変更は失われます。自動保存はありません。バックアップ・Excel・印刷物にも個人情報が含まれます。保存先や共有相手を確認して取り扱ってください。</p>
+  </section>
+  <footer>成績分析ダッシュボード — 成績分析ダッシュボード</footer>
+
+</body>
+
+</html>

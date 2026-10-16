@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>成績分析ダッシュボード</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232458a6'/%3E%3Cpath d='M8 24V16h4v8zm6 0V11h4v13zm6 0V6h4v18z' fill='white'/%3E%3C/svg%3E">
+  <meta name="description" content="成績の入力・可視化・支援記録をブラウザ内で。登録不要で使える成績分析ダッシュボード。">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <link rel="stylesheet" href="files/style.css">
+  <!-- ライブラリはローカル同梱（オフライン・閉域校務PCでも動作） -->
+  <script src="files/vendor/echarts.min.js"></script>
+  <script src="files/vendor/xlsx.full.min.js"></script>
+  <script src="files/sample-data.js"></script>
+</head>
+
+<body>
+  <a class="skip-link" href="#workspaceStart">本文へ移動</a>
+
+  <header class="app-header">
+    <div class="header-left">
+      <h1>
+        <span class="app-symbol" aria-hidden="true">▥</span> 成績分析ダッシュボード
+      </h1>
+      <span class="dataset-name" id="datasetName"></span>
+    </div>
+    <div class="header-right">
+      <a class="help-link" href="files/manual.html">使い方ガイド</a>
+      <span class="save-status" id="saveStatus" role="status" aria-live="polite" hidden></span>
+      <button class="role-badge" id="roleBtn" disabled title="クリックで管理者モードの切替">教員モード</button>
+      <button class="btn btn-ghost" id="settingsBtn" disabled hidden>設定</button>
+      <button class="btn btn-ghost" id="backupBtn" disabled title="日付つきの控えをダウンロード">バックアップ</button>
+      <button class="btn btn-ghost admin-only" id="rosterBtn" disabled>名簿管理</button>
+      <button class="btn btn-ghost" id="startFirstHeader">新しく作成</button>
+      <button class="btn btn-ghost" id="openBtn">JSONを開く</button>
+      <button class="btn btn-primary" id="saveBtn" disabled>保存 <kbd>Ctrl+S</kbd></button>
+    </div>
+  </header>
+
+  <!-- 起動時：ファイル未読み込み -->
+  <div id="workspaceStart" tabindex="-1"></div>
+  <section class="empty-state" id="emptyState" aria-labelledby="welcomeTitle">
+    <div class="welcome-copy start-intro">
+      <p class="eyebrow">成績分析ダッシュボード</p>
+      <h2 id="welcomeTitle">最初の準備から、<br>学びの変化を見るまで。</h2>
+      <p class="welcome-intro">名簿と最初の点数を、ひとつのExcelで登録できます。<br>次のテストやアンケートは、登録した名簿に追加します。</p>
+      <p class="privacy-note"><strong>データはブラウザ内で処理します。</strong>変更後は「保存」でJSONをダウンロードし、次回はそのファイルから再開します。</p>
+    </div>
+    <div class="start-grid">
+      <div class="start-card start-card-first">
+        <p class="eyebrow">はじめの準備</p>
+        <h3>初めて使う</h3>
+        <p>名簿だけでも、名簿＋最初の点数でも。用意したExcelに貼り付けて登録します。</p>
+        <button class="btn btn-primary btn-lg" id="newBtnEmpty">初めて使う <span aria-hidden="true">→</span></button>
+        <p class="start-note">① 生徒登録 → ② データ追加 → ③ 分析</p>
+      </div>
+      <div class="start-card">
+        <p class="eyebrow">続きから使う</p>
+        <h3>保存したデータを開く</h3>
+        <p>前回「保存」でダウンロードしたJSONを選びます。名簿・点数・記録が戻ります。</p>
+        <button class="btn btn-ghost btn-lg" id="openBtnEmpty">保存したJSONを開く</button>
+        <p class="start-note">保存済みの最新版を選んでください。</p>
+      </div>
+      <div class="start-card">
+        <p class="eyebrow">操作を体験する</p>
+        <h3>サンプルで試す</h3>
+        <p>現2年生60名、英語10回の架空データで、入力や分析を体験できます。</p>
+        <button class="btn btn-ghost btn-lg" id="demoBtn">サンプルで試す</button>
+        <p class="start-note">関係を見やすくした架空のデモデータです。実際の教育効果や因果関係を示すものではありません。</p>
+        <p class="empty-hint"><a href="files/sample-data.json" download>体験用JSON</a></p>
+        <p class="load-status" id="loadStatus" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+    <p class="start-guide"><a href="files/manual.html#start">初めて使う方へ：使い方ガイド</a></p>
+  </section>
+
+  <dialog id="setupDialog">
+    <div class="dialog-form setup-form">
+      <h2>生徒を登録して始める</h2>
+      <p>Excelに名簿を貼り付けます。最初のテストの合計点も、同じファイルで登録できます。名簿だけなら点数は空欄のままで構いません。</p>
+      <ol class="setup-steps">
+        <li>Excelを発行し、「初回登録」シートの<strong>A列：クラス、B列：出席番号、C列：氏名</strong>に名簿を貼り付けます（4行目から）。</li>
+        <li>最初の点数も入れる場合は、2行目のテスト名などを記入し、D列へ合計点を入力します。空欄は未入力、0点は数字の0、欠席は「欠」です。</li>
+        <li>Excelを保存して読み込み、内容を確認して登録します。「記入例」シートは取り込みません。</li>
+      </ol>
+      <div class="setup-actions">
+        <button type="button" class="btn btn-primary" id="initialTemplateBtn">① 初回登録用Excelを発行</button>
+        <button type="button" class="btn btn-ghost" id="initialImportBtn">② 記入したExcelを読み込む</button>
+      </div>
+      <input type="file" id="initialXlsxInput" accept=".xlsx,.xls" hidden>
+      <div id="initialPreview" class="initial-preview" role="status" aria-live="polite" hidden></div>
+      <button type="button" class="btn btn-primary" id="initialApplyBtn" disabled hidden>確認した内容で登録</button>
+      <details class="manual-roster-alternative"><summary>Excelを使わずに登録する</summary><p>名簿を直接入力してから、テストやアンケートを追加できます。</p><button type="button" class="btn btn-ghost" id="manualRosterBtn">Excelを使わず名簿を入力</button></details>
+      <div class="dialog-actions"><button type="button" class="btn btn-ghost" id="setupCancelBtn">閉じる</button></div>
+    </div>
+  </dialog>
+
+  <!-- メイン画面 -->
+  <main class="app-main" id="appMain" hidden>
+    <section class="prepare-panel" aria-labelledby="prepareTitle">
+      <h2 id="prepareTitle">データの準備と分析</h2>
+      <ol class="prepare-steps"><li id="prepareStep1">1 生徒登録</li><li id="prepareStep2">2 テスト・アンケートを追加</li><li id="prepareStep3">3 分析</li></ol>
+      <p id="prepareStatus" role="status" aria-live="polite"></p>
+      <div class="prepare-actions"><button type="button" class="btn btn-ghost" id="prepareTestTemplateBtn">テスト用Excelを発行</button><button type="button" class="btn btn-ghost" id="prepareTestImportBtn">テストを取り込む</button><button type="button" class="btn btn-ghost" id="prepareMetricTemplateBtn">アンケート用Excelを発行</button><button type="button" class="btn btn-ghost" id="prepareMetricImportBtn">アンケートを取り込む</button><button type="button" class="btn btn-primary" id="prepareAnalyzeBtn">分析を見る</button></div>
+      <p class="prepare-hint">名簿入りのExcelに点数・回答だけを記入して、今開いているデータへ追加します。取り込み後は「保存」してください。</p>
+    </section>
+
+    <nav class="tab-nav" role="tablist" aria-label="分析と入力">
+      <button class="tab-btn is-active" data-tab="overview">概要</button>
+      <button class="tab-btn" data-tab="input">成績入力</button>
+      <button class="tab-btn" data-tab="trend">個人推移</button>
+      <button class="tab-btn" data-tab="analysis">分野・問題分析</button>
+      <button class="tab-btn" data-tab="metrics">相関分析</button>
+      <button class="tab-btn tab-btn-rti" data-tab="rti">支援（RTI）</button>
+      <button class="tab-btn" data-tab="list">データ一覧</button>
+    </nav>
+
+    <!-- ===== 概要 ===== -->
+    <section class="tab-panel is-active" id="panel-overview">
+      <div class="toolbar">
+        <label>教科
+          <select id="ovSubject"></select>
+        </label>
+        <label>テスト
+          <select id="ovTest"></select>
+        </label>
+        <label>クラス
+          <select id="ovClass"></select>
+        </label>
+      </div>
+
+      <div class="kpi-grid" id="kpiGrid"></div>
+
+      <div class="card-grid two-col">
+        <div class="card">
+          <h3>得点分布</h3>
+          <div class="chart" id="histChart"></div>
+        </div>
+        <div class="card">
+          <h3>分野別 平均得点率</h3>
+          <div class="chart" id="ovDomainChart"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>テスト別 平均点の推移</h3>
+        <div class="chart" id="ovTrendChart"></div>
+      </div>
+    </section>
+
+    <!-- ===== 成績入力 ===== -->
+    <section class="tab-panel" id="panel-input">
+      <div class="toolbar">
+        <label>教科
+          <select id="inSubject"></select>
+        </label>
+        <label>テスト
+          <select id="inTest"></select>
+        </label>
+        <label>クラス
+          <select id="inClass"></select>
+        </label>
+        <span class="toolbar-spacer"></span>
+        <button class="btn btn-ghost" id="pasteHelpBtn">Excel貼り付けについて</button>
+        <button class="btn btn-ghost" id="exportTemplateBtn">今のテストを Excel出力</button>
+        <span class="btn-group" title="新しいテストをExcelでまとめて登録する場合はこちら">
+          <span class="btn-group-label">新しいテストをExcelで登録</span>
+          <button class="btn btn-ghost btn-sm" id="newTestTplBtn">① テンプレを発行</button>
+          <button class="btn btn-ghost btn-sm" id="importTestBtn">② 記入後に取込</button>
+        </span>
+        <button class="btn btn-danger-ghost" id="deleteTestBtn">このテストを削除</button>
+        <button class="btn btn-primary" id="addTestBtn">＋ テストを追加</button>
+      </div>
+
+      <div class="card">
+        <div class="input-status" id="inputStatus"></div>
+        <div class="table-wrap" id="scoreTableWrap"></div>
+      </div>
+    </section>
+
+    <!-- ===== 個人推移 ===== -->
+    <section class="tab-panel" id="panel-trend">
+      <div class="trend-layout">
+        <aside class="trend-side card">
+          <div class="toolbar-col">
+            <label class="side-field">教科
+              <select id="trendSubject"></select>
+            </label>
+            <label class="side-field">クラス
+              <select id="trendClass"></select>
+            </label>
+            <label class="sr-only" for="trendSearch">生徒名で検索</label><input type="search" id="trendSearch" placeholder="生徒名で検索">
+            <div class="side-actions">
+              <button class="btn btn-ghost btn-sm" id="trendClearBtn">選択をクリア</button>
+              <button class="btn btn-primary btn-sm" id="printKarteBtn" disabled>面談カルテを印刷</button>
+            </div>
+          </div>
+          <ul class="student-list" id="studentList"></ul>
+        </aside>
+        <div class="trend-main">
+          <div class="card">
+            <h3>得点の推移（クラス平均と比較）</h3>
+            <div class="chart chart-tall" id="trendChart"></div>
+          </div>
+          <div class="card" id="trendDomainCard" hidden>
+            <h3 id="trendDomainTitle">分野別 得点率の推移</h3>
+            <div class="chart" id="trendDomainChart"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 分野・問題分析 ===== -->
+    <section class="tab-panel" id="panel-analysis">
+      <div class="toolbar">
+        <label>教科
+          <select id="anSubject"></select>
+        </label>
+        <label>テスト
+          <select id="anTest"></select>
+        </label>
+        <label>クラス
+          <select id="anClass"></select>
+        </label>
+      </div>
+
+      <div class="weak-banner" id="weakBanner" hidden></div>
+
+      <div class="card-grid two-col">
+        <div class="card">
+          <h3>分野別 平均得点率</h3>
+          <div class="chart" id="anDomainChart"></div>
+        </div>
+        <div class="card">
+          <h3>問題別 平均得点率</h3>
+          <div class="chart" id="anQuestionChart"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>得点率の分布（問題別）</h3>
+        <p class="card-note">下ヒゲが長い問題は得点のばらつきが大きく、理解度の差が開いています</p>
+        <div class="chart" id="anBoxChart"></div>
+      </div>
+    </section>
+
+    <!-- ===== 相関分析 ===== -->
+    <section class="tab-panel" id="panel-metrics">
+      <p class="privacy-note" id="sampleAssociationNote" hidden><strong>関係を見やすくした架空のデモデータです。</strong>実際の教育効果や因果関係を示すものではありません。横軸（X）で［5段階］の計画・復習アンケート、縦軸（Y）でテストを選ぶとクロス集計を確認できます。全体60名でも期待度数が小さいマスがあり、検定結果は参考です。クラス別はさらに人数が少ないため、結果とともに下の注意表示を確認してください。</p>
+      <div class="toolbar">
+        <label>横軸（X）
+          <select id="corrX"></select>
+        </label>
+        <label>縦軸（Y）
+          <select id="corrY"></select>
+        </label>
+        <label>クラス
+          <select id="metClass"></select>
+        </label>
+      </div>
+
+      <div class="corr-banner" id="corrBanner" hidden></div>
+
+      <div class="card">
+        <h3>散布図（1人＝1点）</h3>
+        <p class="card-note">点線＝傾向線、薄い十字＝各軸の平均。相関は「関係の強さ」で、因果関係を意味しません</p>
+        <div class="chart chart-tall" id="corrChart"></div>
+      </div>
+
+      <div class="card" id="corrOutlierCard" hidden>
+        <h3>傾向から外れる生徒</h3>
+        <p class="card-note">傾向線から大きく外れた生徒です。声かけ・支援の手がかりに（あくまで目安）</p>
+        <div class="outlier-grid" id="corrOutliers"></div>
+      </div>
+
+      <div class="card" id="corrChiCard" hidden>
+        <h3>クロス集計とカイ二乗検定</h3>
+        <p class="card-note">5段階アンケートのようなカテゴリデータでは、相関係数よりこちらが適しています。回答と成績帯の組み合わせに偏りがあるか（＝関連があるか）を調べます</p>
+        <div class="chi-grid">
+          <div class="table-wrap" id="chiTableWrap"></div>
+          <div class="chi-result" id="chiResult"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <label>入力する指標
+            <select id="metricSel"></select>
+          </label>
+          <span class="toolbar-spacer"></span>
+          <span class="btn-group" title="Excelで一括入力する場合はこちら">
+            <span class="btn-group-label">Excelで一括入力</span>
+            <button class="btn btn-ghost btn-sm" id="metricTplBtn">① テンプレを発行</button>
+            <button class="btn btn-ghost btn-sm" id="importMetricBtn">② 記入後に取込</button>
+          </span>
+          <button class="btn btn-danger-ghost" id="deleteMetricBtn">この指標を削除</button>
+          <button class="btn btn-primary" id="addMetricBtn">＋ 指標を追加</button>
+        </div>
+        <p class="card-note">読書量・学習時間・アンケート結果（5段階）など、相関を調べたいデータをここに入力します。Excelからの縦1列貼り付けにも対応</p>
+        <p class="card-note kind-note">指標名の後ろの［5段階］［数値］は<strong>種類</strong>です。テンプレート取込では、値がすべて1〜5の整数なら「5段階」、それ以外は「数値」と<strong>自動で判定</strong>されます（5段階はカイ二乗検定・クロス集計が使えます）。未回答は 0 ではなく空欄にしてください。</p>
+        <div class="table-wrap" id="metricTableWrap"></div>
+      </div>
+    </section>
+
+    <!-- ===== 支援（RTI） ===== -->
+    <section class="tab-panel" id="panel-rti">
+      <div class="toolbar">
+        <label>教科
+          <select id="rtiSubject"></select>
+        </label>
+        <label>クラス
+          <select id="rtiClass"></select>
+        </label>
+        <label>判定に使う値
+          <select id="rtiBasis">
+            <option value="latest">直近の回の得点率</option>
+            <option value="avg">全期間の平均得点率</option>
+          </select>
+        </label>
+        <span class="toolbar-spacer"></span>
+        <button class="btn btn-ghost admin-only" id="rtiSettingsBtn">しきい値の設定</button>
+      </div>
+
+      <div class="rti-explain card-note">
+        全生徒を得点率で3つの層に分けて表示します。<strong>Tier 3＝集中的な支援</strong>、<strong>Tier 2＝補足的な支援</strong>、<strong>Tier 1＝通常指導</strong>の候補です。生徒をクリックすると支援記録をつけられます。判定はあくまで機械的な目安で、最終判断は先生が行ってください。
+      </div>
+
+      <div class="rti-board">
+        <div class="rti-col rti-col-3">
+          <div class="rti-col-head"><span class="rti-tier-label">Tier 3</span><span class="rti-col-desc" id="rtiDesc3"></span><span class="rti-count" id="rtiCount3"></span></div>
+          <div class="rti-cards" id="rtiCards3"></div>
+        </div>
+        <div class="rti-col rti-col-2">
+          <div class="rti-col-head"><span class="rti-tier-label">Tier 2</span><span class="rti-col-desc" id="rtiDesc2"></span><span class="rti-count" id="rtiCount2"></span></div>
+          <div class="rti-cards" id="rtiCards2"></div>
+        </div>
+        <div class="rti-col rti-col-1">
+          <div class="rti-col-head"><span class="rti-tier-label">Tier 1</span><span class="rti-col-desc" id="rtiDesc1"></span><span class="rti-count" id="rtiCount1"></span></div>
+          <div class="rti-cards" id="rtiCards1"></div>
+        </div>
+      </div>
+
+      <div class="card" id="rtiInterventionCard">
+        <h3>支援の記録</h3>
+        <p class="card-note">実施中・完了した支援の一覧です。生徒カードをクリックして追加できます。</p>
+        <div class="table-wrap" id="rtiLogWrap"></div>
+      </div>
+
+      <div class="card" id="rtiProgressCard" hidden>
+        <h3 id="rtiProgressTitle">支援対象の推移</h3>
+        <p class="card-note">点線＝Tierしきい値と支援開始時の水準。開始後に伸びているかを確認します</p>
+        <p class="rti-es-note" id="rtiEsNote"></p>
+        <div class="chart chart-tall" id="rtiProgressChart"></div>
+      </div>
+    </section>
+
+    <!-- ===== データ一覧 ===== -->
+    <section class="tab-panel" id="panel-list">
+      <div class="toolbar">
+        <label>学年
+          <select id="listGrade"></select>
+        </label>
+        <label>テスト
+          <select id="listTerm"></select>
+        </label>
+        <label>教科
+          <select id="listSubject"></select>
+        </label>
+        <label>クラス
+          <select id="listClass"></select>
+        </label>
+        <label>表示
+          <select id="listMode">
+            <option value="total">合計点</option>
+            <option value="rate">得点率(%)</option>
+          </select>
+        </label>
+        <label class="check-inline"><input type="checkbox" id="listHeat" checked> 色付け</label>
+        <label>基準点
+          <input type="number" id="listPivot" min="0" max="100" value="60" class="pivot-input"> %
+        </label>
+        <span class="toolbar-spacer"></span>
+        <button class="btn btn-ghost" id="listExportBtn">Excelで書き出し</button>
+      </div>
+
+      <div class="card">
+        <p class="card-note">列の見出しをクリックすると並べ替えできます。欠席は「欠」・未入力は空欄。</p>
+        <div class="table-wrap" id="listTableWrap"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">成績分析ダッシュボード <span>成績分析・支援記録</span> <a href="files/manual.html">使い方とデータの扱い</a></footer>
+  <noscript><p class="noscript">このアプリを使うには JavaScript を有効にしてください。</p></noscript>
+
+  <!-- 面談カルテ印刷エリア（通常は非表示、印刷時のみ表示） -->
+  <div id="printArea" aria-hidden="true"></div>
+
+  <!-- 効果量の説明ダイアログ -->
+  <dialog id="esHelpDialog">
+    <div class="dialog-form">
+      <h2>効果量（Cohen's d / dz）とは</h2>
+      <p>「平均が5点上がった」——それが<strong>大きな変化なのか、誤差の範囲なのか</strong>は、点数だけでは分かりません。みんなが60点前後に固まっている集団での5点と、20〜90点までバラバラな集団での5点は、意味がまったく違うからです。</p>
+      <p><strong>効果量は、変化や差を「点数のばらつき（標準偏差）」を物差しにして測り直した値</strong>です。別集団の比較には d、同じ生徒の前後比較には差分を基準にした dz を表示します。</p>
+      <table class="es-table">
+        <tr><th>d = ±0.2 未満</th><td>ごく小さい（誤差の可能性が高い）</td></tr>
+        <tr><th>d = 0.2〜0.5</th><td>小さい変化</td></tr>
+        <tr><th>d = 0.5〜0.8</th><td>中くらいの変化（体感できる差）</td></tr>
+        <tr><th>d = 0.8 以上</th><td>大きな変化</td></tr>
+      </table>
+      <p class="form-note">※ 効果量は「大きさ」の指標であって、授業や支援が原因だったことの証明ではありません。テストの難易度や受験者が違う場合、単純比較はできません。人数が少ないときは参考程度に扱ってください。</p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-primary" id="esHelpClose">閉じる</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 管理者モード切替ダイアログ -->
+  <dialog id="adminDialog">
+    <form class="dialog-form" id="adminForm">
+      <h2>管理者モード</h2>
+      <p class="form-note" id="adminDialogNote"></p>
+      <label>PIN（数字4〜8桁）
+        <input type="password" id="adminPinInput" inputmode="numeric" pattern="[0-9]*" autocomplete="off" required>
+      </label>
+      <p class="form-note admin-warn">※ この切替は誤操作防止のための仕組みです。データそのものの保護は、ファイルを置く共有フォルダのアクセス権で行ってください。</p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="adminCancel">キャンセル</button>
+        <button type="submit" class="btn btn-primary" id="adminSubmit">切り替える</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 設定ダイアログ（管理者） -->
+  <dialog id="settingsDialog">
+    <form class="dialog-form" id="settingsForm">
+      <h2>設定（管理者）</h2>
+
+      <h4>RTI しきい値（得点率%）</h4>
+      <div class="form-row form-row-2">
+        <label>Tier 3（集中支援）… この値未満
+          <input type="number" id="setTier3" min="1" max="99" required>
+        </label>
+        <label>Tier 2（補足支援）… この値未満
+          <input type="number" id="setTier2" min="1" max="99" required>
+        </label>
+      </div>
+      <p class="form-note">例：Tier 3=40、Tier 2=60 のとき、40%未満がTier 3、40〜59%がTier 2、60%以上がTier 1</p>
+
+      <h4>管理者PIN</h4>
+      <label>新しいPIN（数字4〜8桁・変更する場合のみ入力）
+        <input type="password" id="setPin" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="変更しない場合は空欄">
+      </label>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="settingsCancel">キャンセル</button>
+        <button type="submit" class="btn btn-primary">保存する</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 支援記録ダイアログ -->
+  <dialog id="ivDialog">
+    <form class="dialog-form" id="ivForm">
+      <h2 id="ivDialogTitle">支援の記録</h2>
+      <div class="iv-student-summary" id="ivStudentSummary"></div>
+      <label>支援の内容
+        <input type="text" id="ivTitle" required placeholder="例：授業中に、取り組む手順を一緒に確認した">
+      </label>
+      <div class="form-row form-row-2">
+        <label>開始日
+          <input type="date" id="ivStart" required>
+        </label>
+        <label>対象教科
+          <select id="ivSubject"></select>
+        </label>
+      </div>
+      <label>メモ（任意）
+        <textarea id="ivNote" rows="3" placeholder="保護者連絡済み、家庭学習の様子など"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="ivCancel">キャンセル</button>
+        <button type="submit" class="btn btn-primary">記録する</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 指標追加ダイアログ -->
+  <dialog id="metricDialog">
+    <form class="dialog-form" id="metricForm">
+      <h2>指標を追加</h2>
+      <label>指標名 <input type="text" id="mfLabel" required placeholder="例：読書量（冊/月）"></label>
+      <label>種類
+        <select id="mfType">
+          <option value="number">数値（時間・冊数など）</option>
+          <option value="scale">5段階アンケート（1〜5）</option>
+        </select>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="mfCancel">キャンセル</button>
+        <button type="submit" class="btn btn-primary">追加する</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 名簿管理ダイアログ -->
+  <dialog id="rosterDialog">
+    <div class="dialog-form roster-dialog">
+      <h2>名簿管理</h2>
+      <p class="form-note">成績は氏名ではなく内部IDで紐づくため、クラス替えで「クラス・番号」を変えても過去の成績は引き継がれます。</p>
+
+      <div class="roster-tabs">
+        <button class="rtab is-active" data-rtab="edit">名簿を編集</button>
+        <button class="rtab" data-rtab="reassign">クラス替え一括取込</button>
+      </div>
+
+      <!-- 編集 -->
+      <div class="rpane is-active" id="rpane-edit">
+        <div class="roster-toolbar">
+          <span id="rosterCount"></span>
+          <span class="toolbar-spacer"></span>
+          <button class="btn btn-ghost btn-sm" id="rosterAddBtn">＋ 生徒を追加（転入）</button>
+        </div>
+        <div class="table-wrap roster-table-wrap" id="rosterTableWrap"></div>
+      </div>
+
+      <!-- クラス替え一括取込 -->
+      <div class="rpane" id="rpane-reassign">
+        <p>新年度のクラス名簿を貼り付けてください。<strong>氏名で照合</strong>し、クラスと出席番号を更新します（成績は保持）。</p>
+        <p class="form-note">1行に1人。<code>氏名 ⇥ 新クラス ⇥ 新番号</code>（Excelの3列をコピーして貼り付け）</p>
+        <textarea id="reassignText" rows="9" placeholder="架空生徒001	2A	1&#10;架空生徒002	2B	5"></textarea>
+        <label class="roster-check"><input type="checkbox" id="reassignAddNew" checked> 名簿にない生徒は新規追加（転入）する</label>
+        <div id="reassignPreview" class="reassign-preview" hidden></div>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-ghost" id="reassignCheckBtn">照合する</button>
+          <button type="button" class="btn btn-primary" id="reassignApplyBtn" disabled>反映する</button>
+        </div>
+      </div>
+
+      <div class="dialog-actions roster-close-row">
+        <button type="button" class="btn btn-ghost" id="rosterCloseBtn">閉じる</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- テスト追加ダイアログ -->
+  <dialog id="testDialog">
+    <form class="dialog-form" id="testForm">
+      <h2>テストを追加</h2>
+      <div class="form-row form-row-4">
+        <label>テスト名 <input type="text" id="tfName" required placeholder="例：後期期末テスト"></label>
+        <label>教科 <input type="text" id="tfSubject" required placeholder="例：英語"></label>
+        <label>実施学年
+          <select id="tfGrade">
+            <option value="">未設定</option>
+            <option value="1">1年</option>
+            <option value="2">2年</option>
+            <option value="3">3年</option>
+          </select>
+        </label>
+        <label>実施日 <input type="date" id="tfDate"></label>
+        <label>満点 <input type="number" id="tfMax" required value="100" min="1"></label>
+      </div>
+      <p class="form-note">実施学年＝「何年生のときのテストか」。実施日を設定すると、後から過去のテストを追加しても時系列が正しく並びます。</p>
+
+      <h4>分野
+        <button type="button" class="btn btn-ghost btn-sm" id="tfAddDomain">＋ 追加</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="tfCopyPrev" title="同じ教科の直近テストから分野・問題・配点をそのまま写します">前回の構成をコピー</button>
+      </h4>
+      <p class="form-note">同じ教科では毎回<strong>同じ分野名</strong>を使うと、分野別の推移が年をまたいでつながります（「前回の構成をコピー」が確実です）</p>
+      <div class="builder-rows" id="tfDomains"></div>
+
+      <h4>問題 <button type="button" class="btn btn-ghost btn-sm" id="tfAddQuestion">＋ 追加</button></h4>
+      <div class="builder-rows" id="tfQuestions"></div>
+
+      <p class="form-note">問題を登録すると、合計点・分野別点は問題の得点から自動計算されます。問題なし（合計点のみ）でも作成できます。</p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="tfCancel">キャンセル</button>
+        <button type="submit" class="btn btn-primary">追加する</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 新規作成ダイアログ -->
+  <dialog id="newDialog">
+    <form class="dialog-form" id="newForm">
+      <h2>新規データを作成</h2>
+      <label>データ名 <input type="text" id="nfName" required placeholder="例：1年 英語"></label>
+      <label>名簿（1行に1人。「氏名 ⇥ クラス ⇥ 出席番号」。クラス・番号は省略可）
+        <textarea id="nfRoster" rows="10" placeholder="架空生徒001	1A	1&#10;架空生徒002	1A	2"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="nfCancel">キャンセル</button>
+        <button type="submit" class="btn btn-primary">作成する</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Excel貼り付けヘルプ -->
+  <dialog id="pasteDialog">
+    <div class="dialog-form">
+      <h2>Excelからの貼り付け</h2>
+      <p>Excelで点数の範囲をコピーし、表の任意のセルを選択して <kbd>Ctrl+V</kbd>（Macは <kbd>⌘V</kbd>）で貼り付けられます。</p>
+      <ul class="help-list">
+        <li>貼り付けた位置を起点に、右方向＝問題、下方向＝生徒の順で流し込まれます</li>
+        <li>列の順番は表の問題の並びと合わせてください</li>
+        <li>空セルは無視されます（既存の値を消しません）</li>
+      </ul>
+      <div class="dialog-actions">
+        <button class="btn btn-primary" id="pasteCloseBtn">閉じる</button>
+      </div>
+    </div>
+  </dialog>
+
+  <input type="file" id="fileInput" accept=".json,application/json" hidden>
+  <input type="file" id="testXlsxInput" accept=".xlsx,.xls" hidden>
+  <input type="file" id="metricXlsxInput" accept=".xlsx,.xls" hidden>
+
+  <script src="files/import-core.js"></script>
+  <script src="files/initial-import.js"></script>
+  <script src="files/script.js"></script>
+  <script src="files/accessibility.js"></script>
+  <script src="files/onboarding.js"></script>
+</body>
+
+</html>
