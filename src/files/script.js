@@ -463,6 +463,9 @@ function validateDataset(parsed) {
     if (!iv || typeof iv !== 'object') { add('支援記録はオブジェクトにしてください。'); continue; }
     if (iv && !studentIds.has(iv.studentId)) add(`支援記録「${iv.title || iv.id}」が存在しない生徒IDを参照しています。`);
     if (typeof iv.id !== 'string' || typeof iv.title !== 'string' || typeof iv.subject !== 'string') add('支援記録のID・内容・教科は文字列にしてください。');
+    if (iv.baseline != null && (!Number.isFinite(iv.baseline) || iv.baseline < 0 || iv.baseline > 100)) {
+      add('支援記録の開始時基準値は0〜100の数値、または未設定にしてください。');
+    }
   }
   return errors;
 }
@@ -788,8 +791,8 @@ function renderOverview() {
   ];
   if (classGapKpi) kpis.push(classGapKpi);
   kpiEl.innerHTML = kpis.map((k) =>
-    `<div class="kpi"><div class="kpi-label">${k.label}</div>
-     <div class="kpi-value">${k.value}<small>${k.unit}</small></div>${k.extra || ''}</div>`).join('');
+    `<div class="kpi"><div class="kpi-label">${esc(k.label)}</div>
+     <div class="kpi-value">${esc(k.value)}<small>${esc(k.unit)}</small></div>${k.extra || ''}</div>`).join('');
 
   renderHistogram(test, totals);
   renderDomainBar('ovDomainChart', test, students);
@@ -2427,7 +2430,7 @@ function renderRtiLog() {
       <td style="text-align:left">${esc(iv.title)}${iv.note ? `<div class="iv-note">${esc(iv.note)}</div>` : ''}</td>
       <td>${esc(iv.subject === 'all' ? '全教科' : iv.subject)}</td>
       <td>${esc(iv.startDate || '')}</td>
-      <td>${iv.baseline != null ? iv.baseline + '%' : '—'}</td>
+      <td>${iv.baseline != null ? esc(iv.baseline) + '%' : '—'}</td>
       <td class="iv-actions">
         ${iv.status === 'active'
           ? `<button class="btn btn-ghost btn-sm iv-done-btn" data-iv="${esc(iv.id)}">完了にする</button>`
@@ -2481,7 +2484,7 @@ function renderRtiProgress() {
       if (sd > 0) {
         const dval = (latest - iv.baseline) / sd;
         const dir = dval >= 0.2 ? '伸び' : dval <= -0.2 ? '低下' : '変化';
-        esNote = `開始時 ${iv.baseline}% → 直近 ${round1(latest)}%（${latest >= iv.baseline ? '+' : ''}${round1(latest - iv.baseline)}pt）。` +
+        esNote = `開始時 ${esc(iv.baseline)}% → 直近 ${round1(latest)}%（${latest >= iv.baseline ? '+' : ''}${round1(latest - iv.baseline)}pt）。` +
           `直近クラスのばらつきを物差しにした標準化変化量は <strong>${esFmt(dval)}</strong>（${esLabel(dval)}${dir}・参考値）` +
           `<span class="es-link">効果量とは？</span>`;
       }
