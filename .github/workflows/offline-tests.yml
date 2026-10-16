@@ -1,0 +1,63 @@
+name: Offline ZIP tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-tests:
+    name: Packaged app / Chromium / Ubuntu
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Install Chromium and system dependencies
+        run: npx --no-install playwright-core install --with-deps chromium
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Verify distribution ZIP and build
+        run: |
+          npm run check
+          npm run build -- --output "$RUNNER_TEMP/grade-analysis-dashboard.zip"
+
+      - name: Extract the checked-in distribution ZIP
+        run: python3 -m zipfile -e downloads/grade-analysis-dashboard.zip "$RUNNER_TEMP/dashboard-unpacked"
+
+      - name: Test the extracted app with file URLs and networking disabled
+        env:
+          DASHBOARD_ROOT: ${{ runner.temp }}/dashboard-unpacked/grade-analysis-dashboard
+        run: npm run test:browser
+
+      - name: Upload browser reports and screenshots
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-browser-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
