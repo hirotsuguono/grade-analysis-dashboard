@@ -91,6 +91,36 @@ test('正常なデータセットを受理する', () => {
   assert.equal(core.validateDataset(validDataset()).length, 0);
 });
 
+test('支援の開始時基準値は有限な0〜100の数値に限る', () => {
+  for (const baseline of ['<img src=x onerror="alert(1)">', '50', '', false, [], {}, NaN, Infinity, -Infinity, -1, 100.1]) {
+    const dataset = validDataset();
+    dataset.interventions = [{ id: 'iv1', studentId: 's1', title: '架空の支援', subject: '英語', baseline }];
+    assert.match(core.validateDataset(dataset).join('\n'), /開始時.*0〜100/);
+  }
+});
+
+test('JSON v1〜v3で開始時基準値の0・100・小数・未設定を受理する', () => {
+  for (const version of [1, 2, 3]) {
+    for (const baseline of [0, 100, 62.5, null, undefined]) {
+      const dataset = validDataset();
+      dataset.version = version;
+      dataset.interventions = [{ id: 'iv1', studentId: 's1', title: '架空の支援', subject: '英語', baseline }];
+      assert.equal(core.validateDataset(dataset).length, 0);
+    }
+  }
+});
+
+test('不正な開始時基準値を含むJSONは現在のデータを置換しない', () => {
+  const original = validDataset();
+  core.setData(original);
+  for (const baseline of ['<img src=x onerror="alert(1)">', '50', false, [], {}, -1, 101]) {
+    const invalid = validDataset();
+    invalid.interventions = [{ id: 'iv1', studentId: 's1', title: '架空の支援', subject: '英語', baseline }];
+    core.applyJsonText(JSON.stringify(invalid), 'fictional-invalid-baseline.json', null);
+    assert.equal(core.getData(), original);
+  }
+});
+
 test('公開用60名サンプルが既存スキーマ検証を通る', () => {
   const sample = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'src', 'files', 'sample-data.json'), 'utf8'));
   assert.equal(core.validateDataset(sample).length, 0);
