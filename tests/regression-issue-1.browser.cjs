@@ -10,11 +10,12 @@ module.exports = async function checkStartupRecovery(page) {
   const app = path.resolve(process.env.DASHBOARD_ROOT || path.join(__dirname, '..', 'src'));
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'grade-startup-recovery-'));
   const contexts = [];
-  const open = async (folder, options = {}) => {
+  const open = async (folder, options = {}, errors = []) => {
     // Missing assets are intentional here. Keep their errors out of the healthy-app context.
     const context = await page.context().browser().newContext({ offline: true, ...options });
     contexts.push(context);
     const target = await context.newPage();
+    target.on('pageerror', error => errors.push(error.message));
     await target.goto(pathToFileURL(path.join(folder, 'Index.html')).href);
     return target;
   };
@@ -31,6 +32,10 @@ module.exports = async function checkStartupRecovery(page) {
       await healthy.locator(`[data-tab="${name}"]`).click();
       assert.ok(await healthy.locator('#panel-' + name).isVisible());
     }
+    await healthy.locator('[data-tab="overview"]').focus();
+    await healthy.keyboard.press('ArrowRight');
+    assert.equal(await healthy.locator('[data-tab="input"]').getAttribute('aria-selected'), 'true');
+    assert.ok(await healthy.locator('.chart-data').count() > 0);
 
     const detached = path.join(root, 'index-only');
     fs.mkdirSync(detached);
@@ -50,6 +55,26 @@ module.exports = async function checkStartupRecovery(page) {
     const missingStyle = await open(moved);
     assert.ok(await missingStyle.locator('#startupHelp').isVisible());
     fs.writeFileSync(stylesheet, savedStyle);
+
+    const accessibility = path.join(moved, 'files', 'accessibility.js');
+    const savedAccessibility = fs.readFileSync(accessibility, 'utf8');
+    fs.unlinkSync(accessibility);
+    const missingAccessibility = await open(moved);
+    assert.ok(await missingAccessibility.locator('#startupHelp').isVisible());
+    assert.equal(await missingAccessibility.evaluate(() => document.documentElement.dataset.dashboardInitialized), 'true');
+
+    const errors = [];
+    assert.ok(savedAccessibility.includes('function enhance() {'));
+    fs.writeFileSync(accessibility, savedAccessibility.replace('function enhance() {',
+      "function enhance() {\n  throw new Error('Fictional accessibility initialization failure');"));
+    const failedAccessibility = await open(moved, {}, errors);
+    assert.ok(await failedAccessibility.locator('#startupHelp').isVisible());
+    assert.ok(errors.includes('Fictional accessibility initialization failure'));
+    assert.equal(await failedAccessibility.evaluate(() => typeof window.updateChartData), 'function');
+
+    fs.writeFileSync(accessibility, savedAccessibility);
+    const restoredAccessibility = await open(moved);
+    assert.ok(await restoredAccessibility.locator('#startupHelp').isHidden());
 
     fs.unlinkSync(path.join(moved, 'files', 'script.js'));
     const missingScript = await open(moved);
