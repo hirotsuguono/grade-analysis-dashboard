@@ -292,6 +292,8 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     check('JSON v1/v2を移行して保存・再開し、生徒IDと72点/0点を保持');
     await require('./html-safety.cjs')(page, fixture);
     check('タグ入りクラス名の安全な表示・開始時基準値の境界値と不正入力拒否・現在データ保持');
+    await require('./intervention-validation.cjs')(page, fixture);
+    check('支援記録の日付・状態・メモの検証・不正入力時の未保存データ保持・日付順表示と保存再開');
     const rejectedBefore = dialogs.length;
     await page.evaluate(() => applyJsonText('{broken', 'bad.json', null));
     assert.ok(dialogs.length > rejectedBefore);
