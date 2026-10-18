@@ -57,7 +57,7 @@ module.exports = async function checkStartupRecovery(page) {
 
     const noScript = await open(detached, { javaScriptEnabled: false });
     assert.ok(await noScript.locator('#startupHelp').isVisible());
-    assert.match(await noScript.locator('noscript').textContent(), /JavaScriptを有効/);
+    assert.match(await noScript.locator('#startupHelp noscript').textContent(), /JavaScriptを有効/);
   } finally {
     await Promise.all(contexts.map(context => context.close()));
     fs.rmSync(root, { recursive: true, force: true });

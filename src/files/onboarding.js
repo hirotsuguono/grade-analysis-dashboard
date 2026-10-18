@@ -135,7 +135,7 @@
   if (document.documentElement.dataset.dashboardInitialized === 'true'
       && window.echarts && window.XLSX && window.GD_IMPORT && window.GD_INITIAL
       && window.GRADE_DASHBOARD_SAMPLE
-      && document.querySelector('link[rel="stylesheet"]').sheet) {
+      && getComputedStyle(document.documentElement).getPropertyValue('--dashboard-style-loaded').trim() === '1') {
     byId('startupHelp').hidden = true;
   }
 })();

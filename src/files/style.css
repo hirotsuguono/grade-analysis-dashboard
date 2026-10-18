@@ -1,4 +1,5 @@
 :root {
+  --dashboard-style-loaded: 1;
   --primary: #2458a6;
   --primary-dark: #183f7b;
   --primary-light: #eef4ff;
