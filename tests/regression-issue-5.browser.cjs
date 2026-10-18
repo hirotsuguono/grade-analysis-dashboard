@@ -10,13 +10,13 @@ module.exports = async function checkCompleteTermTotals(page, original) {
       { id: 'b', name: '架空生徒B', className: '1A', number: 2 },
     ],
     tests: [
-      { id: 'math', name: '前期中間', gradeYear: 1, subject: '数学', maxScore: 100 },
-      { id: 'english', name: '前期中間', gradeYear: 1, subject: '英語', maxScore: 100 },
+      { id: 'math', name: '前期中間', gradeYear: 1, subject: '数学', maxScore: 100, questions: [{ key: 'q1', label: '問1', max: 100 }] },
+      { id: 'english', name: '前期中間', gradeYear: 1, subject: '英語', maxScore: 100, questions: [{ key: 'q1', label: '問1', max: 100 }] },
     ],
     scores: [
-      { studentId: 'a', testId: 'math', total: 80 },
-      { studentId: 'b', testId: 'math', total: 80 },
-      { studentId: 'b', testId: 'english', total: 80 },
+      { studentId: 'a', testId: 'math', total: 80, questions: { q1: 80 } },
+      { studentId: 'b', testId: 'math', total: 80, questions: { q1: 80 } },
+      { studentId: 'b', testId: 'english', total: 80, questions: { q1: 80 } },
     ],
   };
   const tab = name => page.locator(`[data-tab="${name}"]`).click();
@@ -52,6 +52,11 @@ module.exports = async function checkCompleteTermTotals(page, original) {
     assert.deepEqual(await series(), [[null], [160], [160]]);
     await tab('list');
     assert.deepEqual(await totals(), ['', '160']);
+    await tab('input');
+    await page.locator('#scoreTableWrap tr[data-sid="a"] .absent-check').uncheck();
+    assert.equal(await page.locator('#scoreTableWrap tr[data-sid="a"] input.cell-input').inputValue(), '0');
+    await tab('trend');
+    assert.deepEqual(await series(), [[80], [160], [120]]);
   } finally {
     await page.evaluate(value => applyJsonText(JSON.stringify(value), 'synthetic-test.json', null), original);
   }
