@@ -70,8 +70,11 @@ function localDateString(date = new Date()) {
 function normalizeDateValue(value) {
   if (value == null || value === '') return '';
   if (typeof value === 'number' && typeof XLSX !== 'undefined' && XLSX.SSF) {
+    if (!Number.isFinite(value)) return null;
     const d = XLSX.SSF.parse_date_code(value);
-    if (d) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+    if (!d) return null;
+    // Excel's serial 0 and fictitious 1900-02-29 still need the calendar check below.
+    value = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
   }
   const match = String(value).trim().match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
   if (!match) return null;
