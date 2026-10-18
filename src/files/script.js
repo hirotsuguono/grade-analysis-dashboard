@@ -3479,6 +3479,8 @@ function init() {
   // 貼り付けヘルプ
   $('pasteHelpBtn').onclick = () => $('pasteDialog').showModal();
   $('pasteCloseBtn').onclick = () => $('pasteDialog').close();
+
+  document.documentElement.dataset.dashboardInitialized = 'true';
 }
 
 init();
