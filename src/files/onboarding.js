@@ -133,6 +133,7 @@
   updatePrepare();
   // 起動処理と同梱の主要資産が揃った場合だけ、HTML内の復旧案内を閉じます。
   if (document.documentElement.dataset.dashboardInitialized === 'true'
+      && document.documentElement.dataset.accessibilityInitialized === 'true'
       && window.echarts && window.XLSX && window.GD_IMPORT && window.GD_INITIAL
       && window.GRADE_DASHBOARD_SAMPLE
       && getComputedStyle(document.documentElement).getPropertyValue('--dashboard-style-loaded').trim() === '1') {

@@ -172,3 +172,4 @@ document.addEventListener('click', event => {
 
 new MutationObserver(enhance).observe(document.body, { childList: true, subtree: true });
 enhance();
+document.documentElement.dataset.accessibilityInitialized = 'true';
