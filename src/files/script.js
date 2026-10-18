@@ -1310,6 +1310,18 @@ function renderStudentList() {
     </li>`).join('');
 }
 
+// 回の合計は全教科が入力済みのときだけ有効。一覧と推移で同じ判定を使う。
+function completeTermTotal(sid, tests) {
+  if (!tests.length) return null;
+  let sum = 0;
+  for (const t of tests) {
+    const r = getScore(sid, t.id);
+    if (!r || r.absent || r.total == null) return null;
+    sum += r.total;
+  }
+  return sum;
+}
+
 // 個人推移の横軸定義：教科別はその教科のテスト、全教科合計は同じ回
 // （実施学年＋テスト名）でまとめる。どちらも回の時間順（1年→2年→3年）に並ぶ
 function trendAxis() {
@@ -1321,14 +1333,7 @@ function trendAxis() {
     return {
       labels: keys,
       yName: '合計点',
-      valueOf: (sid) => keys.map((k) => {
-        let sum = 0, any = false;
-        for (const t of byKey.get(k)) {
-          const r = getAttendedScore(sid, t.id);
-          if (r && r.total != null) { sum += r.total; any = true; }
-        }
-        return any ? sum : null;
-      }),
+      valueOf: (sid) => keys.map((k) => completeTermTotal(sid, byKey.get(k))),
     };
   }
   const tests = sortTestsByTerm(data.tests.filter((t) => t.subject === subj));
@@ -2031,13 +2036,8 @@ function listCell(col, s) {
   }
   if (col.kind === 'termTotal') {
     // 回の合計：全教科の点がそろっている生徒のみ表示（欠席・未入力が混ざると満点比が歪むため）
-    let sum = 0;
-    for (const t of col.tests) {
-      const r = getScore(s.id, t.id);
-      if (!r || r.absent || r.total == null) return {};
-      sum += r.total;
-    }
-    return { raw: sum, rate: sum / col.maxSum * 100 };
+    const sum = completeTermTotal(s.id, col.tests);
+    return sum == null ? {} : { raw: sum, rate: sum / col.maxSum * 100 };
   }
   if (col.kind === 'avg') {
     const totals = [], rates = [];
