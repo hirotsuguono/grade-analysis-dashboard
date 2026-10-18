@@ -58,6 +58,14 @@ function validDataset() {
   };
 }
 
+function validIntervention(overrides = {}) {
+  return {
+    id: 'iv1', studentId: 's1', title: '架空の支援', subject: '英語',
+    startDate: '2026-05-20', createdAt: '2026-05-20',
+    status: 'active', note: '', baseline: 80, ...overrides,
+  };
+}
+
 test('点数は0点と満点を許可し、範囲外と非数値を拒否する', () => {
   assert.equal(JSON.stringify(core.parseBoundedNumber('', 10)), JSON.stringify({ valid: true, value: null }));
   assert.equal(JSON.stringify(core.parseBoundedNumber('0', 10)), JSON.stringify({ valid: true, value: 0 }));
@@ -119,6 +127,54 @@ test('不正な開始時基準値を含むJSONは現在のデータを置換し�
     core.applyJsonText(JSON.stringify(invalid), 'fictional-invalid-baseline.json', null);
     assert.equal(core.getData(), original);
   }
+});
+
+test('支援記録の日付は文字列の実在する日付だけを受理する', () => {
+  for (const field of ['startDate', 'endDate', 'createdAt']) {
+    for (const value of [42, 43, 0, false, true, {}, [], '不明', '2026-02-30', '1900-02-29', '2026/05/20', '2026-5-20', ' 2026-05-20 ']) {
+      const dataset = validDataset();
+      dataset.interventions = [validIntervention({ [field]: value })];
+      assert.ok(core.validateDataset(dataset).some(message => message.includes(field)), `${field}: ${JSON.stringify(value)}`);
+    }
+  }
+});
+
+test('支援記録の不正な状態・メモを拒否する', () => {
+  for (const [field, values, pattern] of [
+    ['status', ['', 'pending', 42, false, {}, []], /状態/],
+    ['note', [42, false, {}, []], /メモ/],
+  ]) {
+    for (const value of values) {
+      const dataset = validDataset();
+      dataset.interventions = [validIntervention({ [field]: value })];
+      assert.match(core.validateDataset(dataset).join('\n'), pattern);
+    }
+  }
+});
+
+test('JSON v1〜v3で正常な支援記録とうるう日・未設定項目を受理する', () => {
+  for (const version of [1, 2, 3]) {
+    for (const date of ['2024-02-29', '2026-05-20', '', null, undefined]) {
+      for (const status of ['active', 'done', null, undefined]) {
+        const dataset = validDataset();
+        dataset.version = version;
+        dataset.interventions = [validIntervention({ startDate: date, endDate: date, createdAt: date, status, note: null })];
+        assert.equal(core.validateDataset(dataset).length, 0);
+      }
+    }
+  }
+});
+
+test('開始日42・43の支援記録を反映前に拒否し、現在のデータを保持する', () => {
+  const original = validDataset();
+  core.setData(original);
+  const invalid = validDataset();
+  invalid.interventions = [
+    validIntervention({ id: 'iv1', startDate: 42 }),
+    validIntervention({ id: 'iv2', startDate: 43 }),
+  ];
+  assert.doesNotThrow(() => core.applyJsonText(JSON.stringify(invalid), 'fictional-invalid-dates.json', null));
+  assert.equal(core.getData(), original);
 });
 
 test('公開用60名サンプルが既存スキーマ検証を通る', () => {
