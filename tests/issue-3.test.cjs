@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
+const retainedAbsenceDataset = require('./issue-3-fixtures.cjs');
 const source = fs.readFileSync(path.join(process.env.DASHBOARD_ROOT || path.join(__dirname, '..', 'src', 'files'), 'script.js'), 'utf8').replace(/\ninit\(\);\s*$/, '');
 
 function harness(dataset) {
@@ -108,4 +109,67 @@ test('分野の前回比較は両方出席した生徒だけを数え、5名未�
   assert.match(h.element('weakBanner').innerHTML, /効果量 dz=/);
   h.run('data.scores[10].absent = true; renderAnalysis()');
   assert.doesNotMatch(h.element('weakBanner').innerHTML, /効果量 dz=/);
+});
+
+function combinedSeries(h) {
+  h.run('ui.trendSubject = SUM_KEY; ui.trendSelected = new Set(data.students.map(s => s.id)); renderTrendChart()');
+  return h.read('options.trendChart.series.map(series => series.data)');
+}
+
+test('JSON v1〜v3の保持した欠席得点は、保存・再読込後も全教科推移と平均に混入しない（出席者の0点は有効）', () => {
+  for (const version of [1, 2, 3]) {
+    const dataset = { ...retainedAbsenceDataset(), version };
+    const text = JSON.stringify(dataset);
+    const h = harness(JSON.parse(text));
+    assert.deepEqual(h.read('validateDataset(data)'), []);
+    assert.deepEqual(combinedSeries(h), [[null], [0], [120], [60]]);
+    assert.equal(h.run('JSON.stringify(data)'), text, 'rendering must preserve retained scores');
+    const reopened = harness(JSON.parse(h.run('JSON.stringify(data)')));
+    assert.deepEqual(combinedSeries(reopened), [[null], [0], [120], [60]]);
+  }
+});
+
+test('保存済み欠席JSONから問題別得点を復元でき、再度欠席にして保存しても保持値を失わない', () => {
+  let h = harness(JSON.parse(JSON.stringify(retainedAbsenceDataset())));
+  for (let roundtrip = 0; roundtrip < 2; roundtrip++) {
+    assert.deepEqual(combinedSeries(h), [[null], [0], [120], [60]]);
+    h.run(`for (const test of data.tests) {
+      ui.inTest = test.id;
+      handleAbsentToggle({ dataset: { sid: 'retained-a' }, checked: false });
+    }`);
+    assert.deepEqual(combinedSeries(h), [[160], [0], [120], [93.3]]);
+    assert.deepEqual(h.read("data.scores.filter(r => r.studentId === 'retained-a').map(r => r.total)"), [100, 60]);
+    h.run(`for (const test of data.tests) {
+      ui.inTest = test.id;
+      handleAbsentToggle({ dataset: { sid: 'retained-a' }, checked: true });
+    }`);
+    assert.deepEqual(combinedSeries(h), [[null], [0], [120], [60]]);
+    assert.deepEqual(h.read("data.scores.filter(r => r.studentId === 'retained-a').map(r => r.questions.q1)"), [100, 60]);
+    h = harness(JSON.parse(h.run('JSON.stringify(data)')));
+  }
+});
+
+test('保持得点があっても全員欠席なら全教科の値も平均も0点に置き換えない', () => {
+  const dataset = retainedAbsenceDataset();
+  dataset.scores.forEach(record => { record.absent = true; });
+  const h = harness(JSON.parse(JSON.stringify(dataset)));
+  h.run('ui.trendSubject = SUM_KEY');
+  assert.deepEqual(h.read('data.students.map(s => trendAxis().valueOf(s.id))'), [[null], [null], [null]]);
+  assert.deepEqual(combinedSeries(h), [[], [], [], []]);
+});
+
+test('問題別得点のないJSONでも、保存した欠席合計を除外し、欠席解除で元の合計へ戻す', () => {
+  const dataset = retainedAbsenceDataset();
+  dataset.tests.forEach(test => { test.questions = []; test.domains = []; });
+  dataset.scores.forEach(record => { record.questions = {}; record.domains = {}; });
+  const h = harness(JSON.parse(JSON.stringify(dataset)));
+  assert.deepEqual(h.read('validateDataset(data)'), []);
+  assert.deepEqual(combinedSeries(h), [[null], [0], [120], [60]]);
+  const reopened = harness(JSON.parse(h.run('JSON.stringify(data)')));
+  reopened.run(`for (const test of data.tests) {
+    ui.inTest = test.id;
+    handleAbsentToggle({ dataset: { sid: 'retained-a' }, checked: false });
+  }`);
+  assert.deepEqual(combinedSeries(reopened), [[160], [0], [120], [93.3]]);
+  assert.deepEqual(reopened.read("data.scores.filter(r => r.studentId === 'retained-a').map(r => r.total)"), [100, 60]);
 });

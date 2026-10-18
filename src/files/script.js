@@ -1324,7 +1324,7 @@ function trendAxis() {
       valueOf: (sid) => keys.map((k) => {
         let sum = 0, any = false;
         for (const t of byKey.get(k)) {
-          const r = getScore(sid, t.id);
+          const r = getAttendedScore(sid, t.id);
           if (r && r.total != null) { sum += r.total; any = true; }
         }
         return any ? sum : null;
