@@ -2470,7 +2470,7 @@ function renderRtiProgress() {
   let rates = stuSeries.rates.map((v) => (v != null ? round1(v) : null));
   // クラス平均（各生徒の回ごとの値を平均）
   const scope = s.className ? data.students.filter((x) => x.className === s.className) : data.students;
-  const scopeSeries = scope.map((x) => termSeriesFor(x.id, iv.subject).rates);
+  let scopeSeries = scope.map((x) => termSeriesFor(x.id, iv.subject).rates);
   let avg = labels.map((_, i) => {
     const vals = scopeSeries.map((r) => r[i]).filter((v) => v != null);
     return vals.length ? round1(mean(vals)) : null;
@@ -2481,6 +2481,8 @@ function renderRtiProgress() {
     labels = labels.filter((_, i) => used[i]);
     rates = rates.filter((_, i) => used[i]);
     avg = avg.filter((_, i) => used[i]);
+    // 効果量のクラス分布も、表示系列と同じ回の添字を保つ
+    scopeSeries = scopeSeries.map((series) => series.filter((_, i) => used[i]));
   }
 
   // 支援の効果量：開始時からの変化を「クラスのばらつき」を物差しに標準化（個人版の目安）
