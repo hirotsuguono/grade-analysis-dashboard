@@ -308,7 +308,8 @@
         <li>「どの分野・どの問題が弱いか」を自動で指摘してくれる</li>
         <li>Excelからのコピー＆貼り付けで一気に入力できる</li>
       </ul>
-      <div class="note">配布用ZIPを<strong>すべて展開</strong>して、<strong>Index.html をダブルクリック</strong>すると起動します。ターミナル・npm・HTTPサーバーは不要です。Index.html と files フォルダは離さずに保管してください。必要なライブラリは同梱しています。</div>
+      <div class="note">配布用ZIPを<strong>すべて展開</strong>して、<strong>Index.html をダブルクリック</strong>すると起動します。ターミナル・npm・HTTPサーバーは不要です。必要なライブラリは同梱しています。</div>
+      <div class="warn"><strong>移動・コピーは、展開したフォルダを中身ごと行ってください。</strong>Index.html だけを取り出したり、files フォルダを移動・削除したりすると動かなくなります。デスクトップに入口を置く場合は、Index.html のショートカット（Macはエイリアス）を作り、元のフォルダはそのまま保管します。起動しなくなったらZIPをもう一度すべて展開し、その中の Index.html を開いてください。</div>
     </section>
 
     <section id="start">
@@ -346,6 +347,7 @@
 
     <section id="file">
       <h2><span class="num">3</span>データファイルの基本</h2>
+      <p>アプリのフォルダは実行に必要なファイル一式で、保存した成績JSONとは別のものです。ZIPを展開し直すときも、保存したJSONを削除する必要はありません。</p>
       <p>成績はすべて <strong>JSONファイル1つ</strong>に入ります。「1学級（または1学年）＝1ファイル」が使いやすい単位です。</p>
       <h3>開く・保存する</h3>
       <table>
