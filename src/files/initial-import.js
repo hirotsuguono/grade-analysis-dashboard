@@ -60,8 +60,10 @@
     if (empty(value)) return '';
     let y, m, d;
     if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return null;
       const parsed = XLSX.SSF.parse_date_code(value);
-      if (!parsed || parsed.H || parsed.M || parsed.S) return null;
+      // The test date uses only the calendar day, including for serials with a time.
+      if (!parsed) return null;
       ({ y, m, d } = parsed);
     } else if (Object.prototype.toString.call(value) === '[object Date]') {
       if (!Number.isFinite(value.getTime())) return null;
