@@ -463,6 +463,17 @@ function validateDataset(parsed) {
     if (!iv || typeof iv !== 'object') { add('支援記録はオブジェクトにしてください。'); continue; }
     if (iv && !studentIds.has(iv.studentId)) add(`支援記録「${iv.title || iv.id}」が存在しない生徒IDを参照しています。`);
     if (typeof iv.id !== 'string' || typeof iv.title !== 'string' || typeof iv.subject !== 'string') add('支援記録のID・内容・教科は文字列にしてください。');
+    // 旧形式の未設定項目は許容し、指定された日付は並び替え可能な形式に限定する。
+    for (const field of ['startDate', 'endDate', 'createdAt']) {
+      const value = iv[field];
+      if (value != null && (typeof value !== 'string' || (value !== '' && normalizeDateValue(value) !== value))) {
+        add(`支援記録の ${field} は YYYY-MM-DD 形式の実在する日付、または未設定にしてください。`);
+      }
+    }
+    if (iv.status != null && !['active', 'done'].includes(iv.status)) {
+      add('支援記録の状態は active または done にしてください。');
+    }
+    if (iv.note != null && typeof iv.note !== 'string') add('支援記録のメモは文字列にしてください。');
     if (iv.baseline != null && (!Number.isFinite(iv.baseline) || iv.baseline < 0 || iv.baseline > 100)) {
       add('支援記録の開始時基準値は0〜100の数値、または未設定にしてください。');
     }
