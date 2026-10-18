@@ -147,6 +147,12 @@ function getScore(sid, tid) {
   return scoreIndex.get(`${sid}:${tid}`) || null;
 }
 
+// 集計・グラフでは欠席者の復元用得点を使わない。入力は getScore で元の値を保持する。
+function getAttendedScore(sid, tid) {
+  const rec = getScore(sid, tid);
+  return rec && !rec.absent ? rec : null;
+}
+
 function ensureScore(sid, tid) {
   let rec = getScore(sid, tid);
   if (!rec) {
@@ -740,7 +746,7 @@ function renderOverview() {
   }
 
   const totals = students
-    .map((s) => getScore(s.id, test.id))
+    .map((s) => getAttendedScore(s.id, test.id))
     .filter((r) => r && r.total != null)
     .map((r) => r.total);
 
@@ -753,8 +759,8 @@ function renderOverview() {
     // 両方受けた生徒だけで比較（対応のある比較）
     const pairs = [];
     for (const s of students) {
-      const a = getScore(s.id, prev.id);
-      const b = getScore(s.id, test.id);
+      const a = getAttendedScore(s.id, prev.id);
+      const b = getAttendedScore(s.id, test.id);
       if (a && a.total != null && b && b.total != null) pairs.push([a.total, b.total]);
     }
     if (pairs.length >= 2) {
@@ -776,7 +782,7 @@ function renderOverview() {
   let classGapKpi = null;
   if (ui.ovClass === 'all') {
     const perClass = classList().map((k) => {
-      const vals = studentsOf(k).map((s) => getScore(s.id, test.id))
+      const vals = studentsOf(k).map((s) => getAttendedScore(s.id, test.id))
         .filter((r) => r && r.total != null).map((r) => r.total);
       return { k, vals, m: vals.length >= 2 ? mean(vals) : null };
     }).filter((c) => c.m != null);
@@ -854,7 +860,7 @@ function renderDomainBar(chartId, test, students, highlightWeakest) {
   const domains = testDomains(test);
   const rates = domains.map((d) => {
     const vals = students
-      .map((s) => getScore(s.id, test.id))
+      .map((s) => getAttendedScore(s.id, test.id))
       .filter((r) => r && r.domains && r.domains[d.key] != null)
       .map((r) => r.domains[d.key] / domainMax(test, d.key) * 100);
     return vals.length ? round1(mean(vals)) : null;
@@ -903,7 +909,7 @@ function renderOverviewTrend() {
       endLabel: { show: true, formatter: klass, fontSize: 11, color: '#1a1a2e', fontWeight: 600, distance: 6 },
       labelLayout: { moveOverlap: 'shiftY' },
       data: subjectTests.map((t) => {
-        const vals = students.map((s) => getScore(s.id, t.id))
+        const vals = students.map((s) => getAttendedScore(s.id, t.id))
           .filter((r) => r && r.total != null).map((r) => r.total);
         return vals.length ? round1(mean(vals)) : null;
       }),
@@ -920,7 +926,7 @@ function renderOverviewTrend() {
       itemStyle: { color: AVG_COLOR },
       connectNulls: true,
       data: subjectTests.map((t) => {
-        const vals = data.students.map((s) => getScore(s.id, t.id))
+        const vals = data.students.map((s) => getAttendedScore(s.id, t.id))
           .filter((r) => r && r.total != null).map((r) => r.total);
         return vals.length ? round1(mean(vals)) : null;
       }),
@@ -1318,7 +1324,7 @@ function trendAxis() {
       valueOf: (sid) => keys.map((k) => {
         let sum = 0, any = false;
         for (const t of byKey.get(k)) {
-          const r = getScore(sid, t.id);
+          const r = getAttendedScore(sid, t.id);
           if (r && r.total != null) { sum += r.total; any = true; }
         }
         return any ? sum : null;
@@ -1330,7 +1336,7 @@ function trendAxis() {
     labels: tests.map(termKeyOf),
     yName: '得点',
     valueOf: (sid) => tests.map((t) => {
-      const r = getScore(sid, t.id);
+      const r = getAttendedScore(sid, t.id);
       return r && r.total != null ? r.total : null;
     }),
   };
@@ -1418,7 +1424,7 @@ function renderTrendDomainChart() {
     symbolSize: 8,
     connectNulls: true,
     data: subjectTests.map((t) => {
-      const r = getScore(sid, t.id);
+      const r = getAttendedScore(sid, t.id);
       if (!r || !r.domains || r.domains[key] == null) return null;
       const max = domainMax(t, key);
       return max ? round1(r.domains[key] / max * 100) : null;
@@ -1485,8 +1491,8 @@ function renderAnalysis() {
         if (!prevMax || !curMax) continue;
         const pairs = [];
         for (const s of students) {
-          const a = getScore(s.id, prev.id);
-          const b = getScore(s.id, test.id);
+          const a = getAttendedScore(s.id, prev.id);
+          const b = getAttendedScore(s.id, test.id);
           if (a && a.domains && a.domains[d.key] != null && b && b.domains && b.domains[d.key] != null) {
             pairs.push([a.domains[d.key] / prevMax * 100, b.domains[d.key] / curMax * 100]);
           }
@@ -1518,7 +1524,7 @@ function renderAnalysis() {
 function renderQuestionBar(test, students) {
   const qs = test.questions || [];
   const result = qs.map((q) => {
-    const vals = students.map((s) => getScore(s.id, test.id))
+    const vals = students.map((s) => getAttendedScore(s.id, test.id))
       .filter((r) => r && r.questions && r.questions[q.key] != null)
       .map((r) => r.questions[q.key] / q.max * 100);
     return { label: q.label, rate: vals.length ? round1(mean(vals)) : null };
@@ -1557,7 +1563,7 @@ function renderQuestionBox(test, students) {
   const boxData = [];
   const labels = [];
   for (const q of qs) {
-    const vals = students.map((s) => getScore(s.id, test.id))
+    const vals = students.map((s) => getAttendedScore(s.id, test.id))
       .filter((r) => r && r.questions && r.questions[q.key] != null)
       .map((r) => r.questions[q.key] / q.max * 100)
       .sort((a, b) => a - b);
@@ -1643,7 +1649,7 @@ function axisInfo(v) {
     label: `${termKeyOf(t)}・${t.subject}（合計）`,
     isScale: false,
     get: (sid) => {
-      const r = getScore(sid, t.id);
+      const r = getAttendedScore(sid, t.id);
       return r && r.total != null ? r.total : null;
     },
   };
@@ -2791,12 +2797,12 @@ function printKarte() {
   // 成績の推移テーブル
   let scoreRows = '';
   for (const t of data.tests) {
-    const r = getScore(sid, t.id);
+    const r = getAttendedScore(sid, t.id);
     if (!r || r.total == null) continue;
     const scope = studentsOf(student.className || 'all').length
       ? data.students.filter((s) => s.className === student.className)
       : data.students;
-    const avgVals = scope.map((s) => getScore(s.id, t.id)).filter((x) => x && x.total != null).map((x) => x.total);
+    const avgVals = scope.map((s) => getAttendedScore(s.id, t.id)).filter((x) => x && x.total != null).map((x) => x.total);
     const avg = avgVals.length ? round1(mean(avgVals)) : '—';
     const rate = round1(r.total / t.maxScore * 100);
     scoreRows += `<tr><td class="k-name">${esc(termKeyOf(t))}（${esc(t.subject)}）</td>` +
@@ -3481,6 +3487,8 @@ function init() {
   // 貼り付けヘルプ
   $('pasteHelpBtn').onclick = () => $('pasteDialog').showModal();
   $('pasteCloseBtn').onclick = () => $('pasteDialog').close();
+
+  document.documentElement.dataset.dashboardInitialized = 'true';
 }
 
 init();
