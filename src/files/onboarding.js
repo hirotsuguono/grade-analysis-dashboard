@@ -23,7 +23,7 @@
   byId('initialTemplateBtn').onclick = () => {
     const workbook = window.GD_INITIAL.createTemplate(XLSX);
     XLSX.writeFile(workbook, '初回登録テンプレート.xlsx');
-    alert('初回登録用Excelをダウンロードしました。\n\n「初回登録」シートの4行目から、A列にクラス・B列に出席番号・C列に氏名を貼り付けます。\n名簿だけならD列の点数は空欄で構いません。\n最初の点数も登録する場合は、2行目のテスト名などとD列の合計点を記入します。\n\n保存したら「② 記入したExcelを読み込む」で選んでください。');
+    alert('初回登録用Excelをダウンロードしました。\n\n「初回登録」シートの4行目から、A列に学年（1〜3）・B列にクラス（組のみ。例：1、A）・C列に出席番号・D列に氏名を貼り付けます。生徒IDは自動発行します。\n名簿だけならE列の点数は空欄で構いません。\n最初の点数も登録する場合は、2行目のテスト名などとE列の合計点を記入します。実施学年はテストの学年で、名簿の学年とは別です。\n\n保存したら「② 記入したExcelを読み込む」で選んでください。');
   };
   byId('initialImportBtn').onclick = () => byId('initialXlsxInput').click();
 
@@ -66,13 +66,14 @@
       wrap.className = 'table-wrap';
       const table = document.createElement('table');
       const heading = table.createTHead().insertRow();
-      for (const label of ['クラス', '出席番号', '氏名']) {
+      for (const label of ['学年', 'クラス', '出席番号', '氏名']) {
         const th = document.createElement('th'); th.scope = 'col'; th.textContent = label; heading.append(th);
       }
       const body = table.createTBody();
       d.students.slice(0, 10).forEach(student => {
         const row = body.insertRow();
-        [student.className, student.number, student.name].forEach(value => { row.insertCell().textContent = String(value); });
+        const parts = window.GD_IMPORT.splitClassName(student.className);
+        [parts.grade, parts.className, student.number, student.name].forEach(value => { row.insertCell().textContent = String(value); });
       });
       wrap.append(table); preview.append(wrap);
       if (d.students.length > 10) paragraph('名簿の先頭10名を表示しています。', preview);

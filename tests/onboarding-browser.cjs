@@ -56,7 +56,7 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
     assert.match(await page.locator('#initialPreview').textContent(), /名簿がありません/);
     assert.equal(await page.evaluate(() => data), null);
     check('発行した初回Excelの空入力・例シートを登録しない');
-    const roster = [ ['2年A組', 1, '架空 同名', ''], ['2年B組', 1, '架空 同名', ''], ['2年A組', 2, '架空 あおい', ''], ['2年A組', 3, '架空 みどり', ''] ];
+    const roster = [ [1, 'A', 1, '架空 同名', ''], [2, 'A', 1, '架空 同名', ''], [2, 'A', 2, '架空 あおい', ''], [2, 'A', 3, '架空 みどり', ''] ];
     function initial(scoreMode = false, duplicate = false) {
       const wb = XLSX.read(fs.readFileSync(initialPath), { type: 'buffer' });
       const rows = rowsOf(wb, '初回登録').slice(0, 3);
@@ -64,7 +64,7 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
       rows[1][1] = scoreMode ? '初回合計点' : '';
       rows[1][7] = 2; rows[1][9] = '2026-04-20';
       const entries = roster.map(row => row.slice());
-      if (scoreMode) [entries[0][3], entries[1][3], entries[2][3], entries[3][3]] = [82, 0, '', '欠'];
+      if (scoreMode) [entries[0][4], entries[1][4], entries[2][4], entries[3][4]] = [82, 0, '', '欠'];
       if (duplicate) entries[1] = entries[0].slice();
       wb.Sheets['初回登録'] = XLSX.utils.aoa_to_sheet(rows.concat(entries));
       return wb;
@@ -81,6 +81,8 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
     await importInitial(initial());
     assert.match(await page.locator('#initialPreview').textContent(), /名簿だけ/);
     assert.match(await page.locator('#initialPreview').textContent(), /同姓同名/);
+    assert.deepEqual(await page.locator('#initialPreview thead th').allTextContents(), ['学年', 'クラス', '出席番号', '氏名']);
+    assert.deepEqual(await page.locator('#initialPreview tbody tr').first().locator('td').allTextContents(), ['1', 'A', '1', '架空 同名']);
     assert.equal(await page.evaluate(() => data), null);
     await page.screenshot({ path: path.join(output, 'initial-preview.png'), fullPage: true });
     await page.setViewportSize({ width: 320, height: 800 });
@@ -93,6 +95,7 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
     assert.equal(rosterData.students.length, 4);
     assert.ok(await page.locator('#sampleAssociationNote').isHidden());
     assert.equal(new Set(rosterData.students.map(s => s.id)).size, 4);
+    assert.deepEqual(rosterData.students.slice(0, 2).map(s => s.className), ['1年A組', '2年A組']);
     assert.deepEqual(rosterData.tests, []); assert.deepEqual(rosterData.scores, []);
     assert.equal(await page.evaluate(() => dirty), true);
     assert.ok(await page.locator('#prepareTestTemplateBtn').isEnabled());
@@ -104,6 +107,34 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
     }
     check('名簿のみ画面の320/390/768/1280px表示');
     await page.setViewportSize({ width: 1280, height: 900 });
+    await page.locator('[data-tab="list"]').click();
+    await page.locator('#listGrade').selectOption('1');
+    assert.equal(await page.locator('.list-table tbody tr').count(), 1);
+    await page.locator('#listGrade').selectOption('2');
+    assert.equal(await page.locator('.list-table tbody tr').count(), 3);
+    await page.locator('#listGrade').selectOption('all');
+    check('別列から登録した学年で一覧を正しく絞り込む');
+    const registered = await snapshot();
+    for (const oldFormat of [false, true]) {
+      await page.locator('#startFirstHeader').click();
+      const invalidInitial = initial();
+      const invalidRows = rowsOf(invalidInitial, '初回登録');
+      if (oldFormat) {
+        invalidRows[2] = ['クラス', '出席番号', '氏名', '合計点（任意）'];
+        invalidRows.splice(3, invalidRows.length - 3, ['1年A組', 1, '架空 同名', '']);
+      } else invalidRows[3][0] = 4;
+      invalidInitial.Sheets['初回登録'] = XLSX.utils.aoa_to_sheet(invalidRows);
+      await upload('#initialXlsxInput', invalidInitial);
+      await page.waitForFunction(message => {
+        const preview = document.getElementById('initialPreview');
+        return !preview.hidden && preview.classList.contains('is-error') && preview.textContent.includes(message);
+      }, oldFormat ? '最新版' : '名簿の学年');
+      assert.match(await page.locator('#initialPreview').textContent(), oldFormat ? /最新版/ : /名簿の学年/);
+      assert.ok(await page.locator('#initialApplyBtn').isHidden());
+      assert.equal(await snapshot(), registered);
+      await page.locator('#setupCancelBtn').click();
+    }
+    check('不正な学年・旧形式の初回Excelを拒否し登録済み名簿を保持');
     await page.locator('#startFirstHeader').click();
     await importInitial(initial(true));
     const before = await snapshot();
