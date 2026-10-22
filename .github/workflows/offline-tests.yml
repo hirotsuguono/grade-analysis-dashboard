@@ -66,16 +66,22 @@ jobs:
           from pathlib import Path
 
           lines = ['## Offline browser tests', '']
+          incomplete = False
           for name in ['browser-results.json', 'onboarding/onboarding-results.json']:
               report = Path('test-results') / name
               if report.exists():
                   result = json.loads(report.read_text())
                   lines.append(f'- {name}: {len(result["checks"])} checks passed')
               else:
+                  incomplete = True
                   lines.append(f'- {name}: no successful result produced')
           log = Path('test-results/browser-run.log')
           if log.exists():
               lines += ['', '```text', *log.read_text().splitlines()[-100:], '```']
+              if incomplete:
+                  message = '\n'.join(log.read_text().splitlines()[-35:])
+                  message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print(f'::error title=Offline browser test failed::{message}')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
               summary.write('\n'.join(lines) + '\n')
           PY
