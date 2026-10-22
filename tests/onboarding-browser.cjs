@@ -160,11 +160,12 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
     const testPath = await download('#prepareTestTemplateBtn');
     const twb = XLSX.read(fs.readFileSync(testPath), { type: 'buffer' });
     const sheet = twb.SheetNames[0], tr = rowsOf(twb, sheet);
-    assert.ok(tr[3].some(v => v === '生徒ID'));
-    assert.equal(tr.slice(4).filter(r => r[1]).length, 4);
-    const idCol = tr[3].indexOf('生徒ID'), laterId = tr[4][idCol];
-    tr[0] = ['テスト名→', '架空の追加テスト', '教科→', '英語', '満点→', 30, '実施学年→', 2, '実施日→', '2026-05-20'];
-    tr[4][3] = 4; tr[4][4] = 5; tr[4][5] = 6;
+    assert.deepEqual(tr[8].slice(0, 5), ['生徒ID', '学年', 'クラス', '出席番号', '氏名']);
+    assert.equal(tr.slice(9).filter(r => r[4]).length, 4);
+    const laterId = tr[9][0];
+    tr[0][1] = '架空の追加テスト'; tr[1][1] = '英語'; tr[2][1] = 30;
+    tr[3][1] = 2; tr[4][1] = '2026-05-20';
+    tr[9][5] = 4; tr[9][6] = 5; tr[9][7] = 6;
     twb.Sheets[sheet] = XLSX.utils.aoa_to_sheet(tr);
     await upload('#testXlsxInput', twb);
     await page.waitForFunction(() => data.tests.length === 2);

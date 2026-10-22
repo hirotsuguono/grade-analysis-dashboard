@@ -2999,18 +2999,54 @@ function issueNewTestTemplate() {
   if (typeof XLSX === 'undefined') { alert('Excel出力ライブラリの読み込みに失敗しました。'); return; }
   const students = sortedStudents();
   const rows = [
-    ['テスト名→', '', '教科→', '', '満点→', '', '実施学年→', '', '実施日→', ''],
-    ['分野→', '', '', '知識・技能', '知識・技能', '読解'],
-    ['配点→', '', '', 10, 10, 10],
-    ['出席番号', '氏名', 'クラス', '問1', '問2', '問3', '生徒ID'],
-    ...students.map((s) => [s.number != null ? s.number : '', s.name, s.className || '', '', '', '', s.id]),
+    ['テスト名', ''],
+    ['教科', ''],
+    ['満点', ''],
+    ['実施学年', ''],
+    ['実施日', ''],
+    ['A〜E列の名簿は変更せず、F列以降に問題を追加できます。「説明」「記入例」シートもご覧ください。'],
+    ['分野', '', '', '', '', '知識・技能', '知識・技能', '読解'],
+    ['配点', '', '', '', '', 10, 10, 10],
+    ['生徒ID', '学年', 'クラス', '出席番号', '氏名', '問1', '問2', '問3'],
+    ...students.map((s) => {
+      const parts = window.GD_IMPORT.splitClassName(s.className);
+      return [s.id, parts.grade, parts.className, s.number != null ? s.number : '', s.name, '', '', ''];
+    }),
   ];
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 9 }, { wch: 14 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 14 }];
+  ws['!cols'] = [{ wch: 46 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 20 }, ...Array.from({ length: 3 }, () => ({ wch: 14 }))];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '新規テスト');
+  const example = XLSX.utils.aoa_to_sheet([
+    ['テスト名', '架空の英語テスト'], ['教科', '英語'], ['満点', 100], ['実施学年', 1], ['実施日', '2026-05-22'],
+    ['記入例（すべて架空。このシートは取り込まれません）'],
+    ['分野', '', '', '', '', 'リスニング', '読解', 'ライティング', '文法'],
+    ['配点', '', '', '', '', 25, 25, 25, 25],
+    ['生徒ID', '学年', 'クラス', '出席番号', '氏名', '問1', '問2', '問3', '問4'],
+    ['架空ID001', 1, '1', 1, '架空生徒001', 20, 15, 25, 0],
+    ['架空ID002', 1, '1', 2, '架空生徒002', '欠', '', '', ''],
+    ['架空ID003', 1, '2', 1, '架空生徒003', '', '', '', ''],
+  ]);
+  example['!cols'] = ws['!cols'].concat({ wch: 14 });
+  XLSX.utils.book_append_sheet(wb, example, '記入例');
+  const help = XLSX.utils.aoa_to_sheet([
+    ['新規テストExcelの書き方'],
+    ['1. 「新規テスト」シートのB1にテスト名、B2に教科を入力します。B3の満点は空欄なら配点合計です。'],
+    ['2. B4はテストの実施学年（1〜3、任意）、B5は実施日（YYYY-MM-DD、任意）です。生徒の学年とは別です。'],
+    ['3. A〜E列の生徒ID・学年・クラス・出席番号・氏名は自動記入済みです。変更せず、同じJSONへ取り込んでください。'],
+    ['4. F列以降に点数を入力します。7行目は分野、8行目は配点、9行目は問題名、10行目以降は生徒の点数です。'],
+    ['5. 問題を増やすときはF列以降に列全体を挿入・追加し、7〜9行目も記入します。右端に生徒ID列はありません。'],
+    ['6. 分野ごとの合計だけを入力するなら1分野を1列にします。同じ分野の複数問題は7行目を同じ分野名にすると合算されます。'],
+    ['7. 配点合計が満点以下になるようにします。4分野で100点なら各25点が一例です。'],
+    ['8. 空欄は未入力、0は0点です。欠席は点数欄の1か所に「欠」と入力し、その生徒の他の点数は空欄にします。'],
+    ['9. 学年は「1年1組」「2A」などのクラス名から分けて表示します。分けられないクラス名は学年空欄・クラス欄に元の名前で表示します。'],
+    ['10. 保存して「記入後に取込」で選び、確認画面を見て登録します。その後アプリで「保存」してください。'],
+    ['「記入例」「説明」シートは取り込みません。名簿・点数は「新規テスト」シートに記入します。以前の形式のExcelも取り込めます。'],
+  ]);
+  help['!cols'] = [{ wch: 120 }];
+  XLSX.utils.book_append_sheet(wb, help, '説明');
   XLSX.writeFile(wb, '新規テスト取込テンプレート.xlsx');
-  alert('テンプレートをダウンロードしました。Excelで開いて次のように記入してください。\n\n1) 1行目：テスト名・教科・満点（空欄なら配点の合計）・実施学年・実施日\n2) 4行目：「問1」などを実際の問題名に書き換え（列を右に増やしてOK）\n3) 2〜3行目：各問題の分野と配点\n　※分野名は同じ教科で毎回同じにすると、分野別の推移がつながります\n4) 生徒の行に点数を入力（欠席は「欠」、未入力は空欄）。生徒IDは変更しないでください。問題列は生徒ID列の左に挿入します\n5) 保存したら「テンプレから取込」でこのファイルを選択');
+  alert('テンプレートをダウンロードしました。\n\n1) B1〜B5にテスト名・教科・満点・実施学年・実施日を記入します。\n2) A〜E列は登録済み名簿です。生徒IDなどは変更しません。\n3) F列以降が点数欄です。7行目に分野、8行目に配点、9行目に問題名、10行目以降に点数を入力します。列全体を挿入して問題を増やせます。\n4) 空欄は未入力、0は0点。欠席は1か所に「欠」、他の点数は空欄にします。\n5) 詳しくはExcelの「説明」「記入例」をご覧ください。保存後「記入後に取込」で選びます。');
 }
 
 // テンプレートからテストを取込
@@ -3018,27 +3054,29 @@ async function importTestTemplate(file) {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
   const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['新規テスト']);
-  if (rows.length < 5 || window.GD_IMPORT.findHeader(rows) !== 3) { alert('テンプレートの形式が違います。4行目の出席番号・氏名・クラスを変更せず、アプリの新規テスト用テンプレートを使ってください。'); return; }
+  const layout = window.GD_IMPORT.testLayout(rows);
+  if (layout.errors.length) { alert(layout.errors.join('\n')); return; }
+  const { metadata, headerIdx, scoreStart, domainRow, maxRow, identityColumns } = layout;
 
-  const name = String(rows[0][1] || '').trim();
-  const subject = String(rows[0][3] || '').trim();
-  if (!name || !subject) { alert('1行目のテスト名・教科が空欄です。記入してから取り込んでください。'); return; }
+  const name = String(metadata['テスト名'] || '').trim();
+  const subject = String(metadata['教科'] || '').trim();
+  if (!name || !subject) { alert('テスト名・教科が空欄です。新形式はB1・B2、旧形式は1行目に記入してください。'); return; }
   if (data.tests.some((t) => t.name === name && t.subject === subject)) {
     if (!confirm(`「${name}（${subject}）」は既に存在します。別のテストとして追加しますか？`)) return;
   }
 
-  const header = rows[3] || [];
+  const header = rows[headerIdx] || [];
   const qCols = [];
-  const dataWidth = Math.max(header.length, ...rows.slice(4).map((r) => r.length));
-  for (let c = 3; c < dataWidth; c++) {
+  const dataWidth = Math.max(header.length, ...rows.slice(headerIdx + 1).map((r) => r.length));
+  for (let c = scoreStart; c < dataWidth; c++) {
     const label = String(header[c] || '').trim();
-    if (!label && (String(rows[2]?.[c] ?? '').trim() || rows.slice(4).some((r) => String(r[c] ?? '').trim()))) { alert('問題名が空欄の列に配点または点数があります。4行目の問題名を入力してください。'); return; }
-    const max = Number(rows[2] ? rows[2][c] : 0);
+    if (!label && (String(rows[maxRow]?.[c] ?? '').trim() || String(rows[domainRow]?.[c] ?? '').trim() || rows.slice(headerIdx + 1).some((r) => String(r[c] ?? '').trim()))) { alert(`問題名が空欄の列に分野・配点・点数があります。${headerIdx + 1}行目の問題名を入力してください。`); return; }
+    const max = Number(rows[maxRow] ? rows[maxRow][c] : 0);
     if (window.GD_IMPORT.isIdHeader(label)) continue;
     if (label && (!Number.isFinite(max) || max <= 0)) { alert(`問題「${label}」の配点は0より大きい数字で入力してください。`); return; }
-    if (label) qCols.push({ c, label, max, domain: String(rows[1] ? rows[1][c] : '').trim() });
+    if (label) qCols.push({ c, label, max, domain: String(rows[domainRow] ? rows[domainRow][c] : '').trim() });
   }
-  if (!qCols.length) { alert('問題の列が見つかりません。4行目の問題名と3行目の配点を確認してください。'); return; }
+  if (!qCols.length) { alert(`問題の列が見つかりません。${headerIdx + 1}行目の問題名と${maxRow + 1}行目の配点を確認してください。`); return; }
 
   // 分野キー＝分野名（テスト間で同じ分野名なら同じ分野として推移がつながる）
   const domainNames = [...new Set(qCols.map((q) => q.domain).filter(Boolean))];
@@ -3050,18 +3088,19 @@ async function importTestTemplate(file) {
     key: 'q' + (i + 1), label: q.label, max: q.max,
     domain: q.domain || undefined,
   }));
-  const declaredMax = Number(rows[0][5]);
+  const declaredMax = Number(metadata['満点']);
   const questionMaxSum = qCols.reduce((a, q) => a + q.max, 0);
-  if (String(rows[0][5] ?? '').trim() && (!Number.isFinite(declaredMax) || declaredMax <= 0)) { alert('満点は0より大きい数字、または空欄にしてください。'); return; }
+  if (String(metadata['満点'] ?? '').trim() && (!Number.isFinite(declaredMax) || declaredMax <= 0)) { alert('満点は0より大きい数字、または空欄にしてください。'); return; }
   const maxScore = declaredMax > 0 ? declaredMax : questionMaxSum;
   if (questionMaxSum > maxScore) {
     alert(`問題の配点合計（${questionMaxSum}点）がテストの満点（${maxScore}点）を超えています。Excelを修正してください。`);
     return;
   }
   const test = { id: 't' + Date.now(), name, subject, maxScore, domains, questions };
-  const gy = parseInt(rows[0][7], 10);
-  if (gy >= 1 && gy <= 3) test.gradeYear = gy;
-  const rawDate = rows[0][9];
+  const gradeText = String(metadata['実施学年'] ?? '').trim();
+  if (gradeText && !/^[123]$/.test(gradeText)) { alert('実施学年は1〜3の整数、または空欄にしてください。'); return; }
+  if (gradeText) test.gradeYear = Number(gradeText);
+  const rawDate = metadata['実施日'];
   const date = normalizeDateValue(rawDate);
   if (rawDate !== '' && rawDate != null) {
     if (!date) {
@@ -3071,7 +3110,7 @@ async function importTestTemplate(file) {
     test.date = date;
   }
 
-  const resolved = window.GD_IMPORT.matchedRows(rows, 3, data.students, qCols.map((q) => q.c));
+  const resolved = window.GD_IMPORT.matchedRows(rows, headerIdx, data.students, qCols.map((q) => q.c), identityColumns);
   if (resolved.errors.length) { alert('取込は反映していません。Excelを修正してください。\n\n' + resolved.errors.slice(0, 8).join('\n')); return; }
   const invalidScores = [];
   const newScores = [];
