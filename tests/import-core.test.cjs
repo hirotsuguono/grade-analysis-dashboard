@@ -41,6 +41,14 @@ const testRows = () => [
   ['出席番号', '氏名', 'クラス', '語彙', '文法', '生徒ID'],
   [1, '架空生徒001', '2年A組', 0, '', 's1'], [2, '架空生徒002', '2年A組', '', '', 's2'],
 ];
+const splitTestRows = () => [
+  ['テスト名', '架空4分野'], ['教科', '英語'], ['満点', 100], ['実施学年', 1], ['実施日', '2026-05-22'], [],
+  ['分野', '', '', '', '', 'リスニング', '読解', 'ライティング', '文法'],
+  ['配点', '', '', '', '', 25, 25, 25, 25],
+  ['生徒ID', '学年', 'クラス', '出席番号', '氏名', '問1', '問2', '問3', '問4'],
+  ['s1', 2, 'A', 1, '架空生徒001', 0, 20, 15, 25],
+  ['s2', 2, 'A', 2, '架空生徒002', '', '', '', ''],
+];
 
 test('ID is authoritative; unknown, contradictory and mixed history identities never fall back', () => {
   const { core } = harness(), match = core.createMatcher(students());
@@ -121,12 +129,141 @@ test('test import rejects unknown, duplicates, text, nonfinite, mixed absence, a
 test('new template IDs round-trip after class reassignment using recognized history', async () => {
   const h = harness(), d = dataset(); h.api.setData(d); h.api.issueNewTestTemplate();
   const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['新規テスト'], { header: 1, defval: '' });
-  const id = rows[3].indexOf('生徒ID'); assert.equal(rows[4][id], 's1');
-  rows[0][1] = '架空テスト'; rows[0][3] = '英語'; rows[4][3] = 4;
+  assert.equal(rows[8][0], '生徒ID'); assert.equal(rows[9][0], 's1');
+  rows[0][1] = '架空テスト'; rows[1][1] = '英語'; rows[9][5] = 4;
   d.students[0].classHistory.push({className: d.students[0].className, number: d.students[0].number});
   d.students[0].className = '3年C組'; d.students[0].number = 12;
   await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
   assert.equal(d.scores.length, 1); assert.equal(d.scores[0].studentId, 's1');
+});
+test('test template separates left metadata, five roster columns, and expandable question columns', () => {
+  const h = harness(); h.api.setData(dataset()); h.api.issueNewTestTemplate();
+  const wb = h.downloads[0].wb;
+  const rows = xlsx.utils.sheet_to_json(wb.Sheets['新規テスト'], {header: 1, defval: ''});
+  assert.deepEqual(rows.slice(0, 5).map(r => r[0]), ['テスト名', '教科', '満点', '実施学年', '実施日']);
+  assert.deepEqual(rows[8].slice(0, 5), ['生徒ID', '学年', 'クラス', '出席番号', '氏名']);
+  assert.deepEqual(rows[9].slice(0, 5), ['s1', '2', 'A', 1, '架空生徒001']);
+  assert.ok(rows.slice(9).every(r => r.slice(5).every(v => v === '')));
+  assert.deepEqual(wb.SheetNames, ['新規テスト', '記入例', '説明']);
+  assert.ok(xlsx.utils.sheet_to_json(wb.Sheets['説明'], {header: 1}).flat().some(v => /列全体/.test(String(v))));
+});
+test('four-domain workbook preserves roster and separate test grade/date, zero and blanks', async () => {
+  const h = harness(), d = dataset(), roster = JSON.stringify(d.students); h.api.setData(d);
+  await h.api.importTestTemplate(fileFromSheets([['新規テスト', splitTestRows()]]));
+  assert.equal(d.tests.length, 1); assert.equal(d.tests[0].maxScore, 100);
+  assert.equal(d.tests[0].gradeYear, 1); assert.equal(d.tests[0].date, '2026-05-22');
+  assert.equal(JSON.stringify(d.students), roster);
+  assert.deepEqual(Array.from(d.tests[0].domains, v => v.label), ['リスニング', '読解', 'ライティング', '文法']);
+  assert.equal(d.scores.length, 1); assert.equal(d.scores[0].total, 60);
+  assert.equal(d.scores[0].questions.q1, 0); assert.equal(d.scores[0].studentId, 's1');
+});
+test('entire question-column insertions and additions never move new metadata or IDs', async () => {
+  const h = harness(), d = dataset(); h.api.setData(d); h.api.issueNewTestTemplate();
+  const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['新規テスト'], {header: 1, defval: ''});
+  rows[0][1] = '架空列追加'; rows[1][1] = '英語'; rows[3][1] = 2; rows[4][1] = '2026-06-10';
+  // Insert a whole Excel column at G, then append enough questions to extend beyond J.
+  rows.forEach(r => { while (r.length < 6) r.push(''); r.splice(6, 0, ''); });
+  for (let c = 5; c < 17; c++) {
+    rows[6][c] = c < 11 ? '読解' : '文法'; rows[7][c] = 10; rows[8][c] = '問' + (c - 4);
+    rows[9][c] = c - 5; // 0..11; cap the last score below the 10-point maximum.
+    if (rows[9][c] > 10) rows[9][c] = 10;
+  }
+  const metadata = rows.slice(0, 5).map(r => r.slice(0, 2));
+  await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
+  assert.equal(d.tests.length, 1); assert.equal(d.tests[0].questions.length, 12);
+  assert.equal(d.tests[0].maxScore, 120); assert.equal(d.tests[0].gradeYear, 2);
+  assert.equal(d.tests[0].date, '2026-06-10'); assert.equal(d.scores[0].total, 65);
+  assert.equal(d.tests[0].domains.length, 2); assert.equal(d.scores[0].domains['読解'], 15);
+  assert.equal(d.scores[0].domains['文法'], 50);
+  assert.equal(rows[9][0], 's1');
+  assert.deepEqual(rows.slice(0, 5).map(r => r.slice(0, 2)), metadata);
+});
+test('new-format identity uses grade, class and number from the same current or historical roster entry', async () => {
+  const rows = splitTestRows(); rows[9][1] = 1; rows[9][2] = 'B'; rows[9][3] = 3;
+  const h = harness(), d = dataset(); h.api.setData(d);
+  await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
+  assert.equal(d.scores[0].studentId, 's1');
+  for (const edit of [r => {r[9][1] = 2;}, r => {r[9][2] = 'A';}, r => {r[9][3] = 1;}]) {
+    const invalid = rows.map(r => r.slice()); edit(invalid);
+    const check = harness(), original = dataset(), before = JSON.stringify(original); check.api.setData(original);
+    await check.api.importTestTemplate(fileFromSheets([['新規テスト', invalid]]));
+    assert.equal(JSON.stringify(original), before); assert.equal(check.confirms.length, 0);
+  }
+});
+test('different grades with the same class, number and name retain distinct IDs', async () => {
+  const h = harness(), d = dataset(), rows = splitTestRows();
+  d.students[0].className = '1年A組'; d.students[1].number = 1; d.students[1].name = d.students[0].name;
+  rows[9][1] = 1; rows[10] = ['s2', 2, 'A', 1, d.students[0].name, 25, 25, 25, 25];
+  h.api.setData(d); await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
+  assert.deepEqual(Array.from(d.scores, r => [r.studentId, r.total]), [['s1', 60], ['s2', 100]]);
+});
+test('compact and unrecognized class names round-trip without modifying stored class names', async () => {
+  const h = harness(), d = dataset(); d.students[0].className = '2A'; d.students[1].className = '特別クラス';
+  h.api.setData(d); h.api.issueNewTestTemplate();
+  const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['新規テスト'], {header:1, defval:''});
+  assert.deepEqual(rows[9].slice(1, 3), ['2', 'A']);
+  assert.deepEqual(rows[10].slice(1, 3), ['', '特別クラス']);
+  rows[0][1] = '架空クラス'; rows[1][1] = '英語'; rows[9][5] = 0; rows[10][5] = 10;
+  await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
+  assert.equal(d.scores.length, 2);
+  assert.deepEqual(d.students.map(s => s.className), ['2A', '特別クラス']);
+});
+test('invalid new identities, metadata, headers and scores abort the entire workbook', async () => {
+  for (const edit of [
+    r => {r[9][0] = 'unknown';}, r => {r[9][0] = '';}, r => {r[9][1] = 3;},
+    r => {r[9][1] = '2.5';}, r => {r[9][2] = 'B';}, r => {r[9][3] = 2;}, r => {r[9][4] = '別の架空生徒';},
+    r => {r.push([...r[9]]);}, r => {r[9][5] = 'abc';}, r => {r[9][5] = 'Infinity';},
+    r => {r[9][5] = -1;}, r => {r[9][5] = 26;}, r => {r[9][5] = '欠';},
+    r => {r[7][5] = 0;}, r => {r[8][5] = '';}, r => {r[2][1] = 99;},
+    r => {r[3][1] = '2.5';}, r => {r[4][1] = 60;}, r => {r[4][1] = '2026-02-30';},
+    r => {r[5] = ['実施日', '2026-06-10'];}, r => {r[8][1] = '別の見出し';},
+    r => {r[8][9] = '生徒ID'; r[9][9] = 's1';},
+  ]) {
+    const h = harness(), d = dataset(), before = JSON.stringify(d), rows = splitTestRows(); edit(rows); h.api.setData(d);
+    await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
+    assert.equal(JSON.stringify(d), before, JSON.stringify(rows));
+    assert.equal(h.confirms.length, 0); assert.ok(h.alerts.length);
+  }
+});
+test('new-format absence, serial dates, optional metadata and cancellation preserve existing data', async () => {
+  const h = harness(), d = dataset(), rows = splitTestRows(); h.api.setData(d);
+  rows[2][1] = ''; rows[3][1] = ''; rows[4][1] = 46132.75;
+  rows[9].splice(5, 4, '欠', '', '', '');
+  h.context.confirmResult = false;
+  const before = JSON.stringify(d);
+  await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
+  assert.equal(JSON.stringify(d), before);
+  h.context.confirmResult = true;
+  await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
+  assert.equal(d.tests[0].maxScore, 100); assert.equal(d.tests[0].gradeYear, undefined);
+  assert.equal(d.tests[0].date, '2026-04-20'); assert.equal(d.scores.length, 1);
+  assert.equal(d.scores[0].absent, true); assert.equal(d.scores[0].total, null);
+});
+test('new metadata can be reordered; examples are ignored even when sheets are reordered or renamed', async () => {
+  const h = harness(), d = dataset(), rows = splitTestRows(); h.api.setData(d);
+  rows.splice(0, 5, ...rows.slice(0, 5).reverse());
+  await h.api.importTestTemplate(fileFromSheets([['記入例', splitTestRows()], ['説明', []], ['架空の入力', rows]]));
+  assert.equal(d.tests.length, 1); assert.equal(d.tests[0].date, '2026-05-22');
+  const check = harness(), original = dataset(); check.api.setData(original);
+  await assert.rejects(check.api.importTestTemplate(fileFromSheets([['記入例', splitTestRows()]])), /見つかりません/);
+  assert.equal(original.tests.length, 0);
+});
+test('legacy templates with inserted whole columns keep shifted grade/date and optional IDs', async () => {
+  for (const withId of [true, false]) {
+    const h = harness(), d = dataset(), rows = testRows(); h.api.setData(d);
+    // Start with the former three-question template (ID in G), then insert a whole G column.
+    rows[1].splice(5, 0, '文法'); rows[2].splice(5, 0, 10); rows[3].splice(5, 0, '問3');
+    rows[4].splice(5, 0, 5); rows[5].splice(5, 0, '');
+    rows[0][5] = 50; // Deliberately different from the question maxima sum of 40.
+    rows.forEach(r => {while (r.length < 6) r.push(''); r.splice(6, 0, '');});
+    rows[1][6] = '読解'; rows[2][6] = 10; rows[3][6] = '問4'; rows[4][6] = 5;
+    if (!withId) rows.slice(3).forEach(r => r.splice(7, 1));
+    await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
+    assert.equal(d.tests.length, 1); assert.equal(d.tests[0].questions.length, 4);
+    assert.equal(d.tests[0].maxScore, 50);
+    assert.equal(d.tests[0].gradeYear, 2); assert.equal(d.tests[0].date, '2026-06-10');
+    assert.equal(d.scores[0].total, 10); assert.equal(d.scores[0].studentId, 's1');
+  }
 });
 test('metric template IDs round-trip and all examples are explicit synthetic names', async () => {
   const h = harness(), d = dataset(); h.api.setData(d); h.api.issueMetricTemplate();
