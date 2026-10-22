@@ -7,8 +7,47 @@
   const isIdHeader = (v) => /^(生徒ID|student[ _-]?id)$/i.test(text(v));
   const idColumn = (header) => header.findIndex(isIdHeader);
   const findHeader = (rows) => rows.findIndex((r) => text(r[0]) === '出席番号' && text(r[1]) === '氏名' && text(r[2]) === 'クラス');
+  const splitRosterHeader = (r) => isIdHeader(r[0]) && text(r[1]) === '学年' && text(r[2]) === 'クラス' && text(r[3]) === '出席番号' && text(r[4]) === '氏名';
   const isPlaceholder = (v) => /^(（ここに指標名|指標名[①-⑳]?)/.test(text(v));
   const inputHelp = '「指標」シートの D2 を実際の指標名（例：家庭学習時間（分/日））に書き換え、D3 以降の生徒行に数字を入力してください。E列も使う場合は E2 と E3 以降を記入します。未回答は空欄のままにします。「記入例」「書き方」は取り込みません。';
+
+  // Keep the stored class name intact. Split only recognized grade/class forms for Excel.
+  function splitClassName(value) {
+    const klass = text(value);
+    const match = /^([1-3])年(.+?)(?:組)?$/.exec(klass) || /^([1-3])([A-Za-z]+)$/.exec(klass);
+    return match ? { grade: match[1], className: match[2] } : { grade: '', className: klass };
+  }
+
+  function testLayout(rows) {
+    const headers = [];
+    rows.forEach((r, i) => {
+      if (splitRosterHeader(r) || (text(r[0]) === '出席番号' && text(r[1]) === '氏名' && text(r[2]) === 'クラス')) headers.push(i);
+    });
+    if (headers.length !== 1) return { errors: ['名簿の見出し行が見つからない、または複数あります。アプリの新規テスト用テンプレートを使ってください。'] };
+    const headerIdx = headers[0], splitRoster = splitRosterHeader(rows[headerIdx]);
+    if ((splitRoster && headerIdx < 7) || (!splitRoster && headerIdx !== 3) || rows.length <= headerIdx + 1) {
+      return { errors: ['テンプレートの形式が違います。分野・配点・問題名と生徒の行を残してください。'] };
+    }
+    const metadata = {}, errors = [];
+    const labels = ['テスト名', '教科', '満点', '実施学年', '実施日'];
+    const read = (label, value) => {
+      const key = text(label).replace(/→$/, '');
+      if (!labels.includes(key)) return;
+      if (Object.hasOwn(metadata, key)) errors.push('「' + key + '」の設定が重複しています。');
+      metadata[key] = value;
+    };
+    if (splitRoster) rows.slice(0, headerIdx - 2).forEach(r => read(r[0], r[1]));
+    else {
+      // Old templates may have had entire question columns inserted into row 1 too.
+      const row = rows[0] || [];
+      for (let c = 0; c < row.length - 1; c++) {
+        if (labels.includes(text(row[c]).replace(/→$/, ''))) { read(row[c], row[c + 1]); c++; }
+      }
+    }
+    return { errors, metadata, headerIdx, scoreStart: splitRoster ? 5 : 3,
+      domainRow: headerIdx - 2, maxRow: headerIdx - 1,
+      identityColumns: splitRoster ? { id: 0, grade: 1, className: 2, number: 3, name: 4 } : null };
+  }
 
   function createMatcher(students) {
     const byId = new Map();
@@ -17,23 +56,27 @@
       if (!byId.has(key)) byId.set(key, []);
       byId.get(key).push(s);
     }
-    function pairMatches(s, klass, num) {
+    function pairMatches(s, klass, num, grade, separateClass) {
       const identities = [s].concat(Array.isArray(s.classHistory) ? s.classHistory : []);
-      return identities.some((h) => (!klass || text(h.className) === klass) && (!num || numberKey(h.number) === num));
+      return identities.some((h) => {
+        const parts = separateClass ? splitClassName(h.className) : { className: text(h.className) };
+        return (!klass || parts.className === klass) && (!grade || parts.grade === grade) && (!num || numberKey(h.number) === num);
+      });
     }
     return function (row) {
       const id = text(row.id), name = nameKey(row.name), klass = text(row.className), num = numberKey(row.number);
+      const grade = text(row.grade);
       if (id) {
         const candidates = byId.get(id) || [];
         if (candidates.length !== 1) return { error: '生徒IDが名簿に存在しない、または重複しています。最新の名簿入りテンプレートを発行してください。' };
         const student = candidates[0];
         if (name && nameKey(student.name) !== name) return { error: '生徒IDと氏名が一致しません。別の生徒には振り替えません。' };
-        if ((klass || num) && !pairMatches(student, klass, num)) return { error: '生徒IDと組・番号が現在の名簿／クラス履歴に一致しません。' };
+        if ((grade || klass || num) && !pairMatches(student, klass, num, grade, row.separateClass)) return { error: '生徒IDと学年・組・番号が現在の名簿／クラス履歴に一致しません。' };
         return { student };
       }
       if (!name) return { error: '氏名または生徒IDを入力してください。' };
       let candidates = students.filter((s) => nameKey(s.name) === name);
-      if (klass || num) candidates = candidates.filter((s) => pairMatches(s, klass, num));
+      if (grade || klass || num) candidates = candidates.filter((s) => pairMatches(s, klass, num, grade, row.separateClass));
       if (candidates.length !== 1) return { error: candidates.length > 1 ? '同姓同名などで照合が曖昧です。生徒ID入りの最新テンプレートを使ってください。' : '氏名と組・番号が名簿に一致しません。名簿を確認してください。' };
       return { student: candidates[0] };
     };
@@ -43,7 +86,7 @@
     for (const name of preferredNames) {
       if (wb.SheetNames.includes(name)) return { name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }) };
     }
-    const candidates = wb.SheetNames.filter((n) => !/(記入例|書き方|説明|使い方)/.test(n)).map((name) => ({ name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }) })).filter((s) => findHeader(s.rows) >= 0);
+    const candidates = wb.SheetNames.filter((n) => !/(記入例|書き方|説明|使い方)/.test(n)).map((name) => ({ name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }) })).filter((s) => findHeader(s.rows) >= 0 || s.rows.some(splitRosterHeader));
     if (candidates.length !== 1) throw new Error(candidates.length ? '取込対象のシートが複数あります。対象シート名を「' + preferredNames[0] + '」にしてください。' : '取込用シートが見つかりません。アプリが発行したテンプレートを使ってください。');
     return candidates[0];
   }
@@ -55,16 +98,21 @@
     return { value: Number(raw) };
   }
 
-  function matchedRows(rows, headerIdx, students, valueCols) {
+  function matchedRows(rows, headerIdx, students, valueCols, identityColumns = null) {
     const match = createMatcher(students), seen = new Set(), matched = [], errors = [];
     const idCol = idColumn(rows[headerIdx]);
     if (rows[headerIdx].filter(isIdHeader).length > 1) return { matched, errors: ['生徒ID列が複数あります。ID列は1列だけにしてください。'] };
     for (let r = headerIdx + 1; r < rows.length; r++) {
       const row = rows[r] || [];
       if (!row.some((v) => text(v))) continue;
-      const identity = { id: idCol < 0 ? '' : row[idCol], name: row[1], className: row[2], number: row[0] };
+      const identity = identityColumns
+        ? { id: row[identityColumns.id], grade: row[identityColumns.grade], className: row[identityColumns.className], number: row[identityColumns.number], name: row[identityColumns.name], separateClass: true }
+        : { id: idCol < 0 ? '' : row[idCol], name: row[1], className: row[2], number: row[0] };
       // Completely empty identity lines are harmless only when their value cells are empty.
-      if (!text(identity.id) && !text(identity.name) && !text(identity.className) && !text(identity.number) && !valueCols.some((c) => text(row[c]))) continue;
+      if (!text(identity.id) && !text(identity.grade) && !text(identity.name) && !text(identity.className) && !text(identity.number) && !valueCols.some((c) => text(row[c]))) continue;
+      if (identityColumns && (!text(identity.id) || (text(identity.grade) && !/^[123]$/.test(text(identity.grade))))) {
+        errors.push((r + 1) + '行目：生徒IDを残し、学年は1〜3または発行時の空欄にしてください。'); continue;
+      }
       const result = match(identity);
       if (result.error) { errors.push((r + 1) + '行目：' + result.error); continue; }
       if (seen.has(result.student.id)) { errors.push((r + 1) + '行目：同じ生徒の行が重複しています。1名1行にしてください。'); continue; }
@@ -107,5 +155,5 @@
     if (!plans.length && !errors.length) errors.push('指標の数値がまだ入力されていません。' + inputHelp);
     return { errors, plans };
   }
-  root.GD_IMPORT = { createMatcher, selectSheet, findHeader, idColumn, isIdHeader, isPlaceholder, numeric, matchedRows, parseMetricRows, inputHelp };
+  root.GD_IMPORT = { createMatcher, selectSheet, findHeader, idColumn, isIdHeader, isPlaceholder, numeric, matchedRows, parseMetricRows, inputHelp, splitClassName, testLayout };
 })(typeof window !== 'undefined' ? window : globalThis);

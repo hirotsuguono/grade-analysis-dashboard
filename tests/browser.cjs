@@ -213,8 +213,9 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     const XLSX = require('../src/files/vendor/xlsx.full.min.js');
     let wb = XLSX.read(fs.readFileSync(tplPath), { type: 'buffer' });
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
-    rows[0] = ['テスト名→', '架空Excel取込', '教科→', '国語', '満点→', 30, '実施学年→', 1, '実施日→', '2026-10-15'];
-    rows[4][3] = 4; rows[4][4] = 5; rows[4][5] = 6;
+    rows[0][1] = '架空Excel取込'; rows[1][1] = '国語'; rows[2][1] = 30;
+    rows[3][1] = 1; rows[4][1] = '2026-10-15';
+    rows[9][5] = 4; rows[9][6] = 5; rows[9][7] = 6;
     wb.Sheets[wb.SheetNames[0]] = XLSX.utils.aoa_to_sheet(rows);
     const buf = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
     await page.locator('#testXlsxInput').setInputFiles({ name: 'synthetic-test.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: buf });
