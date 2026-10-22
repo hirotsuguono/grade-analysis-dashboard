@@ -18,7 +18,7 @@ module.exports = async function checkExcelDateValidation(page, fixture) {
       const initial = makeWorkbook('初回登録', [
         ['データ名', '架空の日付検証'],
         ['テスト名', '架空初回', '教科', '英語', '満点', 10, '実施日', value],
-        ['クラス', '出席番号', '氏名', '合計点（任意）'], ['2年A組', 1, '架空生徒001', 0],
+        ['学年', 'クラス', '出席番号', '氏名', '合計点（任意）'], [2, 'A', 1, '架空生徒001', 0],
       ]);
       const initialPlan = window.GD_INITIAL.planWorkbook(initial, XLSX);
       const student = data.students[0];
