@@ -125,7 +125,10 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
       } else invalidRows[3][0] = 4;
       invalidInitial.Sheets['初回登録'] = XLSX.utils.aoa_to_sheet(invalidRows);
       await upload('#initialXlsxInput', invalidInitial);
-      await page.waitForFunction(() => document.getElementById('initialPreview').classList.contains('is-error'));
+      await page.waitForFunction(message => {
+        const preview = document.getElementById('initialPreview');
+        return !preview.hidden && preview.classList.contains('is-error') && preview.textContent.includes(message);
+      }, oldFormat ? '最新版' : '名簿の学年');
       assert.match(await page.locator('#initialPreview').textContent(), oldFormat ? /最新版/ : /名簿の学年/);
       assert.ok(await page.locator('#initialApplyBtn').isHidden());
       assert.equal(await snapshot(), registered);
