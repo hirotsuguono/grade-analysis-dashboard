@@ -59,7 +59,7 @@ test('欠席切替で保持した設問・分野を平均から除外し、出�
   h.run("handleAbsentToggle({ dataset: { sid: 's0' }, checked: true })");
   assert.deepEqual(rates(h), [0, 0]);
   assert.deepEqual(h.read("getScore('s0', 't1')"), {
-    studentId: 's0', testId: 't1', total: null, absent: true, domains: { d1: 100 }, questions: { q1: 100 },
+    studentId: 's0', testId: 't1', total: 100, absent: true, domains: { d1: 100 }, questions: { q1: 100 },
   });
   h.run("handleAbsentToggle({ dataset: { sid: 's0' }, checked: false })");
   assert.deepEqual(rates(h), [50, 50]);

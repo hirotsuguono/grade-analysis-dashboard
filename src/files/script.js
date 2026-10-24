@@ -97,6 +97,10 @@ function parseBoundedNumber(raw, max, min = 0) {
   };
 }
 
+function validMetricValue(type, value) {
+  return Number.isFinite(value) && (type !== 'scale' || (Number.isInteger(value) && value >= 1 && value <= 5));
+}
+
 /* ---- 効果量（Cohen's d）の共通ヘルパー ---- */
 function esFmt(d) {
   return `${d >= 0 ? '+' : ''}${(Math.round(d * 100) / 100).toFixed(2)}`;
@@ -157,7 +161,14 @@ function getScore(sid, tid) {
 // 集計・グラフでは欠席者の復元用得点を使わない。入力は getScore で元の値を保持する。
 function getAttendedScore(sid, tid) {
   const rec = getScore(sid, tid);
-  return rec && !rec.absent ? rec : null;
+  if (!rec || rec.absent) return null;
+  const test = testById(tid);
+  // 旧JSONの部分合計も統計には使わない。設問明細のない旧集計値はそのまま扱う。
+  if ((test?.questions || []).some(q => Object.hasOwn(rec.questions || {}, q.key))) {
+    const state = questionScoreState(rec, test);
+    return { ...rec, total: state.total, domains: state.domains };
+  }
+  return rec;
 }
 
 function ensureScore(sid, tid) {
@@ -230,13 +241,27 @@ function termOrderedList(tests = data.tests) {
 // テスト配列を回の時間順に並べ替える
 function sortTestsByTerm(tests, allTests = data.tests) {
   const order = termOrderedList(allTests);
-  return [...tests].sort((a, b) => order.indexOf(termKeyOf(a)) - order.indexOf(termKeyOf(b)));
+  return [...tests].sort((a, b) => {
+    const termOrder = order.indexOf(termKeyOf(a)) - order.indexOf(termKeyOf(b));
+    if (termOrder) return termOrder;
+    if (typeof a.date === 'string' && typeof b.date === 'string') return a.date.localeCompare(b.date);
+    return 0;
+  });
 }
 
 function comparisonCandidates(test, tests = data.tests) {
-  const ordered = sortTestsByTerm(tests.filter(t => t.subject === test.subject));
-  const index = ordered.findIndex(t => t.id === test.id);
-  return index < 0 ? [] : ordered.slice(0, index);
+  const ordered = sortTestsByTerm(tests.filter(t => t.subject === test.subject), tests);
+  const positions = new Map(ordered.map((t, i) => [t.id, i]));
+  if (!positions.has(test.id)) return [];
+  // 回の集約と、個々のテストの過去・未来は別に判定する。日付未設定時は従来の回順。
+  return ordered.filter(t => t.id !== test.id && (
+    typeof t.date === 'string' && t.date && typeof test.date === 'string' && test.date && t.date !== test.date
+      ? t.date < test.date
+      : positions.get(t.id) < positions.get(test.id)
+  )).sort((a, b) => {
+    if (typeof a.date === 'string' && a.date && typeof b.date === 'string' && b.date && a.date !== b.date) return a.date.localeCompare(b.date);
+    return positions.get(a.id) - positions.get(b.id);
+  });
 }
 
 function comparisonTarget(test) {
@@ -304,21 +329,49 @@ function submitComparisonForm(event) {
   renderAll();
 }
 
-// 問題得点から合計・分野別を再計算する
-function recalcScore(rec, test) {
-  if (!test.questions || !test.questions.length) return;
-  let total = 0;
-  let any = false;
-  const domains = {};
-  for (const q of test.questions) {
-    const v = rec.questions[q.key];
-    if (v == null || v === '') continue;
-    any = true;
-    total += v;
-    if (q.domain) domains[q.domain] = (domains[q.domain] || 0) + v;
+// 未入力と明示的な0点を区別する。合計・各分野は必要な設問がすべてそろったときだけ確定。
+function questionScoreState(rec, test) {
+  const questions = test.questions || [];
+  let partialTotal = 0, answered = 0;
+  const byDomain = new Map();
+  for (const q of questions) {
+    if (q.domain) {
+      if (!byDomain.has(q.domain)) byDomain.set(q.domain, []);
+      byDomain.get(q.domain).push(q);
+    }
+    const value = rec?.questions?.[q.key];
+    if (!Number.isFinite(value)) continue;
+    answered++;
+    partialTotal += value;
   }
-  rec.total = any ? total : null;
-  rec.domains = domains;
+  const domains = {};
+  for (const [key, qs] of byDomain) {
+    if (qs.every(q => Number.isFinite(rec?.questions?.[q.key]))) {
+      domains[key] = qs.reduce((sum, q) => sum + rec.questions[q.key], 0);
+    }
+  }
+  return { answered, partialTotal, total: questions.length && answered === questions.length ? partialTotal : null, domains };
+}
+
+function isPartialScore(rec, test) {
+  const state = questionScoreState(rec, test);
+  return state.answered > 0 && state.answered < (test.questions || []).length;
+}
+
+function scoreTotalText(rec, test) {
+  if (rec?.absent) return '欠';
+  if (isPartialScore(rec, test)) {
+    const state = questionScoreState(rec, test);
+    return `${state.partialTotal}（入力途中 ${state.answered}/${test.questions.length}問）`;
+  }
+  return rec?.total != null ? rec.total : '';
+}
+
+function recalcScore(rec, test) {
+  if (!test.questions?.length) return;
+  const state = questionScoreState(rec, test);
+  rec.total = state.total;
+  rec.domains = state.domains;
 }
 
 // 分野満点（domains定義がなければ問題から集計）
@@ -510,8 +563,7 @@ function validateDataset(parsed) {
     } else {
       // Use the parsed dataset here; loading must not depend on the currently open data.
       const validTests = parsed.tests.filter(t => t && typeof t === 'object');
-      const order = sortTestsByTerm(validTests, validTests);
-      if (order.indexOf(target) >= order.indexOf(test)) add('比較対象は過去のテストを指定してください。');
+      if (!comparisonCandidates(test, validTests).some(t => t.id === target.id)) add('比較対象は過去のテストを指定してください。');
     }
   }
   const scoreKeys = new Set();
@@ -550,7 +602,7 @@ function validateDataset(parsed) {
     if (typeof m.label !== 'string' || !['number', 'scale'].includes(m.type)) add('指標名または指標の種類が不正です。');
     for (const [sid, value] of Object.entries(m.values)) {
       if (!studentIds.has(sid)) add(`指標「${m.label || m.id}」が存在しない生徒IDを参照しています。`);
-      if (!Number.isFinite(value) || (m.type === 'scale' && (value < 1 || value > 5))) {
+      if (!validMetricValue(m.type, value)) {
         add(`指標「${m.label || m.id}」に不正な値があります。`);
       }
     }
@@ -1106,14 +1158,10 @@ function renderInput() {
     : `<th>合計<span class="th-max">/${test.maxScore}（直接入力）</span></th>`;
   html += '<th>得点率</th><th>欠席</th></tr></thead><tbody>';
 
-  let entered = 0, absentCount = 0, blankCount = 0;
-
   students.forEach((s, rowIdx) => {
     const rec = getScore(s.id, test.id);
     const isAbsent = !!(rec && rec.absent);
-    if (isAbsent) absentCount++;
-    else if (rec && rec.total != null) entered++;
-    else blankCount++;
+    const attended = getAttendedScore(s.id, test.id);
 
     html += `<tr data-sid="${esc(s.id)}" class="${isAbsent ? 'is-absent' : ''}">`;
     html += `<td class="cell-no">${esc(s.number != null && s.number !== '' ? s.number : rowIdx + 1)}</td>`;
@@ -1127,7 +1175,7 @@ function renderInput() {
         value="${isAbsent ? '' : (v != null ? v : '')}" ${isAbsent ? 'disabled' : ''}></td>`;
     });
     if (hasQ) {
-      const totalText = isAbsent ? '欠' : (rec && rec.total != null ? rec.total : '');
+      const totalText = scoreTotalText(rec, test);
       html += `<td class="cell-total" data-total="${esc(s.id)}">${totalText}</td>`;
     } else {
       const v = rec && rec.total != null ? rec.total : '';
@@ -1135,7 +1183,7 @@ function renderInput() {
         data-row="${rowIdx}" data-col="0" data-sid="${esc(s.id)}" data-q="__total__"
         value="${isAbsent ? '' : v}" ${isAbsent ? 'disabled' : ''}></td>`;
     }
-    const rate = isAbsent ? '—' : (rec && rec.total != null ? round1(rec.total / test.maxScore * 100) + '%' : '');
+    const rate = isAbsent ? '—' : (attended?.total != null ? round1(attended.total / test.maxScore * 100) + '%' : '');
     html += `<td class="cell-rate" data-rate="${esc(s.id)}">${rate}</td>`;
     html += `<td><input type="checkbox" class="absent-check" data-sid="${esc(s.id)}" ${isAbsent ? 'checked' : ''}></td>`;
     html += '</tr>';
@@ -1144,16 +1192,24 @@ function renderInput() {
   if (!students.length) html = '<div class="table-empty">生徒がいません。</div>';
   wrap.innerHTML = html;
 
-  if (statusEl) {
-    if (students.length) {
-      const blankLabel = blankCount > 0
-        ? `<strong class="status-blank">未入力 ${blankCount}名</strong>`
-        : `未入力 0名`;
-      statusEl.innerHTML = `入力済 ${entered}名　/　欠席 ${absentCount}名　/　${blankLabel}　（対象 ${students.length}名）`;
-    } else {
-      statusEl.textContent = '';
-    }
+  renderInputStatus(test, students);
+}
+
+function renderInputStatus(test, students = studentsOf(ui.inClass)) {
+  const status = $('inputStatus');
+  if (!status) return;
+  let entered = 0, partial = 0, absent = 0, blank = 0;
+  for (const student of students) {
+    const rec = getScore(student.id, test.id);
+    if (rec?.absent) absent++;
+    else if (isPartialScore(rec, test)) partial++;
+    else if (getAttendedScore(student.id, test.id)?.total != null) entered++;
+    else blank++;
   }
+  const blankLabel = blank ? `<strong class="status-blank">未入力 ${blank}名</strong>` : '未入力 0名';
+  status.innerHTML = students.length
+    ? `入力済 ${entered}名　/　入力途中 ${partial}名　/　欠席 ${absent}名　/　${blankLabel}　（対象 ${students.length}名）`
+    : '';
 }
 
 // セル入力 → スコア更新
@@ -1182,10 +1238,11 @@ function handleCellInput(input) {
     else rec.questions[qkey] = val;
     recalcScore(rec, test);
     const totalCell = document.querySelector(`[data-total="${CSS.escape(sid)}"]`);
-    if (totalCell) totalCell.textContent = rec.total != null ? rec.total : '';
+    if (totalCell) totalCell.textContent = scoreTotalText(rec, test);
   }
   const rateCell = document.querySelector(`[data-rate="${CSS.escape(sid)}"]`);
   if (rateCell) rateCell.textContent = rec.total != null ? round1(rec.total / test.maxScore * 100) + '%' : '';
+  renderInputStatus(test);
   markDirty();
 }
 
@@ -1197,10 +1254,10 @@ function handleAbsentToggle(checkbox) {
   const rec = ensureScore(sid, test.id);
   if (checkbox.checked) {
     rec.absent = true;
-    rec.total = null; // 統計（total!=null判定）から除外。問題別の値は残す
+    // 欠席フラグで統計から除外する。合計のみの得点も、保存後の解除に備えて保持する。
   } else {
     delete rec.absent;
-    recalcScore(rec, test); // 問題別の値から合計を復元（問題なしのテストはnullのまま）
+    recalcScore(rec, test);
   }
   markDirty();
   renderInput(); // 行の表示（入力可否・合計・状況）を更新
@@ -1419,6 +1476,8 @@ function deleteCurrentTest() {
 
 /* ========== 個人推移タブ ========== */
 function renderTrend() {
+  const ids = new Set(data.students.map(s => s.id));
+  for (const sid of ui.trendSelected) if (!ids.has(sid)) ui.trendSelected.delete(sid);
   renderStudentList();
   renderTrendChart();
   renderTrendDomainChart();
@@ -1444,7 +1503,7 @@ function completeTermTotal(sid, tests) {
   if (!tests.length) return null;
   let sum = 0;
   for (const t of tests) {
-    const r = getScore(sid, t.id);
+    const r = getAttendedScore(sid, t.id);
     if (!r || r.absent || r.total == null) return null;
     sum += r.total;
   }
@@ -1542,6 +1601,7 @@ function renderTrendDomainChart() {
   }
   const sid = [...ui.trendSelected][0];
   const student = data.students.find((s) => s.id === sid);
+  if (!student) { card.hidden = true; return; }
   const subjectTests = sortTestsByTerm(data.tests.filter((t) => t.subject === ui.trendSubject && testKindMatches(t, ui.trendKind)));
   card.hidden = false;
   $('trendDomainTitle').textContent = `${student.name}さんの分野別 得点率の推移（${ui.trendSubject}）`;
@@ -1985,7 +2045,7 @@ function renderMetricTable() {
       <td class="cell-no">${esc(s.number != null && s.number !== '' ? s.number : rowIdx + 1)}</td>
       <td class="cell-name">${esc(s.name)}</td>
       <td class="cell-class">${esc(s.className || '')}</td>
-      <td><input class="cell-input metric-input" type="number" ${isScale ? 'min="1" max="5"' : ''}
+      <td><input class="cell-input metric-input" type="number" ${isScale ? 'min="1" max="5" step="1"' : 'step="any"'}
         data-row="${rowIdx}" data-sid="${esc(s.id)}" value="${v != null ? v : ''}"></td>
     </tr>`;
   });
@@ -2000,16 +2060,16 @@ function handleMetricInput(input) {
   if (!m.values) m.values = {};
   const sid = input.dataset.sid;
   const raw = input.value.trim();
-  if (raw === '') {
+  const value = raw === '' ? null : Number(raw);
+  const valid = value === null || validMetricValue(m.type, value);
+  input.classList.toggle('is-over', !valid);
+  input.setAttribute('aria-invalid', String(!valid));
+  input.title = valid ? '' : (m.type === 'scale' ? '1〜5の整数で入力してください' : '数値を入力してください');
+  if (!valid) return;
+  if (value === null) {
     delete m.values[sid];
   } else {
-    const v = Number(raw);
-    const valid = Number.isFinite(v) && (m.type !== 'scale' || (v >= 1 && v <= 5));
-    input.classList.toggle('is-over', !valid);
-    input.setAttribute('aria-invalid', String(!valid));
-    input.title = valid ? '' : (m.type === 'scale' ? '1〜5の範囲で入力してください' : '数値を入力してください');
-    if (!valid) return;
-    m.values[sid] = v;
+    m.values[sid] = value;
   }
   markDirty();
   renderCorrelation();
@@ -2031,9 +2091,9 @@ function handleMetricPaste(e, input) {
     const s = students[startRow + ri];
     if (!s) return;
     const v = rowText.split('\t')[0].trim();
-    if (v === '' || isNaN(Number(v))) return;
+    if (v === '') return;
     const num = Number(v);
-    if (!Number.isFinite(num) || (m.type === 'scale' && (num < 1 || num > 5))) {
+    if (!validMetricValue(m.type, num)) {
       invalidCount++;
       return;
     }
@@ -2043,7 +2103,7 @@ function handleMetricPaste(e, input) {
   if (changed) markDirty();
   renderMetricTable();
   renderCorrelation();
-  if (invalidCount) alert(`範囲外の値 ${invalidCount}件は取り込みませんでした。`);
+  if (invalidCount) alert(`不正な値 ${invalidCount}件は取り込みませんでした。${m.type === 'scale' ? '5段階は1〜5の整数で入力してください。' : '数値を入力してください。'}`);
 }
 
 function submitMetricDialog(e) {
@@ -2148,8 +2208,9 @@ function listColumns() {
 // セルの値 {raw, rate, absent}（rawは点／指標値、rateは得点率）
 function listCell(col, s) {
   if (col.kind === 'test') {
-    const r = getScore(s.id, col.test.id);
-    if (r && r.absent) return { absent: true };
+    const raw = getScore(s.id, col.test.id);
+    if (raw?.absent) return { absent: true };
+    const r = getAttendedScore(s.id, col.test.id);
     if (!r || r.total == null) return {};
     return { raw: r.total, rate: r.total / col.test.maxScore * 100 };
   }
@@ -2165,7 +2226,7 @@ function listCell(col, s) {
   if (col.kind === 'avg') {
     const totals = [], rates = [];
     for (const t of listScopedTests()) {
-      const r = getScore(s.id, t.id);
+      const r = getAttendedScore(s.id, t.id);
       if (r && !r.absent && r.total != null) { totals.push(r.total); rates.push(r.total / t.maxScore * 100); }
     }
     if (!totals.length) return {};
@@ -2416,7 +2477,7 @@ function termSeriesFor(sid, subject, kind = ui.rtiKind) {
     return {
       labels: tests.map(termKeyOf),
       rates: tests.map((t) => {
-        const r = getScore(sid, t.id);
+        const r = getAttendedScore(sid, t.id);
         return r && !r.absent && r.total != null && t.maxScore ? r.total / t.maxScore * 100 : null;
       }),
     };
@@ -2428,7 +2489,7 @@ function termSeriesFor(sid, subject, kind = ui.rtiKind) {
   const rates = keys.map((k) => {
     const vals = [];
     for (const t of byKey.get(k)) {
-      const r = getScore(sid, t.id);
+      const r = getAttendedScore(sid, t.id);
       if (r && !r.absent && r.total != null && t.maxScore) vals.push(r.total / t.maxScore * 100);
     }
     return vals.length ? mean(vals) : null;
@@ -2690,6 +2751,7 @@ function studentHasScores(sid) {
 }
 
 function removeStudentData(sid) {
+  ui.trendSelected.delete(sid);
   data.students = data.students.filter((s) => s.id !== sid);
   data.scores = data.scores.filter((sc) => sc.studentId !== sid);
   for (const m of data.metrics) if (m.values) delete m.values[sid];
@@ -3270,16 +3332,7 @@ async function importTestTemplate(file) {
       rec.absent = true;
       absentCount++;
     } else if (any) {
-      let total = 0;
-      const dm = {};
-      for (const q of questions) {
-        const v = rec.questions[q.key];
-        if (v == null) continue;
-        total += v;
-        if (q.domain) dm[q.domain] = (dm[q.domain] || 0) + v;
-      }
-      rec.total = total;
-      rec.domains = dm;
+      recalcScore(rec, test);
     }
     if (any || isAbsent) newScores.push(rec);
   }
