@@ -20,6 +20,7 @@ async function selectPath(file){
   const id=await saveWindow();
   await exec('xdotool',['windowfocus','--sync',id]);
   await exec('xdotool',['key','--clearmodifiers','ctrl+l']);
+  await exec('xdotool',['key','--clearmodifiers','ctrl+a']);
   await exec('xdotool',['type','--clearmodifiers','--delay','1',path.dirname(file)+'/']);
   await exec('xdotool',['key','--clearmodifiers','Return']);
   await new Promise(r=>setTimeout(r,250));
@@ -85,6 +86,9 @@ async function selectPath(file){
       await page.screenshot({path:path.join(output,'native-save-failure.png')}).catch(()=>{});
     }
     console.log('WINDOWS',await exec('xwininfo',['-root','-tree']).then(r=>r.stdout).catch(e=>e.message));
+    const desktop=path.join(output,'native-save-desktop.png');
+    await exec('import',['-window','root',desktop]).catch(()=>{});
+    console.log('NATIVE DIALOG TEXT',await exec('tesseract',[desktop,'stdout']).then(r=>r.stdout).catch(e=>e.message));
     throw error;
   }
   finally{await browser.close();fs.rmSync(temp,{recursive:true,force:true});}
