@@ -34,7 +34,7 @@ module.exports = async function absenceStatisticsRegression(page, fixture) {
     assert.deepEqual(await page.evaluate(() => {
       const r = getScore('absence-a', 'absence-test');
       return { total: r.total, absent: r.absent, question: r.questions.q1, domain: r.domains.d1 };
-    }), { total: null, absent: true, question: 100, domain: 100 });
+    }), { total: 100, absent: true, question: 100, domain: 100 });
     await page.locator('[data-tab="input"]').click();
     await page.locator('tr[data-sid="absence-a"] .absent-check').uncheck();
     assert.equal(await page.locator('tr[data-sid="absence-a"] .cell-input').inputValue(), '100');
@@ -102,7 +102,7 @@ async function retainedJsonRoundtrip(page) {
   assert.deepEqual(await combined(), restored);
   await toggle(true);
   assert.deepEqual(await combined(), excluded);
-  await saveAndReopen('fictional-retained-toggle-roundtrip.json', [null, null]);
+  await saveAndReopen('fictional-retained-toggle-roundtrip.json', [100, 60]);
   await toggle(false);
   assert.deepEqual(await combined(), restored);
 

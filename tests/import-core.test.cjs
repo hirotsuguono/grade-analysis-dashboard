@@ -267,6 +267,7 @@ test('legacy templates with inserted whole columns keep shifted grade/date and o
     rows[0][5] = 50; // Deliberately different from the question maxima sum of 40.
     rows.forEach(r => {while (r.length < 6) r.push(''); r.splice(6, 0, '');});
     rows[1][6] = '読解'; rows[2][6] = 10; rows[3][6] = '問4'; rows[4][6] = 5;
+    rows[4][4] = 0; // Explicit zero completes all four questions; a blank is still in progress.
     if (!withId) rows.slice(3).forEach(r => r.splice(7, 1));
     await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
     assert.equal(d.tests.length, 1); assert.equal(d.tests[0].questions.length, 4);
