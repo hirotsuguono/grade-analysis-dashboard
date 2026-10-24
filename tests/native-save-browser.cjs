@@ -28,7 +28,7 @@ async function selectPath(file){
   const tsv=(await exec('tesseract',[desktop,'stdout','tsv'])).stdout;
   const save=tsv.split('\n').map(line=>line.split('\t')).find(fields=>fields[11]?.trim()==='Save');
   if(!save)throw Error('Native Save button not found');
-  await exec('xdotool',['mousemove','--sync',String(Number(save[6])+Number(save[8])/2),String(Number(save[7])+Number(save[9])/2)]);
+  await exec('xdotool',['mousemove','--sync',String(Math.round(Number(save[6])+Number(save[8])/2)),String(Math.round(Number(save[7])+Number(save[9])/2))]);
   await exec('xdotool',['click','1']);
 }
 (async()=>{
