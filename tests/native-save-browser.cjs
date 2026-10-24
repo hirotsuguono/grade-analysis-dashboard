@@ -15,7 +15,7 @@ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'fictional-native-save-'));
 const checks=[];
 const check=name=>{checks.push(name);console.log('PASS '+name)};
 async function waitFor(fn,timeout=12000){const end=Date.now()+timeout;while(Date.now()<end){const v=await fn();if(v)return v;await new Promise(r=>setTimeout(r,150));}throw Error('Timed out waiting for native save operation');}
-async function saveWindow(){return waitFor(async()=>{try{return (await exec('xdotool',['search','--onlyvisible','--name','Save'])).stdout.trim().split('\n').at(-1);}catch{return null;}});}
+async function saveWindow(){return waitFor(async()=>{try{return (await exec('xdotool',['search','--name','[Ss]ave|保存'])).stdout.trim().split('\n').at(-1);}catch{return null;}});}
 async function selectPath(file){
   const id=await saveWindow();
   await exec('xdotool',['windowfocus','--sync',id]);
