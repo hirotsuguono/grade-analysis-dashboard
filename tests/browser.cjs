@@ -104,6 +104,8 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     await page.locator('#studentList li').first().click();
     assert.equal(await page.locator('#printKarteBtn').isEnabled(), true);
     await page.locator('#printKarteBtn').click();
+    assert.ok(await page.locator('#karteDialog').isVisible());
+    await page.locator('#kartePrintBtn').click();
     await page.waitForFunction(() => window.printRequested === true);
     const printImages = await page.locator('#printArea img').evaluateAll(imgs => imgs.every(img => img.complete && img.naturalWidth > 0));
     assert.ok(printImages);
