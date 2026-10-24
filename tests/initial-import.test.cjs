@@ -8,6 +8,7 @@ const { webcrypto } = require('node:crypto');
 const root = process.env.DASHBOARD_ROOT || path.join(__dirname, '..', 'src', 'files');
 const XLSX = require(path.join(root, 'vendor/xlsx.full.min.js'));
 const sandbox = { window: { crypto: webcrypto } };
+vm.runInNewContext(fs.readFileSync(path.join(root, 'import-core.js'), 'utf8'), sandbox);
 vm.runInNewContext(fs.readFileSync(path.join(root, 'initial-import.js'), 'utf8'), sandbox);
 const api = sandbox.window.GD_INITIAL;
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -107,6 +108,14 @@ test('different grades with identical class, number and name create separate stu
   assert.equal(new Set(result.dataset.students.map(s => s.id)).size, 2);
   assert.equal(result.dataset.tests[0].gradeYear, 1);
   assert.deepEqual(Array.from(result.dataset.scores, r => r.total), [0, 85]);
+});
+test('first-test kind and series can be supplied in the initial workbook',()=>{
+  const wb=workbook([[1,1,1,'架空生徒',0]],{testName:'架空の初回'});
+  XLSX.utils.sheet_add_aoa(wb.Sheets['初回登録'],[['テスト種類','単元テスト','比較系列','Unit 3']],{origin:'E1'});
+  const result=api.planWorkbook(wb,XLSX);
+  assert.equal(result.errors.length,0);assert.equal(result.dataset.tests[0].kind,'unit');assert.equal(result.dataset.tests[0].series,'Unit 3');
+  wb.Sheets['初回登録'].F1.v='不正な種類';
+  assert.equal(api.planWorkbook(wb,XLSX).dataset,undefined);
 });
 
 test('grade/class normalization accepts school roster text and detects equivalent duplicate tuples', () => {
