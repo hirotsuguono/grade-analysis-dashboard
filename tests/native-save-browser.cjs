@@ -31,10 +31,12 @@ async function selectPath(file){
   let page;
   try{
     const context=await browser.newContext({offline:true,acceptDownloads:true});page=await context.newPage();
+    page.on('console',m=>console.log('BROWSER',m.text()));
     let acceptConfirm=true;page.on('dialog',d=>d.type()==='confirm'&&!acceptConfirm?d.dismiss():d.accept());
     await page.goto(pathToFileURL(path.join(app,'Index.html')).href);
     assert.equal(await page.evaluate(()=>location.protocol),'file:');
     assert.equal(await page.evaluate(()=>canPickSaveFile()),true);
+    await page.evaluate(()=>{const native=window.showSaveFilePicker;window.showSaveFilePicker=async function(options){try{return await native.call(window,options)}catch(e){console.log('NATIVE PICKER ERROR',e.name,e.message);throw e;}};});
     const original=path.join(temp,'original.json'),copy=path.join(temp,'copy.json'),second=path.join(temp,'second.json');
     const fixture=JSON.parse(fs.readFileSync(path.join(app,'files/sample-data.json')));
     fs.writeFileSync(original,JSON.stringify(fixture));
@@ -73,6 +75,13 @@ async function selectPath(file){
     assert.equal(await page.evaluate(()=>validateDataset(data).length),0);
     check('別の保存先へ切り替えてJSONを保存し、直前のファイルを残す');
     fs.writeFileSync(path.join(output,'native-save-results.json'),JSON.stringify({checks},null,2));
-  }catch(error){if(page)await page.screenshot({path:path.join(output,'native-save-failure.png')}).catch(()=>{});throw error;}
+  }catch(error){
+    if(page){
+      console.log('SAVE STATE',await page.evaluate(()=>({secure:isSecureContext,protocol:location.protocol,result:document.getElementById('saveResult').textContent,saving})).catch(()=>null));
+      await page.screenshot({path:path.join(output,'native-save-failure.png')}).catch(()=>{});
+    }
+    console.log('WINDOWS',await exec('xwininfo',['-root','-tree']).then(r=>r.stdout).catch(e=>e.message));
+    throw error;
+  }
   finally{await browser.close();fs.rmSync(temp,{recursive:true,force:true});}
 })().catch(error=>{console.error(error);process.exitCode=1;});
