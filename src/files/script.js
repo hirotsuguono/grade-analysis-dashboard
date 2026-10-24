@@ -2791,75 +2791,77 @@ function chartImageFrom(domId, width, height) {
   return url;
 }
 
-function printKarte() {
-  if (ui.trendSelected.size !== 1) return;
-  const sid = [...ui.trendSelected][0];
-  const student = data.students.find((s) => s.id === sid);
-  if (!student) return;
+const defaultKarteOptions = { basic: true, history: true, records: true, score: true, rate: true, average: true, trend: true, domain: true, memo: true };
+let karteOptions = { ...defaultKarteOptions };
 
-  // 成績の推移テーブル
-  let scoreRows = '';
-  for (const t of data.tests) {
-    const r = getAttendedScore(sid, t.id);
-    if (!r || r.total == null) continue;
-    const scope = studentsOf(student.className || 'all').length
-      ? data.students.filter((s) => s.className === student.className)
-      : data.students;
-    const avgVals = scope.map((s) => getAttendedScore(s.id, t.id)).filter((x) => x && x.total != null).map((x) => x.total);
-    const avg = avgVals.length ? round1(mean(avgVals)) : '—';
-    const rate = round1(r.total / t.maxScore * 100);
-    scoreRows += `<tr><td class="k-name">${esc(termKeyOf(t))}（${esc(t.subject)}）</td>` +
-      `<td>${r.total} / ${t.maxScore}</td><td>${rate}%</td><td>${avg}</td></tr>`;
+function buildKarteHtml(selected = defaultKarteOptions) {
+  if (!data || ui.trendSelected.size !== 1) return '';
+  const student = data.students.find(s => s.id === [...ui.trendSelected][0]);
+  if (!student) return '';
+  const opts = { ...defaultKarteOptions, ...selected };
+  if (!['basic', 'history', 'records', 'trend', 'domain', 'memo'].some(key => opts[key])) return '';
+  const sid = student.id;
+  const columns = [{ label: 'テスト', cell: t => `${esc(termKeyOf(t))}（${esc(t.subject)}）` }];
+  if (opts.score) columns.push({ label: '得点', cell: (t, r) => `${r.total} / ${t.maxScore}` });
+  if (opts.rate) columns.push({ label: '得点率', cell: (t, r) => `${round1(r.total / t.maxScore * 100)}%` });
+  if (opts.average) columns.push({ label: 'クラス平均', cell: t => {
+    const scope = student.className ? data.students.filter(s => s.className === student.className) : data.students;
+    const values = scope.map(s => getAttendedScore(s.id, t.id)).filter(r => r && r.total != null).map(r => r.total);
+    return values.length ? round1(mean(values)) : '—';
+  }});
+  let records = '';
+  if (opts.records) {
+    const rows = data.tests.flatMap(t => {
+      const rec = getAttendedScore(sid, t.id);
+      return !rec || rec.total == null ? [] : ['<tr>' + columns.map((col, i) => `<td${i === 0 ? ' class="k-name"' : ''}>${col.cell(t, rec)}</td>`).join('') + '</tr>'];
+    });
+    records = '<h2>テストの記録</h2><table><thead><tr>' + columns.map(col => `<th>${col.label}</th>`).join('') + '</tr></thead><tbody>' +
+      (rows.join('') || `<tr><td colspan="${columns.length}">記録された成績がありません</td></tr>`) + '</tbody></table>';
   }
-  if (!scoreRows) scoreRows = '<tr><td colspan="4">記録された成績がありません</td></tr>';
-
-  // チャート画像（固定幅・アニメ無効でクリーンに生成。横並びでA4 1ページに収める）
-  const trendImg = chartImageFrom('trendChart', 520, 340);
-  let domainImgHtml = '';
-  if (!$('trendDomainCard').hidden) {
-    const di = chartImageFrom('trendDomainChart', 520, 340);
-    domainImgHtml = `<img src="${di}" alt="分野別推移">`;
+  const images = [];
+  if (opts.trend) {
+    const url = chartImageFrom('trendChart', 520, 340);
+    if (url) images.push(`<img src="${url}" alt="得点推移">`);
   }
-
+  if (opts.domain && !$('trendDomainCard').hidden) {
+    const url = chartImageFrom('trendDomainChart', 520, 340);
+    if (url) images.push(`<img src="${url}" alt="分野別推移">`);
+  }
   const today = new Date();
   const dateStr = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
+  return `<div class="karte"><div class="karte-head"><div class="karte-title">学習の記録（${esc(data.name || '')}）</div>
+    <div class="karte-meta">${opts.basic ? `${esc(student.className || '')}　${esc(student.number ?? '')}番<br>氏名：${esc(student.name)}<br>` : ''}
+    ${opts.history && classTrail(student) ? 'クラス履歴：' + esc(classTrail(student)) + '<br>' : ''}作成日：${dateStr}</div></div>
+    ${records}${images.length ? '<h2>推移グラフ</h2><div class="karte-charts">' + images.join('') + '</div>' : ''}
+    ${opts.memo ? '<h2>面談メモ</h2><div class="karte-comment"></div>' : ''}
+    <p class="karte-note">※ このカルテは校内の個人情報の取り扱いルールに従って管理・廃棄してください。</p></div>`;
+}
 
-  $('printArea').innerHTML = `
-    <div class="karte">
-      <div class="karte-head">
-        <div class="karte-title">学習の記録（${esc(data.name || '')}）</div>
-        <div class="karte-meta">
-          ${esc(student.className || '')}　${esc(student.number != null ? student.number : '')}番<br>
-          氏名：${esc(student.name)}<br>
-          ${classTrail(student) ? 'クラス履歴：' + esc(classTrail(student)) + '<br>' : ''}
-          作成日：${dateStr}
-        </div>
-      </div>
+function renderKartePreview() {
+  for (const input of $('karteOptions').querySelectorAll('[data-karte]')) {
+    karteOptions[input.dataset.karte] = input.checked;
+    if (['score', 'rate', 'average'].includes(input.dataset.karte)) input.disabled = !karteOptions.records;
+  }
+  const html = buildKarteHtml(karteOptions);
+  $('kartePreview').innerHTML = html;
+  $('kartePrintBtn').disabled = !html;
+  $('karteStatus').textContent = html ? '' : '表示する項目を1つ以上選んでください。';
+}
 
-      <h2>テストの記録</h2>
-      <table>
-        <thead><tr><th>テスト</th><th>得点</th><th>得点率</th><th>クラス平均</th></tr></thead>
-        <tbody>${scoreRows}</tbody>
-      </table>
+function openKarteDialog() {
+  if (ui.trendSelected.size !== 1) return;
+  for (const input of $('karteOptions').querySelectorAll('[data-karte]')) input.checked = karteOptions[input.dataset.karte];
+  renderKartePreview();
+  $('karteDialog').showModal();
+}
 
-      <h2>推移グラフ</h2>
-      <div class="karte-charts">
-        <img src="${trendImg}" alt="得点推移">
-        ${domainImgHtml}
-      </div>
-
-      <h2>面談メモ</h2>
-      <div class="karte-comment"></div>
-
-      <p class="karte-note">※ このカルテは校内の個人情報の取り扱いルールに従って管理・廃棄してください。</p>
-    </div>`;
-
-  // グラフ画像（dataURL）のデコード完了を待ってから印刷する
-  // （待たずにprintするとプレビューでグラフが空白になる）
+function printKarte(options = defaultKarteOptions) {
+  const html = buildKarteHtml(options);
+  if (!html) return;
+  $('printArea').innerHTML = html;
   const imgs = [...$('printArea').querySelectorAll('img')];
-  const ready = imgs.map((img) => (img.complete && img.naturalWidth
-    ? Promise.resolve()
-    : (img.decode ? img.decode().catch(() => {}) : new Promise((res) => { img.onload = img.onerror = res; }))));
+  const ready = imgs.map(img => img.complete && img.naturalWidth ? Promise.resolve() :
+    img.decode ? img.decode().catch(() => {}) : new Promise(resolve => { img.onload = img.onerror = resolve; }));
   Promise.all(ready).then(() => window.print());
 }
 
@@ -3477,7 +3479,10 @@ function init() {
 
   // バックアップ・カルテ印刷
   $('backupBtn').onclick = backupJson;
-  $('printKarteBtn').onclick = printKarte;
+  $('printKarteBtn').onclick = openKarteDialog;
+  $('karteOptions').onchange = renderKartePreview;
+  $('karteCloseBtn').onclick = () => $('karteDialog').close();
+  $('kartePrintBtn').onclick = () => { $('karteDialog').close(); printKarte(karteOptions); };
 
   // 名簿管理
   $('rosterBtn').onclick = openRosterDialog;
