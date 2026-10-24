@@ -64,7 +64,7 @@ jobs:
           DASHBOARD_ROOT: ${{ runner.temp }}/dashboard-unpacked/grade-analysis-dashboard
         run: |
           set -o pipefail
-          DEBUG=pw:browser xvfb-run -a node tests/native-save-browser.cjs 2>&1 | tee test-results/native-save.log
+          xvfb-run -a node tests/native-save-browser.cjs 2>&1 | tee test-results/native-save.log
 
       - name: Summarize browser results
         if: ${{ always() }}

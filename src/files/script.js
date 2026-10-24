@@ -7,7 +7,7 @@ let fileName = '';
 let dirty = false;
 let lastDiskText = '';    // 開いた／前回保存した時点のディスク上の内容（外部変更検知用）
 
-// Local double-click mode always uses file input and downloads; no server or picker permission needed.
+// Local double-click mode opens through file input; direct-save support is detected independently.
 const supportsFS = ['http:', 'https:'].includes(window.location?.protocol) && 'showOpenFilePicker' in window;
 let saving = false;
 let pendingDownload = null;
