@@ -60,9 +60,11 @@ module.exports = async function checkInterventionValidation(page, fixture) {
 
   const downloadEvent = page.waitForEvent('download');
   await page.locator('#saveBtn').click();
+  await page.locator('#saveDownloadBtn').click();
   const download = await downloadEvent;
   const chunks = [];
   for await (const chunk of await download.createReadStream()) chunks.push(chunk);
+  await page.locator('#downloadConfirmBtn').click();
   const saved = JSON.parse(Buffer.concat(chunks).toString('utf8'));
   assert.deepEqual(saved.interventions, value.interventions);
   await upload(saved, 'fictional-interventions-roundtrip.json');

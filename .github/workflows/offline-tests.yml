@@ -35,7 +35,9 @@ jobs:
         run: npm ci
 
       - name: Install Chromium and system dependencies
-        run: npx --no-install playwright-core install --with-deps chromium
+        run: |
+          npx --no-install playwright-core install --with-deps chromium
+          sudo apt-get install -y xdotool
 
       - name: Run unit tests
         run: npm test
@@ -57,6 +59,13 @@ jobs:
           mkdir -p test-results
           npm run test:browser 2>&1 | tee test-results/browser-run.log
 
+      - name: Verify native save picker and real file writes from local HTML
+        env:
+          DASHBOARD_ROOT: ${{ runner.temp }}/dashboard-unpacked/grade-analysis-dashboard
+        run: |
+          set -o pipefail
+          xvfb-run -a node tests/native-save-browser.cjs 2>&1 | tee test-results/native-save.log
+
       - name: Summarize browser results
         if: ${{ always() }}
         run: |
@@ -67,7 +76,7 @@ jobs:
 
           lines = ['## Offline browser tests', '']
           incomplete = False
-          for name in ['browser-results.json', 'onboarding/onboarding-results.json']:
+          for name in ['browser-results.json', 'onboarding/onboarding-results.json', 'native-save-results.json']:
               report = Path('test-results') / name
               if report.exists():
                   result = json.loads(report.read_text())
@@ -75,13 +84,14 @@ jobs:
               else:
                   incomplete = True
                   lines.append(f'- {name}: no successful result produced')
-          log = Path('test-results/browser-run.log')
-          if log.exists():
-              lines += ['', '```text', *log.read_text().splitlines()[-100:], '```']
-              if incomplete:
-                  message = '\n'.join(log.read_text().splitlines()[-35:])
-                  message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-                  print(f'::error title=Offline browser test failed::{message}')
+          for filename in ['browser-run.log', 'native-save.log']:
+              log = Path('test-results') / filename
+              if log.exists():
+                  lines += ['', filename, '```text', *log.read_text().splitlines()[-100:], '```']
+                  if incomplete:
+                      message = '\n'.join(log.read_text().splitlines()[-35:])
+                      message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                      print(f'::error title=Offline browser test failed::{message}')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
               summary.write('\n'.join(lines) + '\n')
           PY

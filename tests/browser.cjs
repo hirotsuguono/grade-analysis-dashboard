@@ -204,9 +204,11 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     const downloadWorkbook = async button => {
       const download = page.waitForEvent('download');
       await page.locator(button).click();
+      if (button === '#saveBtn') await page.locator('#saveDownloadBtn').click();
       const d = await download;
       const p = path.join(output, d.suggestedFilename());
       await d.saveAs(p);
+      if (button === '#saveBtn') await page.locator('#downloadConfirmBtn').click();
       assert.ok(fs.statSync(p).size > 500);
       return p;
     };
@@ -282,8 +284,10 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
       assert.equal(await page.evaluate(() => data.settings.adminPinHash), null);
       const pendingDownload = page.waitForEvent('download');
       await page.locator('#saveBtn').click();
+      await page.locator('#saveDownloadBtn').click();
       const download = await pendingDownload, savedPath = path.join(output, legacyName);
       await download.saveAs(savedPath);
+      await page.locator('#downloadConfirmBtn').click();
       const savedLegacy = JSON.parse(fs.readFileSync(savedPath));
       assert.equal(savedLegacy.version, 3);
       assert.equal(savedLegacy.scores[0].total, 72);
@@ -370,7 +374,7 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
       await demoPage.close();
       if (transport === 'file') {
         assert.equal(await page.evaluate(() => supportsFS), false);
-        check('file://では直接保存APIを使わずJSONをダウンロード');
+        check('file://からJSONを読み込み、選択したダウンロード保存を実行');
       }
 
     }

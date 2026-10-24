@@ -1,0 +1,25 @@
+'use strict';
+const assert=require('node:assert/strict');
+module.exports=async(page,fixture)=>{
+  await page.evaluate(value=>{applyJsonText(JSON.stringify(value),'fictional-save.json',null);markDirty();window.originalSavePicker=window.showSaveFilePicker;window.showSaveFilePicker=undefined;},fixture);
+  await page.keyboard.press('Control+s');assert.ok(await page.locator('#saveDialog').isVisible());
+  assert.ok(await page.locator('#saveAsBtn').isDisabled());assert.ok(await page.locator('#saveOverwriteBtn').isDisabled());
+  await page.locator('#saveDownloadName').fill('fictional-copy.json');
+  const event=page.waitForEvent('download');await page.locator('#saveDownloadBtn').click();
+  const download=await event,chunks=[];for await(const chunk of await download.createReadStream())chunks.push(chunk);
+  assert.equal(JSON.parse(Buffer.concat(chunks)).students.length,fixture.students.length);
+  assert.equal(await page.evaluate(()=>dirty),true);
+  await page.evaluate(()=>{data.name='fictional-changed-after-download';markDirty();});
+  await page.locator('#downloadConfirmBtn').click();assert.equal(await page.evaluate(()=>dirty),true);
+  assert.match(await page.locator('#saveResult').textContent(),/ダウンロード後にデータが変更/);
+  await page.locator('#saveCloseBtn').click();
+  assert.equal(await page.evaluate(()=>dirty),true);
+  await page.locator('#saveBtn').click();
+  const second=page.waitForEvent('download');await page.locator('#saveDownloadBtn').click();
+  const completed=await second;for await(const unused of await completed.createReadStream())void unused;
+  await page.setViewportSize({width:320,height:800});
+  assert.ok(await page.locator('#saveDialog').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+  await page.locator('#downloadConfirmBtn').click();assert.equal(await page.evaluate(()=>dirty),false);
+  await page.setViewportSize({width:1280,height:900});
+  await page.evaluate(value=>{window.showSaveFilePicker=window.originalSavePicker;delete window.originalSavePicker;applyJsonText(JSON.stringify(value),'fictional-restored.json',null);},fixture);
+};
