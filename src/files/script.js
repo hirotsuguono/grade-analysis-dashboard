@@ -9,6 +9,9 @@ let lastDiskText = '';    // 開いた／前回保存した時点のディスク
 
 // Local double-click mode always uses file input and downloads; no server or picker permission needed.
 const supportsFS = ['http:', 'https:'].includes(window.location?.protocol) && 'showOpenFilePicker' in window;
+let saving = false;
+let pendingDownload = null;
+let activeDataToken = 0;
 const FILE_TYPES = [{ description: 'JSONファイル', accept: { 'application/json': ['.json'] } }];
 
 // 系列色。色だけに頼らず、パターンと数値のデータ表を併用する。
@@ -599,6 +602,8 @@ function applyJsonText(text, name, handle) {
     return;
   }
   data = parsed;
+  activeDataToken++;
+  pendingDownload = null;
   let migrated = removedOrphanInterventions > 0;
   if (!data.metrics) { data.metrics = []; migrated = true; }
   // 移行：出席番号(number)が無い生徒は id を初期値として補う
@@ -652,60 +657,98 @@ function applyJsonText(text, name, handle) {
   }
 }
 
-async function saveJson() {
-  if (!data) return;
-  const validationErrors = validateDataset(data);
-  if (validationErrors.length) {
-    alert('データに問題があるため保存できません。\n\n・' + validationErrors.join('\n・'));
-    return;
+function canPickSaveFile() {
+  return window.isSecureContext !== false && typeof window.showSaveFilePicker === 'function';
+}
+
+function openSaveDialog() {
+  if (!data || saving) return;
+  const supported = canPickSaveFile();
+  $('saveOverwriteBtn').disabled = !supported;
+  $('saveAsBtn').disabled = !supported;
+  $('saveTarget').textContent = fileHandle ? `上書き先：${fileHandle.name}` : '上書き先は未指定です。最初に既存のJSONを保存先として選択してください。';
+  $('saveCapabilityNote').textContent = supported ?
+    'このブラウザでは保存先を選択できます。初回は書き込み先のJSONを選び、次からは同じファイルへ上書きできます。' :
+    'このブラウザではファイルへの直接保存を利用できません。JSONをダウンロードして保存してください。';
+  $('saveDownloadName').value = fileName || 'seiseki-data.json';
+  $('downloadConfirmBtn').hidden = !pendingDownload;
+  $('saveResult').textContent = pendingDownload ? '先ほどダウンロードしたファイルの保存先と内容を確認してください。' : '';
+  $('saveDialog').showModal();
+}
+
+function setSaveBusy(value) {
+  saving = value;
+  for (const id of ['saveOverwriteBtn', 'saveAsBtn', 'saveDownloadBtn', 'downloadConfirmBtn', 'saveCloseBtn']) {
+    $(id).disabled = value || (['saveOverwriteBtn', 'saveAsBtn'].includes(id) && !canPickSaveFile());
   }
+}
+
+async function saveJson(mode = 'download') {
+  if (!data || saving) return;
+  const validationErrors = validateDataset(data);
+  if (validationErrors.length) { alert('データに問題があるため保存できません。\n\n・' + validationErrors.join('\n・')); return; }
   const text = JSON.stringify(data, null, 2);
-  if (supportsFS) {
-    try {
-      if (!fileHandle) {
-        fileHandle = await window.showSaveFilePicker({
-          suggestedName: fileName || 'seiseki-data.json',
-          types: FILE_TYPES,
-        });
-        fileName = fileHandle.name;
-        $('datasetName').textContent = `${data.name || ''}（${fileName}）`;
-      } else {
-        // 共有ファイルの上書き事故防止：開いた時から他者が更新していないか確認
-        let diskNow = null;
-        try {
-          diskNow = await (await fileHandle.getFile()).text();
-        } catch { /* 読めない場合は検知をスキップ */ }
-        if (diskNow != null && diskNow !== lastDiskText) {
-          const ok = confirm(
-            'このファイルは、あなたが開いたあとに別の人が更新しています。\n' +
-            'このまま保存すると、その人の入力が消える可能性があります。\n\n' +
-            '［OK］あなたの内容で上書きする\n' +
-            '［キャンセル］保存をやめる（先にファイルを開き直して、最新を確認してください）'
-          );
-          if (!ok) return;
-        }
-      }
-      const writable = await fileHandle.createWritable();
-      await writable.write(text);
-      await writable.close();
-      dirty = false;
-      lastDiskText = text;  // 保存した内容を新たな基準に
-      updateSaveStatus(true);
-    } catch (e) {
-      if (e.name !== 'AbortError') alert('保存に失敗しました: ' + e.message);
-    }
-  } else {
-    // フォールバック：ダウンロード
+  const token = activeDataToken;
+  if (mode === 'download') {
+    const name = $('saveDownloadName').value.trim();
+    if (!name || /[\\/:*?"<>|]/.test(name)) { $('saveResult').textContent = 'ファイル名を入力してください。記号 \\ / : * ? " < > | は使えません。'; return; }
     const blob = new Blob([text], { type: 'application/json' });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName || 'seiseki-data.json';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
-    dirty = false;
-    lastDiskText = text;
-    updateSaveStatus(true);
+    a.href = URL.createObjectURL(blob); a.download = /\.json$/i.test(name) ? name : name + '.json';
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    pendingDownload = { text, token };
+    $('downloadConfirmBtn').hidden = false;
+    $('saveResult').textContent = 'ダウンロードを開始しました。保存されたJSONを確認してください。';
+    $('saveStatus').textContent = 'JSONを出力しました。保存先でファイルを確認してください。';
+    return;
   }
+  if (!canPickSaveFile()) { $('saveResult').textContent = '直接保存を利用できません。JSONをダウンロードしてください。'; return; }
+  setSaveBusy(true);
+  let writable;
+  try {
+    let target = mode === 'overwrite' ? fileHandle : null;
+    if (!target) {
+      const suggestedName = mode === 'as' ? (fileName || 'seiseki-data.json').replace(/\.json$/i, '') + '_copy.json' : fileName || 'seiseki-data.json';
+      target = await window.showSaveFilePicker({ suggestedName, types: FILE_TYPES });
+      if (mode === 'as') {
+        const same = fileHandle && typeof target.isSameEntry === 'function' ? await target.isSameEntry(fileHandle) :
+          target.name.toLowerCase() === (fileName || '').toLowerCase();
+        if (same) { $('saveResult').textContent = '元のファイルを残すため、別のファイル名または保存先を選んでください。'; return; }
+      }
+    } else {
+      if (typeof target.requestPermission === 'function' && await target.requestPermission({mode:'readwrite'}) !== 'granted') {
+        $('saveResult').textContent = '書き込みが許可されませんでした。作業中のデータは保持しています。'; return;
+      }
+      const diskNow = await (await target.getFile()).text();
+      if (diskNow !== lastDiskText && !confirm('このJSONは開いた後に変更されています。あなたの内容で上書きしますか？\nキャンセルすると作業中のデータを保持して保存をやめます。')) return;
+    }
+    if (token !== activeDataToken) return;
+    writable = await target.createWritable();
+    await writable.write(text);
+    await writable.close(); writable = null;
+    if (token !== activeDataToken) return;
+    fileHandle = target; fileName = target.name; lastDiskText = text;
+    pendingDownload = null;
+    dirty = JSON.stringify(data, null, 2) !== text;
+    $('datasetName').textContent = `${data.name || ''}（${fileName}）`;
+    updateSaveStatus(true);
+    $('saveDialog').close();
+  } catch (error) {
+    if (writable) { try { await writable.abort(); } catch {} }
+    $('saveResult').textContent = error.name === 'AbortError' ? '保存をキャンセルしました。作業中のデータは保持しています。' :
+      '保存できませんでした。作業中のデータは保持しています。別の保存先を選ぶかJSONをダウンロードしてください。';
+  } finally { setSaveBusy(false); }
+}
+
+function confirmDownloadedJson() {
+  if (!pendingDownload) return;
+  if (pendingDownload.token !== activeDataToken || pendingDownload.text !== JSON.stringify(data, null, 2)) {
+    $('saveResult').textContent = 'ダウンロード後にデータが変更されています。現在の内容をもう一度保存してください。'; return;
+  }
+  dirty = false; pendingDownload = null;
+  updateSaveStatus();
+  $('saveStatus').textContent = '✓ ダウンロードしたJSONの保存を確認済み';
+  $('saveDialog').close();
 }
 
 function markDirty() {
@@ -735,7 +778,7 @@ window.addEventListener('beforeunload', (e) => {
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 's') {
     e.preventDefault();
-    saveJson();
+    openSaveDialog();
   }
 });
 
@@ -3408,7 +3451,13 @@ function init() {
   // ファイル
   $('openBtn').onclick = openJson;
   $('openBtnEmpty').onclick = openJson;
-  $('saveBtn').onclick = () => saveJson();
+  $('saveBtn').onclick = openSaveDialog;
+  $('saveOverwriteBtn').onclick = () => saveJson('overwrite');
+  $('saveAsBtn').onclick = () => saveJson('as');
+  $('saveDownloadBtn').onclick = () => saveJson('download');
+  $('downloadConfirmBtn').onclick = confirmDownloadedJson;
+  $('saveCloseBtn').onclick = () => $('saveDialog').close();
+  $('saveDialog').oncancel = event => { if (saving) event.preventDefault(); };
   $('newBtnEmpty').onclick = () => $('newDialog').showModal();
   $('fileInput').onchange = (e) => {
     const file = e.target.files[0];

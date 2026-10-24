@@ -65,9 +65,11 @@ async function retainedJsonRoundtrip(page) {
   const saveAndReopen = async (name, expectedTotals, expectedQuestions = [100, 60]) => {
     const event = page.waitForEvent('download');
     await page.locator('#saveBtn').click();
+    await page.locator('#saveDownloadBtn').click();
     const download = await event;
     const chunks = [];
     for await (const chunk of await download.createReadStream()) chunks.push(chunk);
+    await page.locator('#downloadConfirmBtn').click();
     const saved = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     const absent = saved.scores.filter(record => record.studentId === 'retained-a');
     assert.deepEqual(absent.map(record => record.total), expectedTotals);

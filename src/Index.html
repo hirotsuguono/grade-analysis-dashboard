@@ -410,6 +410,26 @@
   <!-- 面談カルテ印刷エリア（通常は非表示、印刷時のみ表示） -->
   <div id="printArea" aria-hidden="true"></div>
 
+  <dialog id="saveDialog" aria-labelledby="saveDialogTitle">
+    <div class="dialog-form">
+      <h2 id="saveDialogTitle">JSONの保存方法</h2>
+      <p id="saveTarget"></p>
+      <p id="saveCapabilityNote" class="form-note"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-primary" id="saveOverwriteBtn">上書き保存</button>
+        <button type="button" class="btn btn-ghost" id="saveAsBtn">名前を付けて保存</button>
+      </div>
+      <label>ダウンロードするファイル名<input type="text" id="saveDownloadName" autocomplete="off"></label>
+      <button type="button" class="btn btn-ghost" id="saveDownloadBtn">JSONをダウンロード</button>
+      <p class="form-note">ダウンロードでは保存場所や完了をアプリから確認できません。ファイルを確認後、下の「保存を確認しました」を押してください。保存場所を毎回選びたい場合は、ブラウザのダウンロード設定で「保存場所を確認する」を有効にします。</p>
+      <p id="saveResult" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="saveCloseBtn">閉じる</button>
+        <button type="button" class="btn btn-primary" id="downloadConfirmBtn" hidden>ファイルの保存を確認しました</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="comparisonDialog" aria-labelledby="comparisonTitle">
     <form class="dialog-form" id="comparisonForm">
       <h2 id="comparisonTitle">テストの種類・比較対象</h2>
