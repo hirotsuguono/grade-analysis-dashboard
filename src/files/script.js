@@ -715,12 +715,12 @@ async function saveJson(mode = 'download') {
           target.name.toLowerCase() === (fileName || '').toLowerCase();
         if (same) { $('saveResult').textContent = '元のファイルを残すため、別のファイル名または保存先を選んでください。'; return; }
       }
-    } else {
-      if (typeof target.requestPermission === 'function' && await target.requestPermission({mode:'readwrite'}) !== 'granted') {
-        $('saveResult').textContent = '書き込みが許可されませんでした。作業中のデータは保持しています。'; return;
-      }
+    } else if (typeof target.requestPermission === 'function' && await target.requestPermission({mode:'readwrite'}) !== 'granted') {
+      $('saveResult').textContent = '書き込みが許可されませんでした。作業中のデータは保持しています。'; return;
+    }
+    if (mode === 'overwrite') {
       const diskNow = await (await target.getFile()).text();
-      if (diskNow !== lastDiskText && !confirm('このJSONは開いた後に変更されています。あなたの内容で上書きしますか？\nキャンセルすると作業中のデータを保持して保存をやめます。')) return;
+      if (diskNow !== lastDiskText && !confirm('保存先の内容が、開いた時点または前回保存したJSONと異なります。あなたの内容で上書きしますか？\nキャンセルすると作業中のデータを保持して保存をやめます。')) return;
     }
     if (token !== activeDataToken) return;
     writable = await target.createWritable();
