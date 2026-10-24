@@ -97,7 +97,7 @@ test('読み込んだ欠席レコードの合計が残っていても概要・�
 
 test('分野の前回比較は両方出席した生徒だけを数え、5名未満なら効果量を出さない', () => {
   const dataset = fictionalDataset([0, 10, 20, 30, 40, 100]);
-  const second = { ...dataset.tests[0], id: 't2', name: '架空期末', date: '2026-07-20' };
+  const second = { ...dataset.tests[0], id: 't2', name: '架空期末', date: '2026-07-20', compareTo: 't1' };
   dataset.tests.push(second);
   dataset.scores.push(...dataset.students.map((s, i) => ({
     studentId: s.id, testId: 't2', total: [0, 30, 60, 90, 100, 0][i],

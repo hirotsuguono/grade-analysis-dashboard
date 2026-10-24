@@ -157,6 +157,16 @@ test('four-domain workbook preserves roster and separate test grade/date, zero a
   assert.equal(d.scores.length, 1); assert.equal(d.scores[0].total, 60);
   assert.equal(d.scores[0].questions.q1, 0); assert.equal(d.scores[0].studentId, 's1');
 });
+test('test kinds and series round-trip through Excel; invalid kinds abort the workbook', async () => {
+  const h=harness(),d=dataset(),rows=splitTestRows();h.api.setData(d);
+  rows[0][3]='テスト種類';rows[0][4]='実力テスト';rows[1][3]='比較系列';rows[1][4]='架空シリーズA';
+  await h.api.importTestTemplate(fileFromSheets([['新規テスト',rows]]));
+  assert.equal(d.tests[0].kind,'proficiency');assert.equal(d.tests[0].series,'架空シリーズA');
+  for (const label of ['未分類','単元テスト','中間テスト','期末テスト','実力テスト','その他']) assert.ok(h.core.parseTestKind(label));
+  rows[0][4]='不正な種類';const before=JSON.stringify(d);
+  await h.api.importTestTemplate(fileFromSheets([['新規テスト',rows]]));
+  assert.equal(JSON.stringify(d),before);
+});
 test('entire question-column insertions and additions never move new metadata or IDs', async () => {
   const h = harness(), d = dataset(); h.api.setData(d); h.api.issueNewTestTemplate();
   const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['新規テスト'], {header: 1, defval: ''});

@@ -7,8 +7,11 @@ let fileName = '';
 let dirty = false;
 let lastDiskText = '';    // 開いた／前回保存した時点のディスク上の内容（外部変更検知用）
 
-// Local double-click mode always uses file input and downloads; no server or picker permission needed.
+// Local double-click mode opens through file input; direct-save support is detected independently.
 const supportsFS = ['http:', 'https:'].includes(window.location?.protocol) && 'showOpenFilePicker' in window;
+let saving = false;
+let pendingDownload = null;
+let activeDataToken = 0;
 const FILE_TYPES = [{ description: 'JSONファイル', accept: { 'application/json': ['.json'] } }];
 
 // 系列色。色だけに頼らず、パターンと数値のデータ表を併用する。
@@ -25,18 +28,19 @@ const ui = {
   ovClass: 'all', ovTest: '', ovSubject: 'all',
   inClass: 'all', inTest: '', inSubject: 'all',
   anClass: 'all', anTest: '', anSubject: 'all',
-  trendClass: 'all', trendSearch: '', trendSubject: '',
+  trendClass: 'all', trendSearch: '', trendSubject: '', trendKind: 'all',
   trendSelected: new Set(),
   metClass: 'all', metricId: '',
   corrX: '', corrY: '',
   listSubject: 'all', listClass: 'all', listMode: 'total', listHeat: true, listPivot: 60, listSort: null,
   listGrade: 'all', listTerm: 'all',
-  rtiSubject: 'all', rtiClass: 'all', rtiBasis: 'latest', rtiSelectedIv: null,
+  rtiSubject: 'all', rtiClass: 'all', rtiKind: 'all', rtiBasis: 'latest', rtiSelectedIv: null,
 };
 
 let isAdmin = false; // 管理者モード（誤操作防止。本来の保護は共有フォルダの権限で行う）
 
 const SUM_KEY = '__sum__'; // 個人推移の「5教科合計」モード
+const TEST_KINDS = { unclassified: '未分類', unit: '単元テスト', midterm: '中間テスト', final: '期末テスト', proficiency: '実力テスト', other: 'その他' };
 
 let scoreIndex = new Map(); // `${studentId}:${testId}` -> score record
 
@@ -203,9 +207,9 @@ function termKeyOf(t) {
 }
 
 // 回の一覧を時間順（実施学年→登録順）で返す
-function termOrderedList() {
+function termOrderedList(tests = data.tests) {
   const seen = new Map();
-  data.tests.forEach((t, i) => {
+  tests.forEach((t, i) => {
     const k = termKeyOf(t);
     if (!seen.has(k)) {
       seen.set(k, { key: k, gy: t.gradeYear || 0, date: t.date || '', idx: i });
@@ -224,9 +228,80 @@ function termOrderedList() {
 }
 
 // テスト配列を回の時間順に並べ替える
-function sortTestsByTerm(tests) {
-  const order = termOrderedList();
+function sortTestsByTerm(tests, allTests = data.tests) {
+  const order = termOrderedList(allTests);
   return [...tests].sort((a, b) => order.indexOf(termKeyOf(a)) - order.indexOf(termKeyOf(b)));
+}
+
+function comparisonCandidates(test, tests = data.tests) {
+  const ordered = sortTestsByTerm(tests.filter(t => t.subject === test.subject));
+  const index = ordered.findIndex(t => t.id === test.id);
+  return index < 0 ? [] : ordered.slice(0, index);
+}
+
+function comparisonTarget(test) {
+  if (!test) return null;
+  const candidates = comparisonCandidates(test);
+  if (Object.hasOwn(test, 'compareTo')) return candidates.find(t => t.id === test.compareTo) || null;
+  if (!['midterm', 'final', 'proficiency'].includes(test.kind)) return null;
+  if (test.kind === 'proficiency' && !test.series?.trim()) return null;
+  return candidates.filter(t => t.kind === test.kind && (t.series || '').trim() === (test.series || '').trim()).at(-1) || null;
+}
+
+function testKindMatches(test, kind) {
+  return !kind || kind === 'all' || (test.kind || 'unclassified') === kind;
+}
+
+function fillKindSelect(id, value, filter = false) {
+  const select = $(id);
+  select.innerHTML = (filter ? '<option value="all">全種類</option>' : '') +
+    Object.entries(TEST_KINDS).map(([key, label]) => `<option value="${key}">${label}</option>`).join('');
+  select.value = value || (filter ? 'all' : 'unclassified');
+}
+
+function refreshComparisonChoices() {
+  const test = testById($('cfTest').value);
+  if (!test) return;
+  const select = $('cfCompare');
+  const current = select.value || 'auto';
+  select.innerHTML = '<option value="auto">同じ種類から自動で選ぶ</option><option value="none">比較しない</option>' +
+    comparisonCandidates(test).map(t => `<option value="${esc(t.id)}">${esc(termKeyOf(t))} / ${TEST_KINDS[t.kind || 'unclassified']} / ${esc(t.date || '日付未設定')}</option>`).join('');
+  select.value = [...select.options].some(o => o.value === current) ? current : 'none';
+  const draft = { ...test, kind: $('cfKind').value, series: $('cfSeries').value.trim() };
+  if (select.value === 'auto') delete draft.compareTo;
+  else draft.compareTo = select.value === 'none' ? null : select.value;
+  const target = comparisonTarget(draft);
+  $('cfStatus').textContent = target ? `比較対象：${termKeyOf(target)}（${target.date || '日付未設定'}）` : '比較対象はありません。単元・その他・未分類、シリーズ未設定の実力テストは自動比較しません。';
+}
+
+function loadComparisonForm() {
+  const test = testById($('cfTest').value);
+  if (!test) return;
+  fillKindSelect('cfKind', test.kind);
+  $('cfSeries').value = test.series || '';
+  $('cfCompare').innerHTML = `<option value="${esc(Object.hasOwn(test, 'compareTo') ? test.compareTo || 'none' : 'auto')}"></option>`;
+  refreshComparisonChoices();
+}
+
+function openComparisonDialog(testId) {
+  if (!data.tests.length) return;
+  $('cfTest').innerHTML = sortTestsByTerm(data.tests).map(t => `<option value="${esc(t.id)}">${esc(termKeyOf(t))}（${esc(t.subject)}）</option>`).join('');
+  $('cfTest').value = testById(testId) ? testId : data.tests[0].id;
+  loadComparisonForm();
+  $('comparisonDialog').showModal();
+}
+
+function submitComparisonForm(event) {
+  event.preventDefault();
+  const test = testById($('cfTest').value);
+  if (!test) return;
+  test.kind = $('cfKind').value;
+  test.series = $('cfSeries').value.trim();
+  if ($('cfCompare').value === 'auto') delete test.compareTo;
+  else test.compareTo = $('cfCompare').value === 'none' ? null : $('cfCompare').value;
+  markDirty();
+  $('comparisonDialog').close();
+  renderAll();
 }
 
 // 問題得点から合計・分野別を再計算する
@@ -407,6 +482,8 @@ function validateDataset(parsed) {
     else { testIds.add(t.id); testsById.set(t.id, t); }
     if (typeof t.name !== 'string' || typeof t.subject !== 'string') add(`tests[${i}] のテスト名・教科は文字列にしてください。`);
     if (!Number.isFinite(t.maxScore) || t.maxScore <= 0) add(`テスト「${t.name || t.id || i}」の満点が不正です。`);
+    if (t.kind != null && (typeof t.kind !== 'string' || !Object.hasOwn(TEST_KINDS, t.kind))) add(`テスト「${t.name || t.id || i}」の種類が不正です。`);
+    if (t.series != null && typeof t.series !== 'string') add(`テスト「${t.name || t.id || i}」の比較系列が不正です。`);
     if (t.date && normalizeDateValue(t.date) !== t.date) add(`テスト「${t.name || t.id || i}」の実施日が不正です。`);
     if (t.domains != null && (!Array.isArray(t.domains) || t.domains.some(d => !d || typeof d.key !== 'string' || typeof d.label !== 'string' || !Number.isFinite(d.max) || d.max <= 0))) add(`テスト「${t.name || t.id || i}」の分野が不正です。`);
     if (t.questions != null && !Array.isArray(t.questions)) {
@@ -425,6 +502,18 @@ function validateDataset(parsed) {
     }
   });
 
+  for (const test of parsed.tests) {
+    if (!test || test.compareTo == null) continue;
+    const target = testsById.get(test.compareTo);
+    if (typeof test.compareTo !== 'string' || !target || target.id === test.id || target.subject !== test.subject) {
+      add('比較対象は同じ教科の別のテストを指定してください。');
+    } else {
+      // Use the parsed dataset here; loading must not depend on the currently open data.
+      const validTests = parsed.tests.filter(t => t && typeof t === 'object');
+      const order = sortTestsByTerm(validTests, validTests);
+      if (order.indexOf(target) >= order.indexOf(test)) add('比較対象は過去のテストを指定してください。');
+    }
+  }
   const scoreKeys = new Set();
   parsed.scores.forEach((rec, i) => {
     if (!rec || typeof rec !== 'object') { add(`scores[${i}] がオブジェクトではありません。`); return; }
@@ -470,6 +559,7 @@ function validateDataset(parsed) {
   if (parsed.interventions != null && !Array.isArray(parsed.interventions)) add('interventions は配列である必要があります。');
   for (const iv of (Array.isArray(parsed.interventions) ? parsed.interventions : [])) {
     if (!iv || typeof iv !== 'object') { add('支援記録はオブジェクトにしてください。'); continue; }
+    if (iv.kind != null && iv.kind !== 'all' && (typeof iv.kind !== 'string' || !Object.hasOwn(TEST_KINDS, iv.kind))) add('支援記録のテスト種類が不正です。');
     if (iv && !studentIds.has(iv.studentId)) add(`支援記録「${iv.title || iv.id}」が存在しない生徒IDを参照しています。`);
     if (typeof iv.id !== 'string' || typeof iv.title !== 'string' || typeof iv.subject !== 'string') add('支援記録のID・内容・教科は文字列にしてください。');
     // 旧形式の未設定項目は許容し、指定された日付は並び替え可能な形式に限定する。
@@ -512,6 +602,8 @@ function applyJsonText(text, name, handle) {
     return;
   }
   data = parsed;
+  activeDataToken++;
+  pendingDownload = null;
   let migrated = removedOrphanInterventions > 0;
   if (!data.metrics) { data.metrics = []; migrated = true; }
   // 移行：出席番号(number)が無い生徒は id を初期値として補う
@@ -539,6 +631,7 @@ function applyJsonText(text, name, handle) {
   ui.listClass = 'all'; ui.listMode = 'total'; ui.listSort = null; ui.listPivot = 60;
   ui.listGrade = 'all'; ui.listTerm = 'all';
   ui.rtiSubject = 'all'; ui.rtiClass = 'all'; ui.rtiBasis = 'latest'; ui.rtiSelectedIv = null;
+  ui.trendKind = ui.rtiKind = 'all';
   isAdmin = false; // ファイルを開くたびに教員モードへ戻す
   ui.trendSubject = data.tests.length ? data.tests[0].subject : '';
   const lastTest = data.tests.length ? data.tests[data.tests.length - 1].id : '';
@@ -564,60 +657,98 @@ function applyJsonText(text, name, handle) {
   }
 }
 
-async function saveJson() {
-  if (!data) return;
-  const validationErrors = validateDataset(data);
-  if (validationErrors.length) {
-    alert('データに問題があるため保存できません。\n\n・' + validationErrors.join('\n・'));
-    return;
+function canPickSaveFile() {
+  return window.isSecureContext !== false && typeof window.showSaveFilePicker === 'function';
+}
+
+function openSaveDialog() {
+  if (!data || saving) return;
+  const supported = canPickSaveFile();
+  $('saveOverwriteBtn').disabled = !supported;
+  $('saveAsBtn').disabled = !supported;
+  $('saveTarget').textContent = fileHandle ? `上書き先：${fileHandle.name}` : '上書き先は未指定です。最初に既存のJSONを保存先として選択してください。';
+  $('saveCapabilityNote').textContent = supported ?
+    'このブラウザでは保存先を選択できます。初回は書き込み先のJSONを選び、次からは同じファイルへ上書きできます。' :
+    'このブラウザではファイルへの直接保存を利用できません。JSONをダウンロードして保存してください。';
+  $('saveDownloadName').value = fileName || 'seiseki-data.json';
+  $('downloadConfirmBtn').hidden = !pendingDownload;
+  $('saveResult').textContent = pendingDownload ? '先ほどダウンロードしたファイルの保存先と内容を確認してください。' : '';
+  $('saveDialog').showModal();
+}
+
+function setSaveBusy(value) {
+  saving = value;
+  for (const id of ['saveOverwriteBtn', 'saveAsBtn', 'saveDownloadBtn', 'downloadConfirmBtn', 'saveCloseBtn']) {
+    $(id).disabled = value || (['saveOverwriteBtn', 'saveAsBtn'].includes(id) && !canPickSaveFile());
   }
+}
+
+async function saveJson(mode = 'download') {
+  if (!data || saving) return;
+  const validationErrors = validateDataset(data);
+  if (validationErrors.length) { alert('データに問題があるため保存できません。\n\n・' + validationErrors.join('\n・')); return; }
   const text = JSON.stringify(data, null, 2);
-  if (supportsFS) {
-    try {
-      if (!fileHandle) {
-        fileHandle = await window.showSaveFilePicker({
-          suggestedName: fileName || 'seiseki-data.json',
-          types: FILE_TYPES,
-        });
-        fileName = fileHandle.name;
-        $('datasetName').textContent = `${data.name || ''}（${fileName}）`;
-      } else {
-        // 共有ファイルの上書き事故防止：開いた時から他者が更新していないか確認
-        let diskNow = null;
-        try {
-          diskNow = await (await fileHandle.getFile()).text();
-        } catch { /* 読めない場合は検知をスキップ */ }
-        if (diskNow != null && diskNow !== lastDiskText) {
-          const ok = confirm(
-            'このファイルは、あなたが開いたあとに別の人が更新しています。\n' +
-            'このまま保存すると、その人の入力が消える可能性があります。\n\n' +
-            '［OK］あなたの内容で上書きする\n' +
-            '［キャンセル］保存をやめる（先にファイルを開き直して、最新を確認してください）'
-          );
-          if (!ok) return;
-        }
-      }
-      const writable = await fileHandle.createWritable();
-      await writable.write(text);
-      await writable.close();
-      dirty = false;
-      lastDiskText = text;  // 保存した内容を新たな基準に
-      updateSaveStatus(true);
-    } catch (e) {
-      if (e.name !== 'AbortError') alert('保存に失敗しました: ' + e.message);
-    }
-  } else {
-    // フォールバック：ダウンロード
+  const token = activeDataToken;
+  if (mode === 'download') {
+    const name = $('saveDownloadName').value.trim();
+    if (!name || /[\\/:*?"<>|]/.test(name)) { $('saveResult').textContent = 'ファイル名を入力してください。記号 \\ / : * ? " < > | は使えません。'; return; }
     const blob = new Blob([text], { type: 'application/json' });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName || 'seiseki-data.json';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
-    dirty = false;
-    lastDiskText = text;
-    updateSaveStatus(true);
+    a.href = URL.createObjectURL(blob); a.download = /\.json$/i.test(name) ? name : name + '.json';
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    pendingDownload = { text, token };
+    $('downloadConfirmBtn').hidden = false;
+    $('saveResult').textContent = 'ダウンロードを開始しました。保存されたJSONを確認してください。';
+    $('saveStatus').textContent = 'JSONを出力しました。保存先でファイルを確認してください。';
+    return;
   }
+  if (!canPickSaveFile()) { $('saveResult').textContent = '直接保存を利用できません。JSONをダウンロードしてください。'; return; }
+  setSaveBusy(true);
+  let writable;
+  try {
+    let target = mode === 'overwrite' ? fileHandle : null;
+    if (!target) {
+      const suggestedName = mode === 'as' ? (fileName || 'seiseki-data.json').replace(/\.json$/i, '') + '_copy.json' : fileName || 'seiseki-data.json';
+      target = await window.showSaveFilePicker({ suggestedName, types: FILE_TYPES });
+      if (mode === 'as') {
+        const same = fileHandle && typeof target.isSameEntry === 'function' ? await target.isSameEntry(fileHandle) :
+          target.name.toLowerCase() === (fileName || '').toLowerCase();
+        if (same) { $('saveResult').textContent = '元のファイルを残すため、別のファイル名または保存先を選んでください。'; return; }
+      }
+    } else if (typeof target.requestPermission === 'function' && await target.requestPermission({mode:'readwrite'}) !== 'granted') {
+      $('saveResult').textContent = '書き込みが許可されませんでした。作業中のデータは保持しています。'; return;
+    }
+    if (mode === 'overwrite') {
+      const diskNow = await (await target.getFile()).text();
+      if (diskNow !== lastDiskText && !confirm('保存先の内容が、開いた時点または前回保存したJSONと異なります。あなたの内容で上書きしますか？\nキャンセルすると作業中のデータを保持して保存をやめます。')) return;
+    }
+    if (token !== activeDataToken) return;
+    writable = await target.createWritable();
+    await writable.write(text);
+    await writable.close(); writable = null;
+    if (token !== activeDataToken) return;
+    fileHandle = target; fileName = target.name; lastDiskText = text;
+    pendingDownload = null;
+    dirty = JSON.stringify(data, null, 2) !== text;
+    $('datasetName').textContent = `${data.name || ''}（${fileName}）`;
+    updateSaveStatus(true);
+    $('saveDialog').close();
+  } catch (error) {
+    if (writable) { try { await writable.abort(); } catch {} }
+    $('saveResult').textContent = error.name === 'AbortError' ? '保存をキャンセルしました。作業中のデータは保持しています。' :
+      '保存できませんでした。作業中のデータは保持しています。別の保存先を選ぶかJSONをダウンロードしてください。';
+  } finally { setSaveBusy(false); }
+}
+
+function confirmDownloadedJson() {
+  if (!pendingDownload) return;
+  if (pendingDownload.token !== activeDataToken || pendingDownload.text !== JSON.stringify(data, null, 2)) {
+    $('saveResult').textContent = 'ダウンロード後にデータが変更されています。現在の内容をもう一度保存してください。'; return;
+  }
+  dirty = false; pendingDownload = null;
+  updateSaveStatus();
+  $('saveStatus').textContent = '✓ ダウンロードしたJSONの保存を確認済み';
+  $('saveDialog').close();
 }
 
 function markDirty() {
@@ -647,7 +778,7 @@ window.addEventListener('beforeunload', (e) => {
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 's') {
     e.preventDefault();
-    saveJson();
+    openSaveDialog();
   }
 });
 
@@ -716,6 +847,8 @@ function renderAll() {
   fillListTermSelect();
   fillListClassSelect();
   fillSubjectSelect($('rtiSubject'), ui.rtiSubject);
+  fillKindSelect('trendKind', ui.trendKind || 'all', true);
+  fillKindSelect('rtiKind', ui.rtiKind || 'all', true);
   fillClassSelect($('rtiClass'), ui.rtiClass);
   $('rtiBasis').value = ui.rtiBasis;
   $('listMode').value = ui.listMode;
@@ -753,32 +886,21 @@ function renderOverview() {
     .filter((r) => r && r.total != null)
     .map((r) => r.total);
 
-  // 前回比：同じ教科でこのテストの1つ前のテストと平均点を比較
-  const subjTests = sortTestsByTerm(data.tests.filter((t) => t.subject === test.subject));
-  const idx = subjTests.findIndex((t) => t.id === test.id);
+  const prev = comparisonTarget(test);
   let deltaHtml = '';
-  if (idx > 0 && totals.length) {
-    const prev = subjTests[idx - 1];
-    // 両方受けた生徒だけで比較（対応のある比較）
-    const pairs = [];
-    for (const s of students) {
-      const a = getAttendedScore(s.id, prev.id);
-      const b = getAttendedScore(s.id, test.id);
-      if (a && a.total != null && b && b.total != null) pairs.push([a.total, b.total]);
-    }
+  if (prev) {
+    const pairs = students.flatMap(student => {
+      const a = getAttendedScore(student.id, prev.id), b = getAttendedScore(student.id, test.id);
+      return a?.total != null && b?.total != null ? [[a.total / prev.maxScore * 100, b.total / test.maxScore * 100]] : [];
+    });
+    deltaHtml = `<div class="card-note">比較：${esc(termKeyOf(prev))}（両方受験 ${pairs.length}名）</div>`;
     if (pairs.length >= 2) {
-      const m1 = mean(pairs.map((p) => p[0]));
-      const m2 = mean(pairs.map((p) => p[1]));
-      const diff = round1(m2 - m1);
-      if (diff >= 0.5) deltaHtml = `<div class="kpi-delta up">▲ ${diff} <small>前回比</small></div>`;
-      else if (diff <= -0.5) deltaHtml = `<div class="kpi-delta down">▼ ${Math.abs(diff)} <small>前回比</small></div>`;
-      else deltaHtml = `<div class="kpi-delta flat">→ ほぼ横ばい</div>`;
-      // 同じ生徒の前後比較なので、差分の標準偏差を使う Cohen's dz
+      const diff = round1(mean(pairs.map(p => p[1] - p[0])));
+      deltaHtml += `<div class="kpi-delta ${diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat'}">得点率差 ${diff > 0 ? '+' : ''}${diff}ポイント</div>`;
       const dz = pairedCohensDz(pairs);
-      if (dz != null) {
-        deltaHtml += `<div class="kpi-es es-link" title="クリックで効果量の説明を表示（両方受験した${pairs.length}名で計算）">効果量 dz = ${esFmt(dz)}（${esLabel(dz)}）</div>`;
-      }
-    }
+      if (dz != null) deltaHtml += `<div class="kpi-es es-link">効果量 dz = ${esFmt(dz)}（得点率の差・参考値）</div>`;
+    } else deltaHtml += '<div class="card-note">比較人数が不足しています。</div>';
+    deltaHtml += '<div class="card-note">範囲・難しさが異なるため、学力の変化や支援の因果効果を示すものではありません。</div>';
   }
 
   // クラス間の差（全クラス表示時）：最高クラスと最低クラスの平均差を効果量つきで
@@ -1220,6 +1342,8 @@ function openTestDialog() {
   $('tfGrade').value = lastGy ? String(lastGy) : '';
   $('tfDate').value = '';
   $('tfMax').value = 100;
+  fillKindSelect('tfKind');
+  $('tfSeries').value = '';
   $('tfDomains').innerHTML = '';
   $('tfQuestions').innerHTML = '';
   $('testDialog').showModal();
@@ -1256,6 +1380,7 @@ function submitTestDialog(e) {
     id: 't' + Date.now(),
     name: $('tfName').value.trim(),
     subject: $('tfSubject').value.trim(),
+    kind: $('tfKind').value || 'unclassified', series: $('tfSeries').value.trim(),
     maxScore,
     domains,
     questions,
@@ -1281,6 +1406,7 @@ function deleteCurrentTest() {
   if (!test) return;
   if (!confirm(`「${test.name}」と入力済みの得点をすべて削除します。よろしいですか？`)) return;
   data.tests = data.tests.filter((t) => t.id !== test.id);
+  for (const remaining of data.tests) if (remaining.compareTo === test.id) remaining.compareTo = null;
   data.scores = data.scores.filter((s) => s.testId !== test.id);
   rebuildIndex();
   const last = data.tests.length ? data.tests[data.tests.length - 1].id : '';
@@ -1329,17 +1455,18 @@ function completeTermTotal(sid, tests) {
 // （実施学年＋テスト名）でまとめる。どちらも回の時間順（1年→2年→3年）に並ぶ
 function trendAxis() {
   const subj = ui.trendSubject;
+  const selectedTests = data.tests.filter(t => testKindMatches(t, ui.trendKind));
   if (subj === SUM_KEY) {
-    const keys = termOrderedList();
+    const keys = termOrderedList(selectedTests);
     const byKey = new Map(keys.map((k) => [k, []]));
-    for (const t of data.tests) byKey.get(termKeyOf(t)).push(t);
+    for (const t of selectedTests) byKey.get(termKeyOf(t)).push(t);
     return {
       labels: keys,
       yName: '合計点',
       valueOf: (sid) => keys.map((k) => completeTermTotal(sid, byKey.get(k))),
     };
   }
-  const tests = sortTestsByTerm(data.tests.filter((t) => t.subject === subj));
+  const tests = sortTestsByTerm(selectedTests.filter((t) => t.subject === subj));
   return {
     labels: tests.map(termKeyOf),
     yName: '得点',
@@ -1415,7 +1542,7 @@ function renderTrendDomainChart() {
   }
   const sid = [...ui.trendSelected][0];
   const student = data.students.find((s) => s.id === sid);
-  const subjectTests = sortTestsByTerm(data.tests.filter((t) => t.subject === ui.trendSubject));
+  const subjectTests = sortTestsByTerm(data.tests.filter((t) => t.subject === ui.trendSubject && testKindMatches(t, ui.trendKind)));
   card.hidden = false;
   $('trendDomainTitle').textContent = `${student.name}さんの分野別 得点率の推移（${ui.trendSubject}）`;
 
@@ -1488,10 +1615,8 @@ function renderAnalysis() {
     msg = '📌 ' + msg + ' です。';
 
     // 前回テスト比：分野ごとの伸びを効果量で（同じ分野キーを持つ直前テストと比較）
-    const subjTests = sortTestsByTerm(data.tests.filter((t) => t.subject === test.subject));
-    const tIdx = subjTests.findIndex((t) => t.id === test.id);
-    if (tIdx > 0) {
-      const prev = subjTests[tIdx - 1];
+    const prev = comparisonTarget(test);
+    if (prev) {
       const moves = [];
       for (const d of testDomains(test)) {
         const prevMax = domainMax(prev, d.key);
@@ -1507,17 +1632,12 @@ function renderAnalysis() {
         }
         if (pairs.length >= 5) {
           const dz = pairedCohensDz(pairs);
-          if (dz != null) moves.push({ label: d.label, d: dz });
+          if (dz != null) moves.push({ label: d.label, d: dz, n: pairs.length });
         }
       }
       if (moves.length) {
-        const best = moves.reduce((a, b) => (a.d >= b.d ? a : b));
-        const worst = moves.reduce((a, b) => (a.d <= b.d ? a : b));
-        let line = `<br>📈 前回（${esc(prev.name)}）と比べて、伸びが大きい分野は <strong>${esc(best.label)}</strong>（効果量 dz=${esFmt(best.d)}・${esLabel(best.d)}）`;
-        if (worst.label !== best.label && worst.d <= -0.2) {
-          line += `、下がったのは <strong>${esc(worst.label)}</strong>（dz=${esFmt(worst.d)}）`;
-        }
-        line += `<span class="es-link">効果量とは？</span>`;
+        const biggest = moves.reduce((a, b) => Math.abs(a.d) >= Math.abs(b.d) ? a : b);
+        const line = `<br>比較：${esc(termKeyOf(prev))}。得点率の差が大きい分野：<strong>${esc(biggest.label)}</strong>（両方受験${biggest.n}名・効果量 dz=${esFmt(biggest.d)}、参考値）。範囲・難しさの違いも含む得点の変化です。<span class="es-link">効果量とは？</span>`;
         msg += line;
       }
     }
@@ -2288,10 +2408,11 @@ async function submitSettingsDialog(e) {
 // テスト回ごとの得点率の系列を返す。
 // 各テストは独立していて時系列ではないため、「全教科」のときは同じ回
 // （前期中間など同名テスト）の教科をまとめて平均し、回の並びとして扱う
-function termSeriesFor(sid, subject) {
+function termSeriesFor(sid, subject, kind = ui.rtiKind) {
   const subj = subject !== undefined ? subject : ui.rtiSubject;
+  const selectedTests = data.tests.filter(t => testKindMatches(t, kind));
   if (subj !== 'all') {
-    const tests = sortTestsByTerm(data.tests.filter((t) => t.subject === subj));
+    const tests = sortTestsByTerm(selectedTests.filter((t) => t.subject === subj));
     return {
       labels: tests.map(termKeyOf),
       rates: tests.map((t) => {
@@ -2301,9 +2422,9 @@ function termSeriesFor(sid, subject) {
     };
   }
   // 全教科：同じ回（実施学年＋テスト名）でまとめて平均得点率
-  const keys = termOrderedList();
+  const keys = termOrderedList(selectedTests);
   const byKey = new Map(keys.map((k) => [k, []]));
-  for (const t of data.tests) byKey.get(termKeyOf(t)).push(t);
+  for (const t of selectedTests) byKey.get(termKeyOf(t)).push(t);
   const rates = keys.map((k) => {
     const vals = [];
     for (const t of byKey.get(k)) {
@@ -2321,8 +2442,14 @@ function rtiRateFor(sid, subject, basis) {
   if (!vals.length) return { rate: null, delta: null };
   const useBasis = basis !== undefined ? basis : ui.rtiBasis;
   const rate = useBasis === 'avg' ? mean(vals) : vals[vals.length - 1];
-  const delta = vals.length >= 2 ? vals[vals.length - 1] - vals[vals.length - 2] : null;
-  return { rate, delta };
+  const subj = subject !== undefined ? subject : ui.rtiSubject;
+  const latest = sortTestsByTerm(data.tests.filter(t => t.subject === subj && testKindMatches(t, ui.rtiKind)))
+    .filter(t => getAttendedScore(sid, t.id)?.total != null).at(-1);
+  const previous = comparisonTarget(latest);
+  const previousScore = previous && getAttendedScore(sid, previous.id);
+  const currentScore = latest && getAttendedScore(sid, latest.id);
+  const delta = previousScore?.total != null ? currentScore.total / latest.maxScore * 100 - previousScore.total / previous.maxScore * 100 : null;
+  return { rate, delta, comparison: previous ? termKeyOf(previous) : '' };
 }
 
 function rtiTierOf(rate) {
@@ -2347,10 +2474,10 @@ function renderRti() {
   const buckets = { 1: [], 2: [], 3: [] };
   let noData = 0;
   for (const s of students) {
-    const { rate, delta } = rtiRateFor(s.id);
+    const { rate, delta, comparison } = rtiRateFor(s.id);
     const tier = rtiTierOf(rate);
     if (tier == null) { noData++; continue; }
-    buckets[tier].push({ s, rate, delta });
+    buckets[tier].push({ s, rate, delta, comparison });
   }
   // 低い順（支援優先度が高い順）に並べる
   for (const k of [1, 2, 3]) buckets[k].sort((a, b) => a.rate - b.rate);
@@ -2358,7 +2485,7 @@ function renderRti() {
   for (const tier of [1, 2, 3]) {
     const list = buckets[tier];
     $('rtiCount' + tier).textContent = `${list.length}名`;
-    $('rtiCards' + tier).innerHTML = list.map(({ s, rate, delta }) => {
+    $('rtiCards' + tier).innerHTML = list.map(({ s, rate, delta, comparison }) => {
       const deltaHtml = delta == null ? ''
         : delta >= 3 ? `<span class="rti-delta up">▲${round1(delta)}</span>`
         : delta <= -3 ? `<span class="rti-delta down">▼${round1(Math.abs(delta))}</span>`
@@ -2368,7 +2495,7 @@ function renderRti() {
         <span class="rti-card-name">${esc(s.name)}</span>
         <span class="rti-card-class">${esc(s.className || '')}</span>
         <span class="rti-card-rate">${round1(rate)}%</span>
-        ${deltaHtml}${ivBadge}
+        ${deltaHtml}${delta == null ? '' : `<span class="card-note">${esc(comparison)}との得点率差（ポイント）</span>`}${ivBadge}
       </button>`;
     }).join('') || '<div class="rti-empty">該当なし</div>';
   }
@@ -2413,6 +2540,7 @@ function submitIvDialog(e) {
     studentId: sid,
     title: $('ivTitle').value.trim(),
     subject,
+    kind: ui.rtiKind || 'all',
     startDate: $('ivStart').value,
     note: $('ivNote').value.trim(),
     baseline: rate != null ? round1(rate) : null, // 開始時の水準（効果確認の基準線）
@@ -2471,15 +2599,15 @@ function renderRtiProgress() {
   if (!s) { card.hidden = true; return; }
   card.hidden = false;
   $('rtiProgressTitle').textContent =
-    `${s.name}さんの推移（${iv.subject === 'all' ? '全教科' : iv.subject}）— 支援「${iv.title}」開始 ${iv.startDate || ''}`;
+    `${s.name}さんの推移（${iv.subject === 'all' ? '全教科' : iv.subject}・${iv.kind && iv.kind !== 'all' ? TEST_KINDS[iv.kind] : '全種類'}）— 支援「${iv.title}」開始 ${iv.startDate || ''}`;
 
   // テスト回ごとの系列（全教科なら同じ回の教科平均）。テストは独立なので回単位で並べる
-  const stuSeries = termSeriesFor(s.id, iv.subject);
+  const stuSeries = termSeriesFor(s.id, iv.subject, iv.kind || 'all');
   let labels = stuSeries.labels;
   let rates = stuSeries.rates.map((v) => (v != null ? round1(v) : null));
   // クラス平均（各生徒の回ごとの値を平均）
   const scope = s.className ? data.students.filter((x) => x.className === s.className) : data.students;
-  let scopeSeries = scope.map((x) => termSeriesFor(x.id, iv.subject).rates);
+  let scopeSeries = scope.map((x) => termSeriesFor(x.id, iv.subject, iv.kind || 'all').rates);
   let avg = labels.map((_, i) => {
     const vals = scopeSeries.map((r) => r[i]).filter((v) => v != null);
     return vals.length ? round1(mean(vals)) : null;
@@ -2791,75 +2919,78 @@ function chartImageFrom(domId, width, height) {
   return url;
 }
 
-function printKarte() {
-  if (ui.trendSelected.size !== 1) return;
-  const sid = [...ui.trendSelected][0];
-  const student = data.students.find((s) => s.id === sid);
-  if (!student) return;
+const defaultKarteOptions = { basic: true, history: true, records: true, score: true, rate: true, average: true, trend: true, domain: true, memo: true };
+let karteOptions = { ...defaultKarteOptions };
 
-  // 成績の推移テーブル
-  let scoreRows = '';
-  for (const t of data.tests) {
-    const r = getAttendedScore(sid, t.id);
-    if (!r || r.total == null) continue;
-    const scope = studentsOf(student.className || 'all').length
-      ? data.students.filter((s) => s.className === student.className)
-      : data.students;
-    const avgVals = scope.map((s) => getAttendedScore(s.id, t.id)).filter((x) => x && x.total != null).map((x) => x.total);
-    const avg = avgVals.length ? round1(mean(avgVals)) : '—';
-    const rate = round1(r.total / t.maxScore * 100);
-    scoreRows += `<tr><td class="k-name">${esc(termKeyOf(t))}（${esc(t.subject)}）</td>` +
-      `<td>${r.total} / ${t.maxScore}</td><td>${rate}%</td><td>${avg}</td></tr>`;
+function buildKarteHtml(selected = defaultKarteOptions) {
+  if (!data || ui.trendSelected.size !== 1) return '';
+  const student = data.students.find(s => s.id === [...ui.trendSelected][0]);
+  if (!student) return '';
+  const opts = { ...defaultKarteOptions, ...selected };
+  if (!['basic', 'history', 'records', 'trend', 'domain', 'memo'].some(key => opts[key])) return '';
+  const sid = student.id;
+  const columns = [{ label: 'テスト', cell: t => `${esc(termKeyOf(t))}（${esc(t.subject)}）` }];
+  if (opts.score) columns.push({ label: '得点', cell: (t, r) => `${r.total} / ${t.maxScore}` });
+  if (opts.rate) columns.push({ label: '得点率', cell: (t, r) => `${round1(r.total / t.maxScore * 100)}%` });
+  if (opts.average) columns.push({ label: 'クラス平均', cell: t => {
+    const scope = student.className ? data.students.filter(s => s.className === student.className) : data.students;
+    const values = scope.map(s => getAttendedScore(s.id, t.id)).filter(r => r && r.total != null).map(r => r.total);
+    return values.length ? round1(mean(values)) : '—';
+  }});
+  let records = '';
+  if (opts.records) {
+    const rows = data.tests.filter(t => testKindMatches(t, ui.trendKind) &&
+      (!ui.trendSubject || ui.trendSubject === SUM_KEY || t.subject === ui.trendSubject)).flatMap(t => {
+      const rec = getAttendedScore(sid, t.id);
+      return !rec || rec.total == null ? [] : ['<tr>' + columns.map((col, i) => `<td${i === 0 ? ' class="k-name"' : ''}>${col.cell(t, rec)}</td>`).join('') + '</tr>'];
+    });
+    records = '<h2>テストの記録</h2><table><thead><tr>' + columns.map(col => `<th>${col.label}</th>`).join('') + '</tr></thead><tbody>' +
+      (rows.join('') || `<tr><td colspan="${columns.length}">記録された成績がありません</td></tr>`) + '</tbody></table>';
   }
-  if (!scoreRows) scoreRows = '<tr><td colspan="4">記録された成績がありません</td></tr>';
-
-  // チャート画像（固定幅・アニメ無効でクリーンに生成。横並びでA4 1ページに収める）
-  const trendImg = chartImageFrom('trendChart', 520, 340);
-  let domainImgHtml = '';
-  if (!$('trendDomainCard').hidden) {
-    const di = chartImageFrom('trendDomainChart', 520, 340);
-    domainImgHtml = `<img src="${di}" alt="分野別推移">`;
+  const images = [];
+  if (opts.trend) {
+    const url = chartImageFrom('trendChart', 520, 340);
+    if (url) images.push(`<img src="${url}" alt="得点推移">`);
   }
-
+  if (opts.domain && !$('trendDomainCard').hidden) {
+    const url = chartImageFrom('trendDomainChart', 520, 340);
+    if (url) images.push(`<img src="${url}" alt="分野別推移">`);
+  }
   const today = new Date();
   const dateStr = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
+  return `<div class="karte"><div class="karte-head"><div class="karte-title">学習の記録（${esc(data.name || '')}）</div>
+    <div class="karte-meta">${opts.basic ? `${esc(student.className || '')}　${esc(student.number ?? '')}番<br>氏名：${esc(student.name)}<br>` : ''}
+    ${opts.history && classTrail(student) ? 'クラス履歴：' + esc(classTrail(student)) + '<br>' : ''}作成日：${dateStr}</div></div>
+    ${records}${images.length ? '<h2>推移グラフ</h2><div class="karte-charts">' + images.join('') + '</div>' : ''}
+    ${opts.memo ? '<h2>面談メモ</h2><div class="karte-comment"></div>' : ''}
+    <p class="karte-note">※ このカルテは校内の個人情報の取り扱いルールに従って管理・廃棄してください。</p></div>`;
+}
 
-  $('printArea').innerHTML = `
-    <div class="karte">
-      <div class="karte-head">
-        <div class="karte-title">学習の記録（${esc(data.name || '')}）</div>
-        <div class="karte-meta">
-          ${esc(student.className || '')}　${esc(student.number != null ? student.number : '')}番<br>
-          氏名：${esc(student.name)}<br>
-          ${classTrail(student) ? 'クラス履歴：' + esc(classTrail(student)) + '<br>' : ''}
-          作成日：${dateStr}
-        </div>
-      </div>
+function renderKartePreview() {
+  for (const input of $('karteOptions').querySelectorAll('[data-karte]')) {
+    karteOptions[input.dataset.karte] = input.checked;
+    if (['score', 'rate', 'average'].includes(input.dataset.karte)) input.disabled = !karteOptions.records;
+  }
+  const html = buildKarteHtml(karteOptions);
+  $('kartePreview').innerHTML = html;
+  $('kartePrintBtn').disabled = !html;
+  $('karteStatus').textContent = html ? '' : '表示する項目を1つ以上選んでください。';
+}
 
-      <h2>テストの記録</h2>
-      <table>
-        <thead><tr><th>テスト</th><th>得点</th><th>得点率</th><th>クラス平均</th></tr></thead>
-        <tbody>${scoreRows}</tbody>
-      </table>
+function openKarteDialog() {
+  if (ui.trendSelected.size !== 1) return;
+  for (const input of $('karteOptions').querySelectorAll('[data-karte]')) input.checked = karteOptions[input.dataset.karte];
+  renderKartePreview();
+  $('karteDialog').showModal();
+}
 
-      <h2>推移グラフ</h2>
-      <div class="karte-charts">
-        <img src="${trendImg}" alt="得点推移">
-        ${domainImgHtml}
-      </div>
-
-      <h2>面談メモ</h2>
-      <div class="karte-comment"></div>
-
-      <p class="karte-note">※ このカルテは校内の個人情報の取り扱いルールに従って管理・廃棄してください。</p>
-    </div>`;
-
-  // グラフ画像（dataURL）のデコード完了を待ってから印刷する
-  // （待たずにprintするとプレビューでグラフが空白になる）
+function printKarte(options = defaultKarteOptions) {
+  const html = buildKarteHtml(options);
+  if (!html) return;
+  $('printArea').innerHTML = html;
   const imgs = [...$('printArea').querySelectorAll('img')];
-  const ready = imgs.map((img) => (img.complete && img.naturalWidth
-    ? Promise.resolve()
-    : (img.decode ? img.decode().catch(() => {}) : new Promise((res) => { img.onload = img.onerror = res; }))));
+  const ready = imgs.map(img => img.complete && img.naturalWidth ? Promise.resolve() :
+    img.decode ? img.decode().catch(() => {}) : new Promise(resolve => { img.onload = img.onerror = resolve; }));
   Promise.all(ready).then(() => window.print());
 }
 
@@ -2999,8 +3130,8 @@ function issueNewTestTemplate() {
   if (typeof XLSX === 'undefined') { alert('Excel出力ライブラリの読み込みに失敗しました。'); return; }
   const students = sortedStudents();
   const rows = [
-    ['テスト名', ''],
-    ['教科', ''],
+    ['テスト名', '', '', 'テスト種類', '未分類'],
+    ['教科', '', '', '比較系列', ''],
     ['満点', ''],
     ['実施学年', ''],
     ['実施日', ''],
@@ -3031,6 +3162,7 @@ function issueNewTestTemplate() {
   XLSX.utils.book_append_sheet(wb, example, '記入例');
   const help = XLSX.utils.aoa_to_sheet([
     ['新規テストExcelの書き方'],
+    ['E1はテスト種類（単元テスト・中間テスト・期末テスト・実力テスト・その他・未分類）、E2は単元名や試験シリーズ（任意）です。未分類は自動比較しません。比較相手は取込後に「テストの種類・比較対象」から変更できます。'],
     ['1. 「新規テスト」シートのB1にテスト名、B2に教科を入力します。B3の満点は空欄なら配点合計です。'],
     ['2. B4はテストの実施学年（1〜3、任意）、B5は実施日（YYYY-MM-DD、任意）です。生徒の学年とは別です。'],
     ['3. A〜E列の生徒ID・学年・クラス・出席番号・氏名は自動記入済みです。変更せず、同じJSONへ取り込んでください。'],
@@ -3096,7 +3228,9 @@ async function importTestTemplate(file) {
     alert(`問題の配点合計（${questionMaxSum}点）がテストの満点（${maxScore}点）を超えています。Excelを修正してください。`);
     return;
   }
-  const test = { id: 't' + Date.now(), name, subject, maxScore, domains, questions };
+  const kind = window.GD_IMPORT.parseTestKind(metadata['テスト種類']);
+  if (!kind) { alert('テスト種類は単元テスト・中間テスト・期末テスト・実力テスト・その他・未分類から選んでください。'); return; }
+  const test = { id: 't' + Date.now(), name, subject, maxScore, domains, questions, kind, series: String(metadata['比較系列'] ?? '').trim() };
   const gradeText = String(metadata['実施学年'] ?? '').trim();
   if (gradeText && !/^[123]$/.test(gradeText)) { alert('実施学年は1〜3の整数、または空欄にしてください。'); return; }
   if (gradeText) test.gradeYear = Number(gradeText);
@@ -3317,7 +3451,13 @@ function init() {
   // ファイル
   $('openBtn').onclick = openJson;
   $('openBtnEmpty').onclick = openJson;
-  $('saveBtn').onclick = () => saveJson();
+  $('saveBtn').onclick = openSaveDialog;
+  $('saveOverwriteBtn').onclick = () => saveJson('overwrite');
+  $('saveAsBtn').onclick = () => saveJson('as');
+  $('saveDownloadBtn').onclick = () => saveJson('download');
+  $('downloadConfirmBtn').onclick = confirmDownloadedJson;
+  $('saveCloseBtn').onclick = () => $('saveDialog').close();
+  $('saveDialog').oncancel = event => { if (saving) event.preventDefault(); };
   $('newBtnEmpty').onclick = () => $('newDialog').showModal();
   $('fileInput').onchange = (e) => {
     const file = e.target.files[0];
@@ -3477,7 +3617,20 @@ function init() {
 
   // バックアップ・カルテ印刷
   $('backupBtn').onclick = backupJson;
-  $('printKarteBtn').onclick = printKarte;
+  $('ovComparisonBtn').onclick = () => openComparisonDialog(ui.ovTest);
+  $('anComparisonBtn').onclick = () => openComparisonDialog(ui.anTest);
+  $('cfTest').onchange = loadComparisonForm;
+  $('cfKind').onchange = refreshComparisonChoices;
+  $('cfSeries').oninput = refreshComparisonChoices;
+  $('cfCompare').onchange = refreshComparisonChoices;
+  $('comparisonForm').onsubmit = submitComparisonForm;
+  $('cfCloseBtn').onclick = () => $('comparisonDialog').close();
+  $('trendKind').onchange = event => { ui.trendKind = event.target.value; renderTrend(); };
+  $('rtiKind').onchange = event => { ui.rtiKind = event.target.value; renderRti(); };
+  $('printKarteBtn').onclick = openKarteDialog;
+  $('karteOptions').onchange = renderKartePreview;
+  $('karteCloseBtn').onclick = () => $('karteDialog').close();
+  $('kartePrintBtn').onclick = () => { $('karteDialog').close(); printKarte(karteOptions); };
 
   // 名簿管理
   $('rosterBtn').onclick = openRosterDialog;

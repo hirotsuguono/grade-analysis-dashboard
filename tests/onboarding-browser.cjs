@@ -33,9 +33,11 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
     const download = async selector => {
       const event = page.waitForEvent('download');
       await page.locator(selector).click();
+      if (selector === '#saveBtn') await page.locator('#saveDownloadBtn').click();
       const result = await event;
       const saved = path.join(output, result.suggestedFilename());
       await result.saveAs(saved);
+      if (selector === '#saveBtn') await page.locator('#downloadConfirmBtn').click();
       return saved;
     };
     const upload = async (selector, wb) => {

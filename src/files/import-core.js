@@ -18,6 +18,13 @@
     return match ? { grade: match[1], className: match[2] } : { grade: '', className: klass };
   }
 
+  function parseTestKind(value) {
+    const label = text(value).normalize('NFKC');
+    const kinds = { unclassified: '未分類', unit: '単元テスト', midterm: '中間テスト', final: '期末テスト', proficiency: '実力テスト', other: 'その他' };
+    if (!label) return 'unclassified';
+    return Object.keys(kinds).find(key => key === label || kinds[key] === label);
+  }
+
   function testLayout(rows) {
     const headers = [];
     rows.forEach((r, i) => {
@@ -29,14 +36,14 @@
       return { errors: ['テンプレートの形式が違います。分野・配点・問題名と生徒の行を残してください。'] };
     }
     const metadata = {}, errors = [];
-    const labels = ['テスト名', '教科', '満点', '実施学年', '実施日'];
+    const labels = ['テスト名', '教科', '満点', '実施学年', '実施日', 'テスト種類', '比較系列'];
     const read = (label, value) => {
       const key = text(label).replace(/→$/, '');
       if (!labels.includes(key)) return;
       if (Object.hasOwn(metadata, key)) errors.push('「' + key + '」の設定が重複しています。');
       metadata[key] = value;
     };
-    if (splitRoster) rows.slice(0, headerIdx - 2).forEach(r => read(r[0], r[1]));
+    if (splitRoster) rows.slice(0, headerIdx - 2).forEach(r => { read(r[0], r[1]); read(r[3], r[4]); });
     else {
       // Old templates may have had entire question columns inserted into row 1 too.
       const row = rows[0] || [];
@@ -155,5 +162,5 @@
     if (!plans.length && !errors.length) errors.push('指標の数値がまだ入力されていません。' + inputHelp);
     return { errors, plans };
   }
-  root.GD_IMPORT = { createMatcher, selectSheet, findHeader, idColumn, isIdHeader, isPlaceholder, numeric, matchedRows, parseMetricRows, inputHelp, splitClassName, testLayout };
+  root.GD_IMPORT = { createMatcher, selectSheet, findHeader, idColumn, isIdHeader, isPlaceholder, numeric, matchedRows, parseMetricRows, inputHelp, splitClassName, testLayout, parseTestKind };
 })(typeof window !== 'undefined' ? window : globalThis);
