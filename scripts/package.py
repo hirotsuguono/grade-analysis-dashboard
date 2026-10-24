@@ -14,11 +14,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 FILES = (
     'Index.html', 'LICENSE', 'はじめに.txt',
     'files/style.css', 'files/script.js', 'files/accessibility.js',
-    'files/import-core.js', 'files/initial-import.js', 'files/onboarding.js',
+    'files/import-core.js', 'files/initial-import.js', 'files/onboarding.js', 'files/excel-templates.js',
     'files/manual.html', 'files/sample-data.json', 'files/sample-data.js',
-    'files/vendor/echarts.min.js', 'files/vendor/xlsx.full.min.js',
+    'files/vendor/echarts.min.js', 'files/vendor/xlsx.full.min.js', 'files/vendor/exceljs.min.js',
     'files/vendor/echarts.LICENSE', 'files/vendor/echarts.NOTICE',
-    'files/vendor/sheetjs.LICENSE', 'files/licenses/THIRD-PARTY-NOTICES.md',
+    'files/vendor/sheetjs.LICENSE', 'files/vendor/exceljs.LICENSE', 'files/vendor/exceljs.BUNDLED-LICENSES.txt', 'files/licenses/THIRD-PARTY-NOTICES.md',
 )
 VENDOR = {
     'files/vendor/echarts.min.js': 'e84270bd0cd5bdf60fefc26d00c2a391cb2e81f4d26a7a9ee16185a54773a3cf',
@@ -26,6 +26,9 @@ VENDOR = {
     'files/vendor/echarts.NOTICE': 'fa99ac3af859d0e13166906dc53a73ad34a08898da7e8ae83407275496e9e30c',
     'files/vendor/xlsx.full.min.js': 'cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41',
     'files/vendor/sheetjs.LICENSE': '4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64',
+    'files/vendor/exceljs.min.js': '7e49da68588e250dbb8bba190d2caa8ab3787cc0284bda1d8b2f805c4df742c9',
+    'files/vendor/exceljs.BUNDLED-LICENSES.txt': '5493722634b6fb4463110160c7511d78a8991ac80bcc8233636d6bf23f229312',
+    'files/vendor/exceljs.LICENSE': '2ed526b7e7c7681dc2347995b5036ddf73dc27d0539cdea59b6d4a72b63a57a0',
 }
 PREFIX = 'grade-analysis-dashboard/'
 
@@ -139,7 +142,7 @@ def main():
         finally:
             temporary.unlink(missing_ok=True)
     verify(output, expected)
-    print('Verified 18 runtime files: exact source bytes, local references, licenses and fictional sample.')
+    print(f'Verified {len(FILES)} runtime files: exact source bytes, local references, licenses and fictional sample.')
     print(output)
 
 
