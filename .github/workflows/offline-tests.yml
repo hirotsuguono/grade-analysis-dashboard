@@ -37,7 +37,7 @@ jobs:
       - name: Install Chromium and system dependencies
         run: |
           npx --no-install playwright-core install --with-deps chromium
-          sudo apt-get install -y xdotool
+          sudo apt-get install -y xdotool x11-utils
 
       - name: Run unit tests
         run: npm test
@@ -64,7 +64,7 @@ jobs:
           DASHBOARD_ROOT: ${{ runner.temp }}/dashboard-unpacked/grade-analysis-dashboard
         run: |
           set -o pipefail
-          xvfb-run -a node tests/native-save-browser.cjs 2>&1 | tee test-results/native-save.log
+          DEBUG=pw:browser xvfb-run -a node tests/native-save-browser.cjs 2>&1 | tee test-results/native-save.log
 
       - name: Summarize browser results
         if: ${{ always() }}
