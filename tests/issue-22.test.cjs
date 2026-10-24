@@ -51,6 +51,15 @@ test('外部変更を検出して取消せ、別名保存で元ファイルを�
   h.ctx.confirmResult=true;await h.api.saveJson('as');assert.equal(original.text,'external change');assert.equal(JSON.parse(copy.text).name,'架空');
   h.ctx.window.showSaveFilePicker=async()=>copy;h.api.edit();await h.api.saveJson('as');assert.equal(h.api.state().dirty,true);
 });
+test('file inputで開いた後の初回上書きでも、選んだ保存先の外部更新を確認する',async()=>{
+  const target=handle('original.json','fictional-external-update'),h=harness(target);
+  h.ctx.confirmResult=false;
+  await h.api.saveJson('overwrite');
+  assert.equal(target.writes,0);assert.equal(target.text,'fictional-external-update');
+  assert.equal(h.api.state().fileHandle,null);assert.equal(h.api.state().dirty,true);assert.equal(h.confirmations.length,1);
+  h.ctx.confirmResult=true;await h.api.saveJson('overwrite');
+  assert.equal(target.writes,1);assert.equal(JSON.parse(target.text).name,'架空');assert.equal(h.api.state().dirty,false);
+});
 test('保存中の追加変更は未保存のままにし、別データへ切り替えたら保存先を引き継がない',async()=>{
   const target=handle('copy.json'),h=harness(target);
   const create=target.createWritable;target.createWritable=async()=>{const w=await create();const close=w.close;w.close=async()=>{await close();h.api.edit();};return w;};
