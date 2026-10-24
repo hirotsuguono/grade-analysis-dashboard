@@ -9,7 +9,7 @@
   function createTemplate(XLSX) {
     const wb = XLSX.utils.book_new();
     const rows = [
-      ['データ名', '', '名簿だけならテスト名と点数は空欄'],
+      ['データ名', '', '名簿だけならテスト名と点数は空欄', '', 'テスト種類', '未分類', '比較系列', ''],
       ['テスト名', '', '教科', '英語', '満点', 100, '実施学年', '', '実施日', ''],
       ['学年', 'クラス', '出席番号', '氏名', '合計点（任意）'],
       ...Array.from({ length: 30 }, () => ['', '', '', '', '']),
@@ -43,6 +43,7 @@
       ['8. 保存後、アプリの「初めて使う」から取り込み、確認画面を見てから登録してください。'],
       ['9. 2回目以降はアプリから登録済み名簿入りのテスト・アンケート用Excelを出力します。生徒ID列を変更しないでください。'],
       ['10. 初回は生徒IDを入力しません。取込時に自動発行し、画面では「1年1組」などにまとめて表示します。クラス欄の「1」と「1組」は同じ組として扱います。'],
+      ['11. 最初の点数も登録する場合、F1にテスト種類（単元テスト・中間テスト・期末テスト・実力テスト・その他・未分類）、H1に単元名や試験シリーズ（任意）を入力できます。未分類は自動比較しません。'],
       ['「記入例」「説明」シートは取り込み対象になりません。名簿をこれらのシートに入力しないでください。'],
     ]);
     help['!cols'] = [{ wch: 120 }];
@@ -103,7 +104,7 @@
     rows.slice(0, hi).forEach(row => {
       for (let c = 0; c < row.length - 1; c++) {
         const label = normalized(row[c]);
-        if (['データ名', 'テスト名', '教科', '満点', '実施学年', '実施日'].includes(label)) {
+        if (['データ名', 'テスト名', '教科', '満点', '実施学年', '実施日', 'テスト種類', '比較系列'].includes(label)) {
           if (Object.hasOwn(metadata, label)) errors.push(`「${label}」の設定が重複しています。`);
           metadata[label] = row[c + 1]; c++;
         }
@@ -147,6 +148,7 @@
     if (hasResults) {
       summary.testName = testName;
       if (!testName || !subject) errors.push('点数または欠席を取り込む場合は、見出しより上のテスト名と教科を入力してください。');
+      if (!empty(metadata['テスト種類']) && !global.GD_IMPORT.parseTestKind(metadata['テスト種類'])) errors.push('テスト種類は単元テスト・中間テスト・期末テスト・実力テスト・その他・未分類から選んでください。');
       if (typeof metadata['満点'] === 'boolean' || !Number.isFinite(maxScore) || maxScore <= 0) errors.push('満点は0より大きい数値にしてください。');
       if (!empty(metadata['実施学年'])) {
         const g = normalized(metadata['実施学年']);
@@ -163,6 +165,8 @@
     const dataset = { version: 3, name: text(metadata['データ名']) || '成績データ', students, tests: [], scores: [], metrics: [], settings: { rti: { tier2: 60, tier3: 40 }, adminPinHash: null }, interventions: [] };
     if (hasResults) {
       const test = { id: 't-' + global.crypto.randomUUID(), name: testName, subject, maxScore, domains: [], questions: [] };
+      test.kind = global.GD_IMPORT.parseTestKind(metadata['テスト種類']);
+      test.series = text(metadata['比較系列']);
       if (gradeYear) test.gradeYear = gradeYear;
       if (date) test.date = date;
       dataset.tests.push(test);
