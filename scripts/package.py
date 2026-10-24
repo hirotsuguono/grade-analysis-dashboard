@@ -27,8 +27,8 @@ VENDOR = {
     'files/vendor/xlsx.full.min.js': 'cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41',
     'files/vendor/sheetjs.LICENSE': '4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64',
     'files/vendor/exceljs.min.js': '7e49da68588e250dbb8bba190d2caa8ab3787cc0284bda1d8b2f805c4df742c9',
-    'files/vendor/exceljs.BUNDLED-LICENSES.txt': '5493722634b6fb4463110160c7511d78a8991ac80bcc8233636d6bf23f229312',
-    'files/vendor/exceljs.LICENSE': '2ed526b7e7c7681dc2347995b5036ddf73dc27d0539cdea59b6d4a72b63a57a0',
+    'files/vendor/exceljs.BUNDLED-LICENSES.txt': 'f0fb05d61f9a9a62bc199cda8039e9d1198aff0773d5aa2f3d2ef65937730501',
+    'files/vendor/exceljs.LICENSE': '2ee88321435317a4dbf464f275b88fe2efe6968c381f5ce34b5de539200e5855',
 }
 PREFIX = 'grade-analysis-dashboard/'
 
