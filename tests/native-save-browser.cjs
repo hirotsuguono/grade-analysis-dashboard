@@ -20,10 +20,13 @@ async function selectPath(file){
   const id=await saveWindow();
   await exec('xdotool',['windowfocus','--sync',id]);
   await exec('xdotool',['key','--clearmodifiers','ctrl+l']);
-  await exec('xdotool',['type','--clearmodifiers','--delay','1',file]);
+  await exec('xdotool',['type','--clearmodifiers','--delay','1',path.dirname(file)+'/']);
   await exec('xdotool',['key','--clearmodifiers','Return']);
-  await new Promise(r=>setTimeout(r,400));
-  if(!fs.existsSync(file))await exec('xdotool',['key','--clearmodifiers','alt+s']);
+  await new Promise(r=>setTimeout(r,250));
+  await exec('xdotool',['key','--clearmodifiers','alt+n']);
+  await exec('xdotool',['key','--clearmodifiers','ctrl+a']);
+  await exec('xdotool',['type','--clearmodifiers','--delay','1',path.basename(file)]);
+  await exec('xdotool',['key','--clearmodifiers','alt+s']);
 }
 (async()=>{
   fs.mkdirSync(output,{recursive:true});
@@ -77,7 +80,8 @@ async function selectPath(file){
     fs.writeFileSync(path.join(output,'native-save-results.json'),JSON.stringify({checks},null,2));
   }catch(error){
     if(page){
-      console.log('SAVE STATE',await page.evaluate(()=>({secure:isSecureContext,protocol:location.protocol,result:document.getElementById('saveResult').textContent,saving})).catch(()=>null));
+      console.log('SAVE STATE',await page.evaluate(()=>({secure:isSecureContext,protocol:location.protocol,result:document.getElementById('saveResult').textContent,saving,fileName,dirty})).catch(()=>null));
+      console.log('TEMP FILES',fs.readdirSync(temp));
       await page.screenshot({path:path.join(output,'native-save-failure.png')}).catch(()=>{});
     }
     console.log('WINDOWS',await exec('xwininfo',['-root','-tree']).then(r=>r.stdout).catch(e=>e.message));
