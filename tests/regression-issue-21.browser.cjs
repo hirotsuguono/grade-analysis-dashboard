@@ -1,0 +1,34 @@
+'use strict';
+const assert=require('node:assert/strict');
+module.exports=async(page,fixture)=>{
+  const d={version:3,name:'架空の比較検証',students:fixture.students.slice(0,6),tests:[],scores:[],metrics:[],interventions:[],settings:fixture.settings};
+  d.tests=[['a','架空期末1','final',20,'05'],['b','架空単元','unit',10,'06'],['c','架空期末2','final',100,'07']].map(([id,name,kind,maxScore,month])=>
+    ({id,name,subject:'英語',kind,maxScore,date:`2026-${month}-01`,domains:[{key:'読解',label:'読解',max:maxScore}],questions:[{key:'q1',label:'問1',domain:'読解',max:maxScore}]}));
+  d.scores=d.tests.flatMap(t=>d.students.map((s,i)=>{const total=t.maxScore*(i/5);return {studentId:s.id,testId:t.id,total,domains:{読解:total},questions:{q1:total}}}));
+  await page.evaluate(value=>applyJsonText(JSON.stringify(value),'fictional-test-kinds.json',null),d);
+  await page.locator('[data-tab="overview"]').click();await page.locator('#ovTest').selectOption('c');
+  assert.match(await page.locator('#kpiGrid').textContent(),/架空期末1.*両方受験 6名/);
+  assert.match(await page.locator('#kpiGrid').textContent(),/得点率差 0ポイント/);
+  await page.locator('#ovComparisonBtn').click();await page.locator('#cfCompare').selectOption('none');
+  await page.locator('#comparisonForm button[type="submit"]').click();
+  assert.doesNotMatch(await page.locator('#kpiGrid').textContent(),/得点率差|比較：/);
+  await page.locator('#ovComparisonBtn').click();await page.locator('#cfCompare').selectOption('b');
+  await page.locator('#comparisonForm button[type="submit"]').click();
+  assert.match(await page.locator('#kpiGrid').textContent(),/架空単元/);
+  await page.locator('#ovComparisonBtn').click();await page.locator('#cfKind').selectOption('unit');
+  await page.locator('#cfCompare').selectOption('auto');await page.locator('#cfSeries').fill('Unit 3');
+  await page.locator('#comparisonForm button[type="submit"]').click();
+  assert.doesNotMatch(await page.locator('#kpiGrid').textContent(),/得点率差|比較：/);
+  assert.deepEqual(await page.evaluate(()=>{const t=data.tests.find(t=>t.id==='c');return {kind:t.kind,series:t.series,valid:validateDataset(data).length===0}}),{kind:'unit',series:'Unit 3',valid:true});
+  await page.locator('[data-tab="trend"]').click();await page.locator('#trendKind').selectOption('final');
+  assert.deepEqual(await page.evaluate(()=>trendAxis().labels),['架空期末1']);
+  await page.locator('[data-tab="rti"]').click();await page.locator('#rtiSubject').selectOption('英語');
+  await page.locator('#rtiKind').selectOption('final');
+  await page.locator('.rti-card').first().click();await page.locator('#ivTitle').fill('架空の確認支援');
+  await page.locator('#ivForm button[type="submit"]').click();
+  assert.equal(await page.evaluate(()=>data.interventions[0].kind),'final');
+  await page.locator('#rtiKind').selectOption('unit');
+  assert.match(await page.locator('#rtiProgressTitle').textContent(),/期末テスト/);
+  assert.equal(await page.evaluate(()=>validateDataset(JSON.parse(JSON.stringify(data))).length),0);
+  await page.evaluate(value=>applyJsonText(JSON.stringify(value),'fictional-restored.json',null),fixture);
+};

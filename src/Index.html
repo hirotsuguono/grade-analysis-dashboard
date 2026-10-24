@@ -136,6 +136,7 @@
         <label>クラス
           <select id="ovClass"></select>
         </label>
+        <button type="button" class="btn btn-ghost" id="ovComparisonBtn">テストの種類・比較対象</button>
       </div>
 
       <div class="kpi-grid" id="kpiGrid"></div>
@@ -198,6 +199,7 @@
             <label class="side-field">クラス
               <select id="trendClass"></select>
             </label>
+            <label class="side-field">テストの種類<select id="trendKind"></select></label>
             <label class="sr-only" for="trendSearch">生徒名で検索</label><input type="search" id="trendSearch" placeholder="生徒名で検索">
             <div class="side-actions">
               <button class="btn btn-ghost btn-sm" id="trendClearBtn">選択をクリア</button>
@@ -231,6 +233,7 @@
         <label>クラス
           <select id="anClass"></select>
         </label>
+        <button type="button" class="btn btn-ghost" id="anComparisonBtn">テストの種類・比較対象</button>
       </div>
 
       <div class="weak-banner" id="weakBanner" hidden></div>
@@ -320,6 +323,7 @@
         <label>クラス
           <select id="rtiClass"></select>
         </label>
+        <label>テストの種類<select id="rtiKind"></select></label>
         <label>判定に使う値
           <select id="rtiBasis">
             <option value="latest">直近の回の得点率</option>
@@ -406,10 +410,23 @@
   <!-- 面談カルテ印刷エリア（通常は非表示、印刷時のみ表示） -->
   <div id="printArea" aria-hidden="true"></div>
 
+  <dialog id="comparisonDialog" aria-labelledby="comparisonTitle">
+    <form class="dialog-form" id="comparisonForm">
+      <h2 id="comparisonTitle">テストの種類・比較対象</h2>
+      <label>設定するテスト<select id="cfTest"></select></label>
+      <label>テストの種類<select id="cfKind"></select></label>
+      <label>単元名・試験シリーズ（任意）<input id="cfSeries" type="text" placeholder="例：Unit 3、実力テストA"></label>
+      <label>比較するテスト<select id="cfCompare"></select></label>
+      <p id="cfStatus" role="status" aria-live="polite"></p>
+      <p class="form-note">過去の同じ教科から選択できます。満点が違う場合も得点率で比較します。範囲・難しさが異なるため、得点の変化を学力や支援の効果と断定しません。設定を変更したらJSONを保存してください。</p>
+      <div class="dialog-actions"><button type="button" class="btn btn-ghost" id="cfCloseBtn">キャンセル</button><button type="submit" class="btn btn-primary">設定を反映</button></div>
+    </form>
+  </dialog>
+
   <dialog id="karteDialog" aria-labelledby="karteDialogTitle">
     <div class="dialog-form karte-form">
       <h2 id="karteDialogTitle">面談カルテの表示項目</h2>
-      <p class="form-note">必要な項目を選び、プレビューを確認して印刷します。選択はこの利用中だけ保持し、成績データは変更しません。グラフは現在の個人推移の表示を使います。</p>
+      <p class="form-note">必要な項目を選び、プレビューを確認して印刷します。選択はこの利用中だけ保持し、成績データは変更しません。表とグラフは現在の個人推移の教科・テスト種類を使います。</p>
       <fieldset class="karte-options" id="karteOptions">
         <legend>表示する項目</legend>
         <label><input type="checkbox" data-karte="basic"> 生徒の基本情報</label>
@@ -595,6 +612,8 @@
         </label>
         <label>実施日 <input type="date" id="tfDate"></label>
         <label>満点 <input type="number" id="tfMax" required value="100" min="1"></label>
+        <label>テストの種類<select id="tfKind"></select></label>
+        <label>単元名・試験シリーズ（任意）<input type="text" id="tfSeries"></label>
       </div>
       <p class="form-note">実施学年＝「何年生のときのテストか」。実施日を設定すると、後から過去のテストを追加しても時系列が正しく並びます。</p>
 
