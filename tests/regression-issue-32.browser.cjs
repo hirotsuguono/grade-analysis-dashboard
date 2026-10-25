@@ -36,6 +36,12 @@ module.exports = async (parent, fixture) => {
       await page.setViewportSize({ width, height: 900 });
       assert.ok(await page.locator('.app-footer').evaluate(el => el.scrollWidth <= el.clientWidth + 1));
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      for (const id of ['latestReleaseLink', 'repositoryLink']) {
+        const link = page.locator('#' + id);
+        const box = await link.boundingBox();
+        assert.ok(box.width >= 200 && box.height >= 44, `${width}px ${id} needs a usable touch target`);
+        assert.ok(await link.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+      }
     }
 
     const initialChooser = page.waitForEvent('filechooser');
@@ -78,6 +84,8 @@ module.exports = async (parent, fixture) => {
     assert.deepEqual(await updated.evaluate(() => JSON.parse(JSON.stringify(data))), JSON.parse(before.data));
     assert.equal(await updated.evaluate(() => dirty), false);
     assert.equal(await page.evaluate(() => JSON.stringify(data)), before.data);
+    await updated.setViewportSize({ width: 1280, height: 900 });
+    await updated.locator('.app-footer').screenshot({ path: path.join(output, 'issue-32-footer-collapsed.png') });
     await updated.locator('#updateGuide summary').click();
     await updated.emulateMedia({ media: 'print' });
     assert.equal(await updated.locator('.app-footer').isVisible(), false);

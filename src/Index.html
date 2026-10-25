@@ -405,19 +405,33 @@
   </main>
 
   <footer class="app-footer">
+    <section class="update-card" aria-labelledby="updateCardTitle">
+      <div class="update-card-copy">
+        <p class="update-card-eyebrow">GitHub 公式配布ページ</p>
+        <h2 id="updateCardTitle">最新版の確認・ダウンロードはこちら</h2>
+        <p>新しいバージョンや変更内容を、GitHubで確認できます。</p>
+        <p class="update-current-version">ご利用中のバージョン：<span id="appVersion" class="app-version" data-version="0.3.2-dev">v0.3.2-dev（開発版）</span></p>
+      </div>
+      <div class="update-card-actions">
+        <a id="latestReleaseLink" class="update-download-link" href="https://github.com/hirotsuguono/grade-analysis-dashboard/releases/latest" target="_blank" rel="noopener noreferrer">
+          <span>GitHubで最新版を確認 <span aria-hidden="true">↗</span></span>
+          <span class="update-download-caption">ダウンロード・更新履歴</span>
+          <span class="sr-only">（オンライン・別タブ）</span>
+        </a>
+        <a id="repositoryLink" class="update-project-link" href="https://github.com/hirotsuguono/grade-analysis-dashboard" target="_blank" rel="noopener noreferrer">GitHubのプロジェクトを見る <span aria-hidden="true">↗</span><span class="sr-only">（オンライン・別タブ）</span></a>
+        <p class="update-online-note">別タブで開きます・インターネット接続が必要です</p>
+      </div>
+    </section>
     <div class="app-footer-heading">
       <span>成績分析ダッシュボード</span>
-      <span id="appVersion" class="app-version" data-version="0.3.2-dev">v0.3.2-dev（開発版）</span>
     </div>
-    <nav class="app-footer-links" aria-label="バージョンとサポート">
-      <a id="latestReleaseLink" href="https://github.com/hirotsuguono/grade-analysis-dashboard/releases/latest" target="_blank" rel="noopener noreferrer">最新版を確認・ダウンロード<span class="sr-only">（オンライン・別タブ）</span></a>
+    <nav class="app-footer-links" aria-label="サポート">
       <a href="files/manual.html">使い方とデータの扱い</a>
-      <a id="repositoryLink" href="https://github.com/hirotsuguono/grade-analysis-dashboard" target="_blank" rel="noopener noreferrer">GitHub<span class="sr-only">（オンライン・別タブ）</span></a>
     </nav>
     <details id="updateGuide" class="update-guide">
       <summary>更新方法・データの引き継ぎ</summary>
       <div class="update-guide-content">
-        <p>上のバージョンと、配布ページのバージョン・変更内容を確認してください。「最新版を確認」は正式公開済みの配布ページを別タブで開きます（インターネット接続が必要です）。開発版をご利用の場合、配布ページの正式版が今のアプリより古いことがあります。</p>
+        <p>上のバージョンと、配布ページのバージョン・変更内容を確認してください。青い「GitHubで最新版を確認」ボタンは正式公開済みの配布ページを別タブで開きます（インターネット接続が必要です）。開発版をご利用の場合、配布ページの正式版が今のアプリより古いことがあります。</p>
         <ol>
           <li>今のアプリで<strong>「保存」からJSONファイルに保存</strong>し、保存が完了したことを確認します。</li>
           <li>配布ページの<strong>grade-analysis-dashboard.zip</strong>をダウンロードし、元のアプリとは別のフォルダへ<strong>すべて展開</strong>します。</li>

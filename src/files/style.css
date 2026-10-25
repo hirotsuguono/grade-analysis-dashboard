@@ -1827,6 +1827,25 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
 .app-version { background:#e8edf5; color:#294463; border-radius:5px; padding:2px 8px; font-weight:600; }
 .app-footer-links { display:flex; flex-wrap:wrap; align-items:center; gap:8px 20px; margin-left:auto; }
 .app-footer a { color:#2458a6; overflow-wrap:anywhere; }
+.update-card { flex-basis:100%; display:flex; align-items:center; justify-content:space-between; gap:24px 40px; padding:28px; background:#eef4ff; border:1px solid #bdcfe9; border-top:4px solid #2458a6; border-radius:12px; }
+.update-card-copy { min-width:0; }
+.update-card-eyebrow { color:#2458a6; font-size:13px; font-weight:700; letter-spacing:.04em; }
+.update-card h2 { color:#183f7b; font-size:clamp(20px,2vw,26px); line-height:1.5; margin:6px 0 10px; }
+.update-card-copy > p { margin:0; }
+.update-card-copy .update-current-version { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:16px; }
+.update-card-actions { display:flex; flex-direction:column; align-items:stretch; gap:10px; flex:0 0 300px; }
+.app-footer .update-download-link { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-height:80px; padding:16px 20px; border:2px solid #2458a6; border-radius:8px; background:#2458a6; color:#fff; text-decoration:none; text-align:center; font-size:17px; font-weight:700; line-height:1.5; }
+.app-footer .update-download-link:hover { background:#183f7b; border-color:#183f7b; }
+.update-download-caption { font-size:13px; font-weight:400; }
+.app-footer .update-project-link { padding:10px 12px; background:#fff; border:1px solid #9fb7d9; border-radius:8px; color:#183f7b; text-decoration:none; text-align:center; font-weight:600; }
+.app-footer .update-project-link:hover { background:#e0eafa; }
+.update-card-actions a:focus-visible { outline:3px solid #183f7b; outline-offset:3px; }
+.update-online-note { margin:0; font-size:12px; text-align:center; }
+@media (max-width:800px) {
+  .update-card { flex-direction:column; align-items:stretch; padding:20px; gap:20px; }
+  .update-card-actions { flex-basis:auto; }
+  .app-footer .update-download-link { padding:14px 10px; font-size:16px; }
+}
 .update-guide { flex-basis:100%; border:1px solid #dce2eb; border-radius:8px; background:#fff; }
 .update-guide summary { padding:12px 16px; color:#183f7b; font-weight:600; cursor:pointer; }
 .update-guide summary:focus-visible { outline:3px solid #2458a6; outline-offset:3px; border-radius:8px; }
