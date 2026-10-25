@@ -42,6 +42,17 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      # This preview intentionally keeps downloads/ unchanged. Verify that ZIP
+      # against its immutable source revision, then verify the candidate below.
+      - name: Verify the preserved distribution ZIP against its original source
+        env:
+          DISTRIBUTED_SOURCE_COMMIT: 37bc56abab098441fdbdd36cfe9fb8a7292bde65
+        run: |
+          git fetch --no-tags --depth=1 origin "$DISTRIBUTED_SOURCE_COMMIT"
+          mkdir -p "$RUNNER_TEMP/distribution-source"
+          git archive "$DISTRIBUTED_SOURCE_COMMIT" src scripts/package.py LICENSE | tar -x -C "$RUNNER_TEMP/distribution-source"
+          python3 "$RUNNER_TEMP/distribution-source/scripts/package.py" --check --output "$GITHUB_WORKSPACE/downloads/grade-analysis-dashboard.zip"
+
       - name: Build and verify a candidate ZIP without changing the distributed ZIP
         run: |
           npm run build -- --output "$RUNNER_TEMP/grade-analysis-dashboard.zip"

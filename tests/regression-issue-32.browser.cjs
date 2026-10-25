@@ -12,7 +12,7 @@ module.exports = async (parent, fixture) => {
     await page.goto(parent.url());
     const version = require('../package.json').version;
     assert.equal(await page.locator('#appVersion').getAttribute('data-version'), version);
-    assert.equal(await page.locator('#appVersion').textContent(), `v${version}（開発版）`);
+    assert.equal(await page.locator('#appVersion').textContent(), `v${version}${version.includes('-') ? '（開発版）' : ''}`);
     for (const [id, url] of [
       ['latestReleaseLink', 'https://github.com/hirotsuguono/grade-analysis-dashboard/releases/latest'],
       ['repositoryLink', 'https://github.com/hirotsuguono/grade-analysis-dashboard'],
