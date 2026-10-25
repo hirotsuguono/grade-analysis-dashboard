@@ -404,7 +404,38 @@
 
   </main>
 
-  <footer class="app-footer">成績分析ダッシュボード <span>成績分析・支援記録</span> <a href="files/manual.html">使い方とデータの扱い</a></footer>
+  <footer class="app-footer">
+    <section class="update-card" aria-labelledby="updateCardTitle">
+      <div class="update-card-copy">
+        <h2 id="updateCardTitle">アプリのバージョンと更新</h2>
+        <p class="update-current-version">ご利用中：<span id="appVersion" class="app-version" data-version="0.4.0">v0.4.0</span></p>
+      </div>
+      <div class="update-card-actions">
+        <a id="latestReleaseLink" class="update-download-link" href="https://github.com/hirotsuguono/grade-analysis-dashboard/releases/latest" target="_blank" rel="noopener noreferrer">
+          <span>GitHubで最新版を確認 <span aria-hidden="true">↗</span></span>
+          <span class="sr-only">（ダウンロード・更新履歴、オンライン・別タブ）</span>
+        </a>
+        <a id="repositoryLink" class="update-project-link" href="https://github.com/hirotsuguono/grade-analysis-dashboard" target="_blank" rel="noopener noreferrer">GitHubのプロジェクトを見る <span aria-hidden="true">↗</span><span class="sr-only">（オンライン・別タブ）</span></a>
+      </div>
+    </section>
+    <details id="updateGuide" class="update-guide">
+      <summary>更新方法・データの引き継ぎ</summary>
+      <div class="update-guide-content">
+        <p>上のバージョンと、配布ページのバージョン・変更内容を確認してください。青い「GitHubで最新版を確認」ボタンは正式公開済みの配布ページを別タブで開きます（インターネット接続が必要です）。</p>
+        <ol>
+          <li>今のアプリで<strong>「保存」からJSONファイルに保存</strong>し、保存が完了したことを確認します。</li>
+          <li>配布ページの<strong>grade-analysis-dashboard.zip</strong>をダウンロードし、元のアプリとは別のフォルダへ<strong>すべて展開</strong>します。</li>
+          <li>新しいフォルダの<strong>Index.htmlをダブルクリック</strong>して開きます。filesフォルダも一緒に置いてください。</li>
+          <li><strong>「保存したJSONを開く」</strong>から手順1のJSONを選び、名簿・点数・記録が引き継がれたことを確認します。</li>
+        </ol>
+        <p class="update-guide-note">新しいアプリで内容を確認するまでは、元のアプリのフォルダと保存したJSONを残してください。成績データはJSONから引き継ぎます。更新手順はオフラインでも確認できます。</p>
+      </div>
+    </details>
+    <nav class="app-footer-links" aria-label="サポート">
+      <a href="files/manual.html">使い方とデータの扱い</a>
+      <span class="update-online-note">GitHubは別タブで開きます（オンライン）</span>
+    </nav>
+  </footer>
   <noscript><p class="noscript">このアプリを使うには JavaScript を有効にしてください。</p></noscript>
 
   <!-- 面談カルテ印刷エリア（通常は非表示、印刷時のみ表示） -->
