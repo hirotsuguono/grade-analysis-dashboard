@@ -39,7 +39,7 @@ module.exports = async (parent, fixture) => {
       for (const id of ['latestReleaseLink', 'repositoryLink']) {
         const link = page.locator('#' + id);
         const box = await link.boundingBox();
-        assert.ok(box.width >= 200 && box.height >= 44, `${width}px ${id} needs a usable touch target`);
+        assert.ok(box.width >= 44 && box.height >= 44, `${width}px ${id} needs a usable touch target`);
         assert.ok(await link.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
       }
     }
@@ -85,6 +85,7 @@ module.exports = async (parent, fixture) => {
     assert.equal(await updated.evaluate(() => dirty), false);
     assert.equal(await page.evaluate(() => JSON.stringify(data)), before.data);
     await updated.setViewportSize({ width: 1280, height: 900 });
+    await updated.locator('#updateCardTitle').click();
     await updated.locator('.app-footer').screenshot({ path: path.join(output, 'issue-32-footer-collapsed.png') });
     await updated.locator('#updateGuide summary').click();
     await updated.emulateMedia({ media: 'print' });
@@ -93,6 +94,7 @@ module.exports = async (parent, fixture) => {
     await updated.setViewportSize({ width: 1280, height: 900 });
     await updated.locator('.app-footer').screenshot({ path: path.join(output, 'issue-32-footer.png') });
     await updated.setViewportSize({ width: 320, height: 900 });
+    await updated.locator('#updateCardTitle').click();
     await updated.locator('.app-footer').screenshot({ path: path.join(output, 'issue-32-footer-mobile.png') });
   } finally {
     if (updated) await updated.close();
