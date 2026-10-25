@@ -42,25 +42,15 @@ jobs:
       - name: Run unit tests
         run: npm test
 
-      # This preview intentionally keeps downloads/ unchanged. Verify that ZIP
-      # against its immutable source revision, then verify the candidate below.
-      - name: Verify the preserved distribution ZIP against its original source
-        env:
-          DISTRIBUTED_SOURCE_COMMIT: 25af505cec0d34f5af7f7dfe28769bc5f8dd0e10
+      - name: Verify the distribution ZIP and reproduce it from source
         run: |
-          git fetch --no-tags --depth=1 origin "$DISTRIBUTED_SOURCE_COMMIT"
-          mkdir -p "$RUNNER_TEMP/distribution-source"
-          git archive "$DISTRIBUTED_SOURCE_COMMIT" src scripts/package.py LICENSE | tar -x -C "$RUNNER_TEMP/distribution-source"
-          python3 "$RUNNER_TEMP/distribution-source/scripts/package.py" --check --output "$GITHUB_WORKSPACE/downloads/grade-analysis-dashboard.zip"
-
-      - name: Build and verify a candidate ZIP without changing the distributed ZIP
-        run: |
+          npm run check
           npm run build -- --output "$RUNNER_TEMP/grade-analysis-dashboard.zip"
           npm run check -- --output "$RUNNER_TEMP/grade-analysis-dashboard.zip"
-          git diff --exit-code -- downloads/
+          cmp downloads/grade-analysis-dashboard.zip "$RUNNER_TEMP/grade-analysis-dashboard.zip"
 
-      - name: Extract the verified candidate ZIP
-        run: python3 -m zipfile -e "$RUNNER_TEMP/grade-analysis-dashboard.zip" "$RUNNER_TEMP/dashboard-unpacked"
+      - name: Extract the verified distribution ZIP
+        run: python3 -m zipfile -e downloads/grade-analysis-dashboard.zip "$RUNNER_TEMP/dashboard-unpacked"
 
       - name: Test the extracted app with file URLs and networking disabled
         env:
@@ -108,11 +98,11 @@ jobs:
               summary.write('\n'.join(lines) + '\n')
           PY
 
-      - name: Upload the candidate ZIP for manual review
+      - name: Upload the verified distribution ZIP
         uses: actions/upload-artifact@v5
         with:
-          name: update-guidance-preview
-          path: ${{ runner.temp }}/grade-analysis-dashboard.zip
+          name: offline-distribution
+          path: downloads/grade-analysis-dashboard.zip
           if-no-files-found: error
           retention-days: 7
 
