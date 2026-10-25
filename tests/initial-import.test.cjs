@@ -9,6 +9,7 @@ const root = process.env.DASHBOARD_ROOT || path.join(__dirname, '..', 'src', 'fi
 const XLSX = require(path.join(root, 'vendor/xlsx.full.min.js'));
 const sandbox = { window: { crypto: webcrypto } };
 vm.runInNewContext(fs.readFileSync(path.join(root, 'import-core.js'), 'utf8'), sandbox);
+vm.runInNewContext(fs.readFileSync(path.join(root, 'excel-templates.js'), 'utf8'), sandbox);
 vm.runInNewContext(fs.readFileSync(path.join(root, 'initial-import.js'), 'utf8'), sandbox);
 const api = sandbox.window.GD_INITIAL;
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -34,12 +35,11 @@ function fails(rows, opts, pattern) {
 
 test('initial template contains blank input rows and separate synthetic examples only', () => {
   const wb = api.createTemplate(XLSX);
-  assert.equal(wb.SheetNames[0], '初回登録');
-  const input = XLSX.utils.sheet_to_json(wb.Sheets['初回登録'], { header: 1, defval: '', blankrows: true });
-  assert.equal(input.length, 33);
-  assert.ok(input.slice(3).flat().every(v => v === ''));
-  assert.equal(input[1][3], '英語');
-  assert.deepEqual(input[2].slice(0, 5), ['学年', 'クラス', '出席番号', '氏名', '合計点（任意）']);
+  assert.equal(wb.SheetNames[0], '名簿入力');
+  const input = XLSX.utils.sheet_to_json(wb.Sheets['名簿入力'], { header: 1, defval: '', blankrows: true });
+  assert.equal(input.length, 114);
+  assert.ok(input.slice(9).flat().every(v => v === ''));
+  assert.deepEqual(input[7], ['学年', 'クラス', '出席番号', '氏名']);
   assert.ok(XLSX.utils.sheet_to_json(wb.Sheets['記入例'], { header: 1 }).flat().some(v => /架空生徒/.test(String(v))));
   const result = api.planWorkbook(wb, XLSX);
   assert.equal(result.dataset, undefined);
@@ -169,20 +169,23 @@ test('split-grade roster flows into test Excel, history matching and JSON save/r
     alert(m) { alerts.push(m); }, confirm() { return true; },
     window: {addEventListener() {}}, document: {addEventListener() {}, getElementById() {return null;}}});
   vm.runInContext(fs.readFileSync(path.join(root, 'import-core.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(root, 'excel-templates.js'), 'utf8'), context);
+  context.window.GD_EXCEL.download = wb => downloads.push(wb);
   vm.runInContext(fs.readFileSync(path.join(root, 'script.js'), 'utf8').replace(/\ninit\(\);\s*$/, '') + `
     markDirty = () => {}; renderAll = () => {};
     globalThis.api = { load(v) {data = v; rebuildIndex();}, current() {return data;}, issueNewTestTemplate, importTestTemplate, validateDataset, gradeOf };
   `, context);
   context.api.load(data); context.api.issueNewTestTemplate();
-  const wb = downloads[0], rows = XLSX.utils.sheet_to_json(wb.Sheets['新規テスト'], {header:1, defval:''});
+  const wb = downloads[0], rows = XLSX.utils.sheet_to_json(wb.Sheets['② 点数入力'], {header:1, defval:''});
   assert.deepEqual(rows[9].slice(0, 5), [data.students[0].id, '1', '1', '1', '架空 同名']);
   assert.deepEqual(rows[10].slice(0, 5), [data.students[1].id, '2', '1', '1', '架空 同名']);
-  rows[0][1] = '架空の追加'; rows[1][1] = '英語'; rows[9][5] = 0; rows[10][5] = 8;
+  wb.Sheets['① テスト設定'].B8 = {t:'s',v:'英語'}; wb.Sheets['① テスト設定'].B10 = {t:'s',v:'架空の追加'}; wb.Sheets['① テスト設定'].B14 = {t:'s',v:'2026-05-22'};
+  rows[9][5] = 0; rows[10][5] = 8;
   // Complete the remaining questions explicitly; this test verifies identity, not partial totals.
-  for (const row of [rows[9], rows[10]]) for (let c = 6; c < rows[8].length; c++) row[c] = 0;
+  for (const row of [rows[9], rows[10]]) for (let c = 6; c < 9; c++) row[c] = 0;
   data.students[0].classHistory = [{className: data.students[0].className, number: data.students[0].number}];
   data.students[0].className = '2年A組'; data.students[0].number = '5';
-  wb.Sheets['新規テスト'] = XLSX.utils.aoa_to_sheet(rows);
+  wb.Sheets['② 点数入力'] = XLSX.utils.aoa_to_sheet(rows);
   const bytes = XLSX.write(wb, {type:'buffer', bookType:'xlsx'});
   await context.api.importTestTemplate({arrayBuffer:async () => bytes});
   assert.equal(data.tests.length, 1, alerts.join('\n'));
@@ -195,7 +198,8 @@ test('split-grade roster flows into test Excel, history matching and JSON save/r
 });
 
 test('named input sheet wins after reordering; help/examples cannot autoimport', () => {
-  const wb = api.createTemplate(XLSX);
+  const wb = workbook(two);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['学年','クラス','出席番号','氏名']]), '記入例');
   wb.Sheets['初回登録'] = workbook(two).Sheets['初回登録'];
   wb.SheetNames.reverse();
   assert.equal(api.planWorkbook(wb, XLSX).dataset.students.length, 2);
@@ -228,7 +232,7 @@ test('dates, grade and serial-date parsing are validated with no partial dataset
 
 test('serialized xlsx template accepts roster data without importing example sheet', () => {
   const wb = api.createTemplate(XLSX);
-  XLSX.utils.sheet_add_aoa(wb.Sheets['初回登録'], two, { origin: 'A4' });
+  XLSX.utils.sheet_add_aoa(wb.Sheets['名簿入力'], two.map(r=>r.slice(0,4)), { origin: 'A10' });
   const reread = XLSX.read(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), { type: 'buffer' });
   const result = api.planWorkbook(reread, XLSX);
   assert.equal(result.errors.length, 0);

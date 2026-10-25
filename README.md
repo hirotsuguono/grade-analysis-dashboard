@@ -18,4 +18,4 @@
 
 ## ライセンス
 
-アプリ本体は [MITライセンス](LICENSE) です。同梱するECharts・SheetJSにはそれぞれのライセンスが適用されます。第三者ライセンスの案内と全文はZIP内の `files/licenses/` と `files/vendor/` にあります。
+アプリ本体は [MITライセンス](LICENSE) です。同梱するECharts・SheetJS・ExcelJSにはそれぞれのライセンスが適用されます。第三者ライセンスの案内と全文はZIP内の `files/licenses/` と `files/vendor/` にあります。

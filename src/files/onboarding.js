@@ -20,10 +20,15 @@
     byId('setupDialog').close();
     byId('newDialog').showModal();
   };
-  byId('initialTemplateBtn').onclick = () => {
-    const workbook = window.GD_INITIAL.createTemplate(XLSX);
-    XLSX.writeFile(workbook, '初回登録テンプレート.xlsx');
-    alert('初回登録用Excelをダウンロードしました。\n\n「初回登録」シートの4行目から、A列に学年（1〜3）・B列にクラス（組のみ。例：1、A）・C列に出席番号・D列に氏名を貼り付けます。生徒IDは自動発行します。\n名簿だけならE列の点数は空欄で構いません。\n最初の点数も登録する場合は、2行目のテスト名などとE列の合計点を記入します。実施学年はテストの学年で、名簿の学年とは別です。\n\n保存したら「② 記入したExcelを読み込む」で選んでください。');
+  byId('initialTemplateBtn').onclick = async () => {
+    const button = byId('initialTemplateBtn'); button.disabled = true;
+    try {
+      const workbook = window.GD_INITIAL.createTemplate(XLSX);
+      await window.GD_EXCEL.download(workbook, '名簿登録テンプレート.xlsx');
+      alert('名簿用Excelをダウンロードしました。\n\n「名簿入力」シートの10行目から、黄色のA〜D列に学年（1〜3）・クラス（組のみ）・出席番号・氏名を入力します。生徒IDは自動発行します。\n教科・テスト・点数は名簿登録後に別のExcelで追加します。\n\n保存したら「② 記入したExcelを読み込む」で選んでください。');
+    } catch (error) {
+      alert('Excelを発行できませんでした。配布ZIPを展開し直してからお試しください。\n' + error.message);
+    } finally { button.disabled = false; }
   };
   byId('initialImportBtn').onclick = () => byId('initialXlsxInput').click();
 
@@ -135,7 +140,7 @@
   // 起動処理と同梱の主要資産が揃った場合だけ、HTML内の復旧案内を閉じます。
   if (document.documentElement.dataset.dashboardInitialized === 'true'
       && document.documentElement.dataset.accessibilityInitialized === 'true'
-      && window.echarts && window.XLSX && window.GD_IMPORT && window.GD_INITIAL
+      && window.echarts && window.XLSX && window.ExcelJS && window.GD_EXCEL && window.GD_IMPORT && window.GD_INITIAL
       && window.GRADE_DASHBOARD_SAMPLE
       && getComputedStyle(document.documentElement).getPropertyValue('--dashboard-style-loaded').trim() === '1') {
     byId('startupHelp').hidden = true;

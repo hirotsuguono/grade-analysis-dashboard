@@ -52,27 +52,30 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
     await page.locator('#newBtnEmpty').click();
     const initialPath = await download('#initialTemplateBtn');
     const blank = XLSX.read(fs.readFileSync(initialPath), { type: 'buffer' });
-    assert.equal(blank.SheetNames[0], '初回登録');
-    assert.ok(rowsOf(blank, '初回登録').slice(3).flat().every(v => v === ''));
+    assert.equal(blank.SheetNames[0], '名簿入力');
+    assert.ok(rowsOf(blank, '名簿入力').slice(9).flat().every(v => v === ''));
     await importInitial(blank);
     assert.match(await page.locator('#initialPreview').textContent(), /名簿がありません/);
     assert.equal(await page.evaluate(() => data), null);
     check('発行した初回Excelの空入力・例シートを登録しない');
     const roster = [ [1, 'A', 1, '架空 同名', ''], [2, 'A', 1, '架空 同名', ''], [2, 'A', 2, '架空 あおい', ''], [2, 'A', 3, '架空 みどり', ''] ];
     function initial(scoreMode = false, duplicate = false) {
-      const wb = XLSX.read(fs.readFileSync(initialPath), { type: 'buffer' });
-      const rows = rowsOf(wb, '初回登録').slice(0, 3);
-      rows[0][1] = '架空の初回操作';
-      rows[1][1] = scoreMode ? '初回合計点' : '';
-      rows[1][7] = 2; rows[1][9] = '2026-04-20';
       const entries = roster.map(row => row.slice());
-      if (scoreMode) [entries[0][4], entries[1][4], entries[2][4], entries[3][4]] = [82, 0, '', '欠'];
-      if (duplicate) entries[1] = entries[0].slice();
-      wb.Sheets['初回登録'] = XLSX.utils.aoa_to_sheet(rows.concat(entries));
+      if (scoreMode) [entries[0][4],entries[1][4],entries[2][4],entries[3][4]]=[80,0,'','欠'];
+      if (duplicate) entries.push(entries[0].slice());
+      if (scoreMode) {
+        // Verify that existing combined workbooks can still be opened; new downloads are roster-only.
+        const wb=XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
+          ['データ名','架空の従来形式'],['テスト名','初回合計点','教科','英語','満点',100,'実施学年',2,'実施日','2026-04-20'],
+          ['学年','クラス','出席番号','氏名','合計点（任意）'],...entries]),'初回登録');
+        return wb;
+      }
+      const wb=XLSX.read(fs.readFileSync(initialPath),{type:'buffer'});
+      const rows=rowsOf(wb,'名簿入力').slice(0,9);
+      wb.Sheets['名簿入力']=XLSX.utils.aoa_to_sheet(rows.concat(entries.map(r=>r.slice(0,4))));
       return wb;
     }
-    await page.locator('#setupCancelBtn').click();
-    await page.locator('#newBtnEmpty').click();
     await importInitial(initial(false, true));
     assert.match(await page.locator('#initialPreview').textContent(), /重複/);
     assert.ok(await page.locator('#initialApplyBtn').isHidden());
@@ -120,12 +123,12 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
     for (const oldFormat of [false, true]) {
       await page.locator('#startFirstHeader').click();
       const invalidInitial = initial();
-      const invalidRows = rowsOf(invalidInitial, '初回登録');
+      const invalidRows = rowsOf(invalidInitial, '名簿入力');
       if (oldFormat) {
-        invalidRows[2] = ['クラス', '出席番号', '氏名', '合計点（任意）'];
-        invalidRows.splice(3, invalidRows.length - 3, ['1年A組', 1, '架空 同名', '']);
-      } else invalidRows[3][0] = 4;
-      invalidInitial.Sheets['初回登録'] = XLSX.utils.aoa_to_sheet(invalidRows);
+        invalidRows[7] = ['クラス', '出席番号', '氏名', '合計点（任意）'];
+        invalidRows.splice(8, invalidRows.length - 8, ['1年A組', 1, '架空 同名', '']);
+      } else invalidRows[9][0] = 4;
+      invalidInitial.Sheets['名簿入力'] = XLSX.utils.aoa_to_sheet(invalidRows);
       await upload('#initialXlsxInput', invalidInitial);
       await page.waitForFunction(message => {
         const preview = document.getElementById('initialPreview');
@@ -152,7 +155,7 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
     assert.equal(first.scores.find(r => r.studentId === first.students[1].id).total, 0);
     assert.ok(!first.scores.some(r => r.studentId === first.students[2].id));
     assert.ok(first.scores.find(r => r.studentId === first.students[3].id).absent);
-    check('初回名簿と合計点を一度に登録・空欄/0点/欠席の区別');
+    check('従来の初回名簿と合計点の読込・空欄/0点/欠席の区別');
     const metricPath = await download('#prepareMetricTemplateBtn');
     let wb = XLSX.read(fs.readFileSync(metricPath), { type: 'buffer' });
     let mr = rowsOf(wb, '指標');
@@ -192,13 +195,12 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
     check('指標の重複・未照合・不正値は全件無変更');
     const testPath = await download('#prepareTestTemplateBtn');
     const twb = XLSX.read(fs.readFileSync(testPath), { type: 'buffer' });
-    const sheet = twb.SheetNames[0], tr = rowsOf(twb, sheet);
+    const sheet = '② 点数入力', tr = rowsOf(twb, sheet);
     assert.deepEqual(tr[8].slice(0, 5), ['生徒ID', '学年', 'クラス', '出席番号', '氏名']);
     assert.equal(tr.slice(9).filter(r => r[4]).length, 4);
     const laterId = tr[9][0];
-    tr[0][1] = '架空の追加テスト'; tr[1][1] = '英語'; tr[2][1] = 30;
-    tr[3][1] = 2; tr[4][1] = '2026-05-20';
-    tr[9][5] = 4; tr[9][6] = 5; tr[9][7] = 6;
+    for (const [key,value] of Object.entries({B8:'英語',B10:'架空の追加テスト',B16:2,B14:'2026-05-20'})) twb.Sheets['① テスト設定'][key]={t:typeof value==='number'?'n':'s',v:value};
+    tr[9][5] = 4; tr[9][6] = 5; tr[9][7] = 6; tr[9][8] = 0;
     twb.Sheets[sheet] = XLSX.utils.aoa_to_sheet(tr);
     await upload('#testXlsxInput', twb);
     await page.waitForFunction(() => data.tests.length === 2);

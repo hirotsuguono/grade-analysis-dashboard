@@ -25,7 +25,7 @@
     return Object.keys(kinds).find(key => key === label || kinds[key] === label);
   }
 
-  function testLayout(rows) {
+  function testLayout(rows, settingsRows = null) {
     const headers = [];
     rows.forEach((r, i) => {
       if (splitRosterHeader(r) || (text(r[0]) === '出席番号' && text(r[1]) === '氏名' && text(r[2]) === 'クラス')) headers.push(i);
@@ -38,12 +38,16 @@
     const metadata = {}, errors = [];
     const labels = ['テスト名', '教科', '満点', '実施学年', '実施日', 'テスト種類', '比較系列'];
     const read = (label, value) => {
-      const key = text(label).replace(/→$/, '');
+      const raw = text(label).normalize('NFKC').replace(/\s*\*$/, '').replace(/→$/, '');
+      const key = ({ '満点(自動)': '満点', 'テストの種類': 'テスト種類', '単元名・試験シリーズ': '比較系列' })[raw] || raw;
       if (!labels.includes(key)) return;
       if (Object.hasOwn(metadata, key)) errors.push('「' + key + '」の設定が重複しています。');
       metadata[key] = value;
     };
-    if (splitRoster) rows.slice(0, headerIdx - 2).forEach(r => { read(r[0], r[1]); read(r[3], r[4]); });
+    if (settingsRows) {
+      if (!splitRoster) errors.push('新しい点数入力シートはA〜E列の名簿とF列以降の点数欄を残してください。');
+      settingsRows.forEach(r => read(r[0], r[1]));
+    } else if (splitRoster) rows.slice(0, headerIdx - 2).forEach(r => { read(r[0], r[1]); read(r[3], r[4]); });
     else {
       // Old templates may have had entire question columns inserted into row 1 too.
       const row = rows[0] || [];
@@ -51,7 +55,7 @@
         if (labels.includes(text(row[c]).replace(/→$/, ''))) { read(row[c], row[c + 1]); c++; }
       }
     }
-    return { errors, metadata, headerIdx, scoreStart: splitRoster ? 5 : 3,
+    return { errors, metadata, automaticMax: !!settingsRows, headerIdx, scoreStart: splitRoster ? 5 : 3,
       domainRow: headerIdx - 2, maxRow: headerIdx - 1,
       identityColumns: splitRoster ? { id: 0, grade: 1, className: 2, number: 3, name: 4 } : null };
   }
