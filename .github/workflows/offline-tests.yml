@@ -42,13 +42,14 @@ jobs:
       - name: Run unit tests
         run: npm test
 
-      - name: Verify distribution ZIP and build
+      - name: Build and verify a candidate ZIP without changing the distributed ZIP
         run: |
-          npm run check
           npm run build -- --output "$RUNNER_TEMP/grade-analysis-dashboard.zip"
+          npm run check -- --output "$RUNNER_TEMP/grade-analysis-dashboard.zip"
+          git diff --exit-code -- downloads/
 
-      - name: Extract the checked-in distribution ZIP
-        run: python3 -m zipfile -e downloads/grade-analysis-dashboard.zip "$RUNNER_TEMP/dashboard-unpacked"
+      - name: Extract the verified candidate ZIP
+        run: python3 -m zipfile -e "$RUNNER_TEMP/grade-analysis-dashboard.zip" "$RUNNER_TEMP/dashboard-unpacked"
 
       - name: Test the extracted app with file URLs and networking disabled
         env:
@@ -95,6 +96,14 @@ jobs:
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
               summary.write('\n'.join(lines) + '\n')
           PY
+
+      - name: Upload the candidate ZIP for manual review
+        uses: actions/upload-artifact@v5
+        with:
+          name: update-guidance-preview
+          path: ${{ runner.temp }}/grade-analysis-dashboard.zip
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload browser reports and screenshots
         if: ${{ always() }}

@@ -404,7 +404,30 @@
 
   </main>
 
-  <footer class="app-footer">成績分析ダッシュボード <span>成績分析・支援記録</span> <a href="files/manual.html">使い方とデータの扱い</a></footer>
+  <footer class="app-footer">
+    <div class="app-footer-heading">
+      <span>成績分析ダッシュボード</span>
+      <span id="appVersion" class="app-version" data-version="0.3.2-dev">v0.3.2-dev（開発版）</span>
+    </div>
+    <nav class="app-footer-links" aria-label="バージョンとサポート">
+      <a id="latestReleaseLink" href="https://github.com/hirotsuguono/grade-analysis-dashboard/releases/latest" target="_blank" rel="noopener noreferrer">最新版を確認・ダウンロード<span class="sr-only">（オンライン・別タブ）</span></a>
+      <a href="files/manual.html">使い方とデータの扱い</a>
+      <a id="repositoryLink" href="https://github.com/hirotsuguono/grade-analysis-dashboard" target="_blank" rel="noopener noreferrer">GitHub<span class="sr-only">（オンライン・別タブ）</span></a>
+    </nav>
+    <details id="updateGuide" class="update-guide">
+      <summary>更新方法・データの引き継ぎ</summary>
+      <div class="update-guide-content">
+        <p>上のバージョンと、配布ページのバージョン・変更内容を確認してください。「最新版を確認」は正式公開済みの配布ページを別タブで開きます（インターネット接続が必要です）。開発版をご利用の場合、配布ページの正式版が今のアプリより古いことがあります。</p>
+        <ol>
+          <li>今のアプリで<strong>「保存」からJSONファイルに保存</strong>し、保存が完了したことを確認します。</li>
+          <li>配布ページの<strong>grade-analysis-dashboard.zip</strong>をダウンロードし、元のアプリとは別のフォルダへ<strong>すべて展開</strong>します。</li>
+          <li>新しいフォルダの<strong>Index.htmlをダブルクリック</strong>して開きます。filesフォルダも一緒に置いてください。</li>
+          <li><strong>「保存したJSONを開く」</strong>から手順1のJSONを選び、名簿・点数・記録が引き継がれたことを確認します。</li>
+        </ol>
+        <p class="update-guide-note">新しいアプリで内容を確認するまでは、元のアプリのフォルダと保存したJSONを残してください。成績データはJSONから引き継ぎます。更新手順はオフラインでも確認できます。</p>
+      </div>
+    </details>
+  </footer>
   <noscript><p class="noscript">このアプリを使うには JavaScript を有効にしてください。</p></noscript>
 
   <!-- 面談カルテ印刷エリア（通常は非表示、印刷時のみ表示） -->
