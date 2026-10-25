@@ -52,14 +52,14 @@
     <div class="welcome-copy start-intro">
       <p class="eyebrow">成績分析ダッシュボード</p>
       <h2 id="welcomeTitle">最初の準備から、<br>学びの変化を見るまで。</h2>
-      <p class="welcome-intro">名簿と最初の点数を、ひとつのExcelで登録できます。<br>次のテストやアンケートは、登録した名簿に追加します。</p>
+      <p class="welcome-intro">最初は名簿だけをExcelで登録します。<br>テストやアンケートは、その後に名簿入りのExcelで追加します。</p>
       <p class="privacy-note"><strong>データはブラウザ内で処理します。</strong>変更後は「保存」でJSONをダウンロードし、次回はそのファイルから再開します。</p>
     </div>
     <div class="start-grid">
       <div class="start-card start-card-first">
         <p class="eyebrow">はじめの準備</p>
         <h3>初めて使う</h3>
-        <p>名簿だけでも、名簿＋最初の点数でも。用意したExcelに貼り付けて登録します。</p>
+        <p>学年・クラス・出席番号・氏名を、名簿用Excelに貼り付けて登録します。</p>
         <button class="btn btn-primary btn-lg" id="newBtnEmpty">初めて使う <span aria-hidden="true">→</span></button>
         <p class="start-note">① 生徒登録 → ② データ追加 → ③ 分析</p>
       </div>
@@ -86,14 +86,14 @@
   <dialog id="setupDialog">
     <div class="dialog-form setup-form">
       <h2>生徒を登録して始める</h2>
-      <p>Excelに名簿を貼り付けます。最初のテストの合計点も、同じファイルで登録できます。名簿だけなら点数は空欄のままで構いません。</p>
+      <p>まず名簿だけを登録します。教科・テスト・点数は、登録後に別のExcelで追加します。</p>
       <ol class="setup-steps">
-        <li>Excelを発行し、「初回登録」シートの<strong>A列：学年（1〜3）、B列：クラス（組のみ）、C列：出席番号、D列：氏名</strong>に名簿を貼り付けます（4行目から）。例：学年「1」・クラス「2」なら「1年2組」として登録します。生徒IDは自動発行します。</li>
-        <li>最初の点数も入れる場合は、2行目のテスト名などを記入し、E列へ合計点を入力します。2行目の実施学年はテストの学年で、名簿の学年とは別です。空欄は未入力、0点は数字の0、欠席は「欠」です。</li>
+        <li>Excelを発行し、「名簿入力」シートの<strong>A列：学年（1〜3）、B列：クラス（組のみ）、C列：出席番号、D列：氏名</strong>の黄色い欄へ貼り付けます（10行目から）。例：学年「1」・クラス「2」なら「1年2組」として登録します。</li>
+        <li>教科や点数は入力しません。生徒IDはアプリが自動発行します。テスト用Excelには登録後の名簿が自動で入ります。</li>
         <li>Excelを保存して読み込み、内容を確認して登録します。「記入例」シートは取り込みません。</li>
       </ol>
       <div class="setup-actions">
-        <button type="button" class="btn btn-primary" id="initialTemplateBtn">① 初回登録用Excelを発行</button>
+        <button type="button" class="btn btn-primary" id="initialTemplateBtn">① 名簿登録用Excelを発行</button>
         <button type="button" class="btn btn-ghost" id="initialImportBtn">② 記入したExcelを読み込む</button>
       </div>
       <input type="file" id="initialXlsxInput" accept=".xlsx,.xls" hidden>
@@ -723,6 +723,8 @@
   <input type="file" id="metricXlsxInput" accept=".xlsx,.xls" hidden>
 
   <script src="files/import-core.js"></script>
+  <script src="files/vendor/exceljs.min.js"></script>
+  <script src="files/excel-templates.js"></script>
   <script src="files/initial-import.js"></script>
   <script src="files/script.js"></script>
   <script src="files/accessibility.js"></script>

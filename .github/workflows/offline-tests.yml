@@ -46,7 +46,7 @@ jobs:
       # against its immutable source revision, then verify the candidate below.
       - name: Verify the preserved distribution ZIP against its original source
         env:
-          DISTRIBUTED_SOURCE_COMMIT: 37bc56abab098441fdbdd36cfe9fb8a7292bde65
+          DISTRIBUTED_SOURCE_COMMIT: 25af505cec0d34f5af7f7dfe28769bc5f8dd0e10
         run: |
           git fetch --no-tags --depth=1 origin "$DISTRIBUTED_SOURCE_COMMIT"
           mkdir -p "$RUNNER_TEMP/distribution-source"

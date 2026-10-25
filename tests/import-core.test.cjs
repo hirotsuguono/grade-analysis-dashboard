@@ -25,6 +25,8 @@ function harness() {
   });
   context.confirmResult = true;
   vm.runInContext(importSource, context);
+  vm.runInContext(fs.readFileSync(path.join(root, 'excel-templates.js'), 'utf8'), context);
+  context.window.GD_EXCEL.download = (wb, name) => downloads.push({ wb, name });
   vm.runInContext(scriptSource + `\nrebuildIndex = function() {}; markDirty = function() {}; renderAll = function() {}; fillAxisSelects = function() {}; fillMetricSelect = function() {}; renderMetricsTab = function() {};\n globalThis.api = { importTestTemplate, importMetricTemplate, issueNewTestTemplate, issueMetricTemplate, exportTemplate, buildReassignPlan, submitNewDialog, setData(d) {data=d;}, getData() {return data;}, setUI(v) {Object.assign(ui,v);} };`, context);
   return { api: context.api, core: context.window.GD_IMPORT, alerts, confirms, downloads, elements, context };
 }
@@ -33,6 +35,11 @@ function fileFromSheets(sheets) {
   for (const [name, rows] of sheets) xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(rows), name);
   const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
   return { arrayBuffer: async () => buf };
+}
+function configuredFile(wb, rows, name = '架空の新テスト', grade = '', date = '2026-05-22') {
+  const settings = wb.Sheets['① テスト設定'];
+  for (const [key, value] of Object.entries({B8:'英語',B10:name,B14:date,B16:grade})) settings[key] = {t:typeof value === 'number'?'n':'s',v:value};
+  return fileFromSheets([['① テスト設定', xlsx.utils.sheet_to_json(settings,{header:1,defval:''})],['② 点数入力',rows]]);
 }
 const metricRows = () => [[], ['出席番号', '氏名', 'クラス', '家庭学習時間', '生徒ID'], [1, '架空生徒001', '2年A組', 0, 's1'], [2, '架空生徒002', '2年A組', '', 's2']];
 const testRows = () => [
@@ -128,25 +135,25 @@ test('test import rejects unknown, duplicates, text, nonfinite, mixed absence, a
 });
 test('new template IDs round-trip after class reassignment using recognized history', async () => {
   const h = harness(), d = dataset(); h.api.setData(d); h.api.issueNewTestTemplate();
-  const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['新規テスト'], { header: 1, defval: '' });
+  const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['② 点数入力'], { header: 1, defval: '' });
   assert.equal(rows[8][0], '生徒ID'); assert.equal(rows[9][0], 's1');
   rows[0][1] = '架空テスト'; rows[1][1] = '英語'; rows[9][5] = 4;
   d.students[0].classHistory.push({className: d.students[0].className, number: d.students[0].number});
   d.students[0].className = '3年C組'; d.students[0].number = 12;
-  await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
+  await h.api.importTestTemplate(configuredFile(h.downloads[0].wb, rows, '架空列追加', 2, '2026-06-10'));
   assert.equal(d.scores.length, 1); assert.equal(d.scores[0].studentId, 's1');
 });
-test('test template separates left metadata, five roster columns, and expandable question columns', () => {
+test('test template separates settings from the five roster columns and expandable scores', () => {
   const h = harness(); h.api.setData(dataset()); h.api.issueNewTestTemplate();
   const wb = h.downloads[0].wb;
-  const rows = xlsx.utils.sheet_to_json(wb.Sheets['新規テスト'], {header: 1, defval: ''});
-  assert.deepEqual(rows.slice(0, 5).map(r => r[0]), ['テスト名', '教科', '満点', '実施学年', '実施日']);
-  assert.deepEqual(rows[8].slice(0, 5), ['生徒ID', '学年', 'クラス', '出席番号', '氏名']);
-  assert.deepEqual(rows[9].slice(0, 5), ['s1', '2', 'A', 1, '架空生徒001']);
-  assert.ok(rows.slice(9).every(r => r.slice(5).every(v => v === '')));
-  assert.deepEqual(wb.SheetNames, ['新規テスト', '記入例', '説明']);
-  assert.ok(xlsx.utils.sheet_to_json(wb.Sheets['説明'], {header: 1}).flat().some(v => /列全体/.test(String(v))));
+  const rows = xlsx.utils.sheet_to_json(wb.Sheets['② 点数入力'], {header:1,defval:''});
+  assert.deepEqual(wb.SheetNames, ['① テスト設定','② 点数入力','記入例']);
+  assert.deepEqual(rows[8].slice(0,5), ['生徒ID','学年','クラス','出席番号','氏名']);
+  assert.deepEqual(rows[9].slice(0,5), ['s1','2','A',1,'架空生徒001']);
+  assert.ok(rows.slice(9).every(r=>r.slice(5).every(v=>v==='')));
+  assert.equal(wb.Sheets['① テスト設定'].B12.f, "SUM('② 点数入力'!8:8)");
 });
+
 test('four-domain workbook preserves roster and separate test grade/date, zero and blanks', async () => {
   const h = harness(), d = dataset(), roster = JSON.stringify(d.students); h.api.setData(d);
   await h.api.importTestTemplate(fileFromSheets([['新規テスト', splitTestRows()]]));
@@ -169,7 +176,7 @@ test('test kinds and series round-trip through Excel; invalid kinds abort the wo
 });
 test('entire question-column insertions and additions never move new metadata or IDs', async () => {
   const h = harness(), d = dataset(); h.api.setData(d); h.api.issueNewTestTemplate();
-  const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['新規テスト'], {header: 1, defval: ''});
+  const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['② 点数入力'], {header: 1, defval: ''});
   rows[0][1] = '架空列追加'; rows[1][1] = '英語'; rows[3][1] = 2; rows[4][1] = '2026-06-10';
   // Insert a whole Excel column at G, then append enough questions to extend beyond J.
   rows.forEach(r => { while (r.length < 6) r.push(''); r.splice(6, 0, ''); });
@@ -179,7 +186,7 @@ test('entire question-column insertions and additions never move new metadata or
     if (rows[9][c] > 10) rows[9][c] = 10;
   }
   const metadata = rows.slice(0, 5).map(r => r.slice(0, 2));
-  await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
+  await h.api.importTestTemplate(configuredFile(h.downloads[0].wb, rows, '架空列追加', 2, '2026-06-10'));
   assert.equal(d.tests.length, 1); assert.equal(d.tests[0].questions.length, 12);
   assert.equal(d.tests[0].maxScore, 120); assert.equal(d.tests[0].gradeYear, 2);
   assert.equal(d.tests[0].date, '2026-06-10'); assert.equal(d.scores[0].total, 65);
@@ -210,11 +217,11 @@ test('different grades with the same class, number and name retain distinct IDs'
 test('compact and unrecognized class names round-trip without modifying stored class names', async () => {
   const h = harness(), d = dataset(); d.students[0].className = '2A'; d.students[1].className = '特別クラス';
   h.api.setData(d); h.api.issueNewTestTemplate();
-  const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['新規テスト'], {header:1, defval:''});
+  const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['② 点数入力'], {header:1, defval:''});
   assert.deepEqual(rows[9].slice(1, 3), ['2', 'A']);
   assert.deepEqual(rows[10].slice(1, 3), ['', '特別クラス']);
   rows[0][1] = '架空クラス'; rows[1][1] = '英語'; rows[9][5] = 0; rows[10][5] = 10;
-  await h.api.importTestTemplate(fileFromSheets([['新規テスト', rows]]));
+  await h.api.importTestTemplate(configuredFile(h.downloads[0].wb, rows, '架空列追加', 2, '2026-06-10'));
   assert.equal(d.scores.length, 2);
   assert.deepEqual(d.students.map(s => s.className), ['2A', '特別クラス']);
 });

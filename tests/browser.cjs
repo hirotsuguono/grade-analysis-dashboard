@@ -216,11 +216,10 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     const tplPath = await downloadWorkbook('#newTestTplBtn');
     const XLSX = require('../src/files/vendor/xlsx.full.min.js');
     let wb = XLSX.read(fs.readFileSync(tplPath), { type: 'buffer' });
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
-    rows[0][1] = '架空Excel取込'; rows[1][1] = '国語'; rows[2][1] = 30;
-    rows[3][1] = 1; rows[4][1] = '2026-10-15';
-    rows[9][5] = 4; rows[9][6] = 5; rows[9][7] = 6;
-    wb.Sheets[wb.SheetNames[0]] = XLSX.utils.aoa_to_sheet(rows);
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets['② 点数入力'], { header: 1, defval: '' });
+    for (const [key,value] of Object.entries({B8:'国語',B10:'架空Excel取込',B16:1,B14:'2026-10-15'})) wb.Sheets['① テスト設定'][key]={t:typeof value==='number'?'n':'s',v:value};
+    rows[9][5] = 4; rows[9][6] = 5; rows[9][7] = 6; rows[9][8] = 0;
+    wb.Sheets['② 点数入力'] = XLSX.utils.aoa_to_sheet(rows);
     const buf = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
     await page.locator('#testXlsxInput').setInputFiles({ name: 'synthetic-test.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: buf });
     await page.waitForFunction(() => data.tests.some(t => t.name === '架空Excel取込'));

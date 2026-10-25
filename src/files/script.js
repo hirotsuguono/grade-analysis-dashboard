@@ -3188,73 +3188,33 @@ function renderChiSquare(points, x, y) {
 
 /* ========== V2: テンプレート発行・取込 ========== */
 // 新規テスト取込テンプレート（名簿プリフィル済み）を発行
-function issueNewTestTemplate() {
-  if (typeof XLSX === 'undefined') { alert('Excel出力ライブラリの読み込みに失敗しました。'); return; }
-  const students = sortedStudents();
-  const rows = [
-    ['テスト名', '', '', 'テスト種類', '未分類'],
-    ['教科', '', '', '比較系列', ''],
-    ['満点', ''],
-    ['実施学年', ''],
-    ['実施日', ''],
-    ['A〜E列の名簿は変更せず、F列以降に問題を追加できます。「説明」「記入例」シートもご覧ください。'],
-    ['分野', '', '', '', '', '知識・技能', '知識・技能', '読解'],
-    ['配点', '', '', '', '', 10, 10, 10],
-    ['生徒ID', '学年', 'クラス', '出席番号', '氏名', '問1', '問2', '問3'],
-    ...students.map((s) => {
-      const parts = window.GD_IMPORT.splitClassName(s.className);
-      return [s.id, parts.grade, parts.className, s.number != null ? s.number : '', s.name, '', '', ''];
-    }),
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 46 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 20 }, ...Array.from({ length: 3 }, () => ({ wch: 14 }))];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '新規テスト');
-  const example = XLSX.utils.aoa_to_sheet([
-    ['テスト名', '架空の英語テスト'], ['教科', '英語'], ['満点', 100], ['実施学年', 1], ['実施日', '2026-05-22'],
-    ['記入例（すべて架空。このシートは取り込まれません）'],
-    ['分野', '', '', '', '', 'リスニング', '読解', 'ライティング', '文法'],
-    ['配点', '', '', '', '', 25, 25, 25, 25],
-    ['生徒ID', '学年', 'クラス', '出席番号', '氏名', '問1', '問2', '問3', '問4'],
-    ['架空ID001', 1, '1', 1, '架空生徒001', 20, 15, 25, 0],
-    ['架空ID002', 1, '1', 2, '架空生徒002', '欠', '', '', ''],
-    ['架空ID003', 1, '2', 1, '架空生徒003', '', '', '', ''],
-  ]);
-  example['!cols'] = ws['!cols'].concat({ wch: 14 });
-  XLSX.utils.book_append_sheet(wb, example, '記入例');
-  const help = XLSX.utils.aoa_to_sheet([
-    ['新規テストExcelの書き方'],
-    ['E1はテスト種類（単元テスト・中間テスト・期末テスト・実力テスト・その他・未分類）、E2は単元名や試験シリーズ（任意）です。未分類は自動比較しません。比較相手は取込後に「テストの種類・比較対象」から変更できます。'],
-    ['1. 「新規テスト」シートのB1にテスト名、B2に教科を入力します。B3の満点は空欄なら配点合計です。'],
-    ['2. B4はテストの実施学年（1〜3、任意）、B5は実施日（YYYY-MM-DD、任意）です。生徒の学年とは別です。'],
-    ['3. A〜E列の生徒ID・学年・クラス・出席番号・氏名は自動記入済みです。変更せず、同じJSONへ取り込んでください。'],
-    ['4. F列以降に点数を入力します。7行目は分野、8行目は配点、9行目は問題名、10行目以降は生徒の点数です。'],
-    ['5. 問題を増やすときはF列以降に列全体を挿入・追加し、7〜9行目も記入します。右端に生徒ID列はありません。'],
-    ['6. 分野ごとの合計だけを入力するなら1分野を1列にします。同じ分野の複数問題は7行目を同じ分野名にすると合算されます。'],
-    ['7. 配点合計が満点以下になるようにします。4分野で100点なら各25点が一例です。'],
-    ['8. 空欄は未入力、0は0点です。欠席は点数欄の1か所に「欠」と入力し、その生徒の他の点数は空欄にします。'],
-    ['9. 学年は「1年1組」「2A」などのクラス名から分けて表示します。分けられないクラス名は学年空欄・クラス欄に元の名前で表示します。'],
-    ['10. 保存して「記入後に取込」で選び、確認画面を見て登録します。その後アプリで「保存」してください。'],
-    ['「記入例」「説明」シートは取り込みません。名簿・点数は「新規テスト」シートに記入します。以前の形式のExcelも取り込めます。'],
-  ]);
-  help['!cols'] = [{ wch: 120 }];
-  XLSX.utils.book_append_sheet(wb, help, '説明');
-  XLSX.writeFile(wb, '新規テスト取込テンプレート.xlsx');
-  alert('テンプレートをダウンロードしました。\n\n1) B1〜B5にテスト名・教科・満点・実施学年・実施日を記入します。\n2) A〜E列は登録済み名簿です。生徒IDなどは変更しません。\n3) F列以降が点数欄です。7行目に分野、8行目に配点、9行目に問題名、10行目以降に点数を入力します。列全体を挿入して問題を増やせます。\n4) 空欄は未入力、0は0点。欠席は1か所に「欠」、他の点数は空欄にします。\n5) 詳しくはExcelの「説明」「記入例」をご覧ください。保存後「記入後に取込」で選びます。');
+async function issueNewTestTemplate() {
+  if (typeof XLSX === 'undefined' || !window.GD_EXCEL) { alert('Excel出力用のファイルが不足しています。配布ZIPを展開し直してください。'); return; }
+  try {
+    const wb = window.GD_EXCEL.testTemplate(XLSX, sortedStudents());
+    await window.GD_EXCEL.download(wb, '新規テスト取込テンプレート.xlsx');
+    alert('テスト用Excelをダウンロードしました。\n\n1) 「① テスト設定」の黄色い欄に教科・テスト名・実施日などを入力します。\n2) 「② 点数入力」の7行目に分野、8行目に配点、9行目に問題名、10行目以降に点数を入力します。満点は配点合計から自動計算します。\n3) 灰色のA〜E列は名簿です。変更せず、F列以降に点数を入力します。列を増やすときは直前の列全体をコピーして追加してください。\n4) 空欄は未入力、0は0点。欠席は1か所に「欠」、他の点数は空欄にします。\n5) 保存して「記入後に取込」で選びます。その後アプリでもJSONを保存してください。');
+  } catch (error) {
+    alert('Excelを発行できませんでした。配布ZIPを展開し直してからお試しください。\n' + error.message);
+  }
 }
 
 // テンプレートからテストを取込
 async function importTestTemplate(file) {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
-  const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['新規テスト']);
-  const layout = window.GD_IMPORT.testLayout(rows);
+  const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['② 点数入力', '新規テスト']);
+  const settingsNames = wb.SheetNames.filter(n => ['① テスト設定', 'テスト設定'].includes(n));
+  if (settingsNames.length > 1) { alert('テスト設定のシートが複数あります。1枚にしてください。'); return; }
+  if (wb.SheetNames.includes('② 点数入力') && !settingsNames.length) { alert('「① テスト設定」シートが見つかりません。シート名を戻すか、新しいテンプレートを発行してください。'); return; }
+  const settingsRows = settingsNames.length ? XLSX.utils.sheet_to_json(wb.Sheets[settingsNames[0]], { header: 1, defval: '' }) : null;
+  const layout = window.GD_IMPORT.testLayout(rows, settingsRows);
   if (layout.errors.length) { alert(layout.errors.join('\n')); return; }
   const { metadata, headerIdx, scoreStart, domainRow, maxRow, identityColumns } = layout;
 
   const name = String(metadata['テスト名'] || '').trim();
   const subject = String(metadata['教科'] || '').trim();
-  if (!name || !subject) { alert('テスト名・教科が空欄です。新形式はB1・B2、旧形式は1行目に記入してください。'); return; }
+  if (!name || !subject) { alert('テスト名・教科が空欄です。「① テスト設定」のB8・B10へ入力してください（従来形式のExcelでは元の設定欄を使用します）。'); return; }
   if (data.tests.some((t) => t.name === name && t.subject === subject)) {
     if (!confirm(`「${name}（${subject}）」は既に存在します。別のテストとして追加しますか？`)) return;
   }
@@ -3284,8 +3244,8 @@ async function importTestTemplate(file) {
   }));
   const declaredMax = Number(metadata['満点']);
   const questionMaxSum = qCols.reduce((a, q) => a + q.max, 0);
-  if (String(metadata['満点'] ?? '').trim() && (!Number.isFinite(declaredMax) || declaredMax <= 0)) { alert('満点は0より大きい数字、または空欄にしてください。'); return; }
-  const maxScore = declaredMax > 0 ? declaredMax : questionMaxSum;
+  if (!layout.automaticMax && String(metadata['満点'] ?? '').trim() && (!Number.isFinite(declaredMax) || declaredMax <= 0)) { alert('満点は0より大きい数字、または空欄にしてください。'); return; }
+  const maxScore = !layout.automaticMax && declaredMax > 0 ? declaredMax : questionMaxSum;
   if (questionMaxSum > maxScore) {
     alert(`問題の配点合計（${questionMaxSum}点）がテストの満点（${maxScore}点）を超えています。Excelを修正してください。`);
     return;
@@ -3297,6 +3257,7 @@ async function importTestTemplate(file) {
   if (gradeText && !/^[123]$/.test(gradeText)) { alert('実施学年は1〜3の整数、または空欄にしてください。'); return; }
   if (gradeText) test.gradeYear = Number(gradeText);
   const rawDate = metadata['実施日'];
+  if (layout.automaticMax && String(rawDate ?? '').trim() === '') { alert('「① テスト設定」の実施日（B14）を入力してください。'); return; }
   const date = normalizeDateValue(rawDate);
   if (rawDate !== '' && rawDate != null) {
     if (!date) {
