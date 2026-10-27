@@ -138,6 +138,63 @@
     scoreSheet('記入例', Array.from({ length: 4 }, (_, i) => ({ id: `架空ID${i+1}`, name: `架空生徒${i+1}`, className: '1年1組', number: i+1 })), true);
     return wb;
   }
+  function metricTemplate(X, students) {
+    const wb = X.utils.book_new();
+    function inputSheet(name, roster, example = false) {
+      const lastRow = Math.max(9, roster.length + 8);
+      const ws = makeSheet(X, wb, name, [17, 7, 9, 11, 22, 29, 29, 29], lastRow, true);
+      header(X, ws, 7, '指標・アンケート入力' + (example ? ' ／ 記入例' : ''),
+        example ? '記入例はすべて架空です。実際の入力は「指標」シートに記入します。' : '登録済みの名簿は入力済みです。黄色の指標名と回答欄だけを記入します。',
+        '1 指標名を記入する　→　2 生徒ごとの回答を入力する　→　3 保存して取り込む',
+        '項目を増やすときは直前の列全体をコピーして右へ追加します。使わない指標列はそのままで構いません。');
+      band(X, ws, 5, 0, 4, '自動入力の名簿　｜　編集不要', style.section, 28);
+      band(X, ws, 5, 5, 7, '入力する欄　｜　指標名と回答', style.section, 28);
+      band(X, ws, 6, 0, 4, '9行目：指標名を記入 →', style.label, 28);
+      band(X, ws, 6, 5, 7, '例：家庭学習時間（分/日）、計画的に学習する（1〜5）', style.hint, 28);
+      band(X, ws, 7, 0, 4, '10行目以降：回答を記入 →', style.label, 28);
+      band(X, ws, 7, 5, 7, '未回答＝空欄 ／ 0＝実際の数値0 ／ 5段階の回答＝1〜5', style.hint, 28);
+      ['生徒ID', '学年', 'クラス', '出席番号', '氏名'].forEach((v, c) => cell(X, ws, 8, c, v, style.header));
+      const labels = ['家庭学習時間（分/日）', '計画的に学習する（1〜5）', '読書量（冊/月）'];
+      for (let c = 5; c < 8; c++) {
+        cell(X, ws, 8, c, example ? labels[c-5] : `指標名${['①', '②', '③'][c-5]}（ここを書き換え）`, style.inputCenter);
+        const letter = X.utils.encode_col(c);
+        validation(ws, `${letter}10:${letter}${lastRow+1}`, { type: 'custom',
+          formulae: [`OR(${letter}10="",ISNUMBER(${letter}10))`], promptTitle: '回答を入力',
+          prompt: '数値を入力します。未回答は空欄、5段階の回答は1〜5です。', error: '数字で入力してください。未回答は空欄にします。' });
+      }
+      ws['!rows'][8] = { hpt: 46 };
+      const answers = [[30, 4, 2], [0, '', 0], [45, 5, ''], ['', 3, 1]];
+      roster.forEach((s, i) => {
+        const parts = root.GD_IMPORT.splitClassName(s.className);
+        [s.id, parts.grade, parts.className, s.number ?? '', s.name].forEach((v, c) => cell(X, ws, 9+i, c, v, c === 0 ? style.autoSmall : c === 4 ? style.auto : style.autoCenter));
+        for (let c = 5; c < 8; c++) cell(X, ws, 9+i, c, example ? answers[i]?.[c-5] ?? '' : '', style.inputCenter);
+      });
+      ws['!freeze'] = { rows: 9, cols: 5 }; ws['!repeatRows'] = '6:9';
+    }
+    inputSheet('指標', students);
+    inputSheet('記入例', Array.from({ length: 4 }, (_, i) => ({ id: `架空ID${i+1}`, name: `架空生徒${i+1}`, className: '1年1組', number: i+1 })), true);
+    const help = makeSheet(X, wb, '書き方', [30, 30, 35], 20);
+    header(X, help, 2, '指標・アンケートの書き方', '「指標」シートの黄色の欄に記入します。「記入例」「書き方」は取り込みません。',
+      '1 指標名を記入する　→　2 回答を入力する　→　3 保存して取り込む');
+    const instructions = [
+      [5, '記入する場所', style.section],
+      [6, '9行目のF列以降：仮の指標名を、実際の項目名に変更します。例：家庭学習時間（分/日）。', style.note],
+      [7, '10行目以降の黄色の欄：各生徒の数値や回答を入力します。灰色のA〜E列は変更しません。', style.note],
+      [8, '項目の追加：直前の列全体をコピーして右へ追加し、9行目の指標名も記入します。', style.note],
+      [9, '未回答は空欄です。0を入れると実際の数値0として取り込みます。', style.note],
+      [10, '保存後、アプリの「② 記入後に取込」でこのExcelを選び、内容を確認します。', style.note],
+      [12, '指標の種類は自動で判定します', style.section],
+      [13, '新しい指標の回答がすべて1〜5の整数なら「5段階アンケート」です。未回答は空欄にします。', style.note],
+      [14, 'それ以外（0・小数・6以上・負の数など）は「数値」です。単位は指標名に記入します。', style.note],
+      [15, '同じ名前の指標は種類を保って更新します。既存値は空欄では消えません。', style.note],
+      [17, '取り込み後もJSONを保存してください', style.section],
+      [18, '取り込み後は、アプリの「保存」でJSONを保存します。次回はそのJSONから再開します。', style.note],
+      [19, '名簿が変わったら最新のテンプレートを発行します。生徒ID・学年・クラス・番号・氏名は変更しません。', style.note],
+      [20, 'このファイルには氏名が入ります。保存・共有は学校のルールに従ってください。', style.note],
+    ];
+    for (const [row, text, s] of instructions) band(X, help, row, 0, 2, text, s, s === style.section ? 28 : 34);
+    return wb;
+  }
   async function writeBuffer(wb) {
     if (!root.ExcelJS) throw new Error('Excel出力用のファイルが不足しています。配布ZIPを展開し直してください。');
     const book = new root.ExcelJS.Workbook();
@@ -170,5 +227,5 @@
     const link = document.createElement('a'); link.href = url; link.download = name; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
-  root.GD_EXCEL = { rosterTemplate, testTemplate, writeBuffer, download };
+  root.GD_EXCEL = { rosterTemplate, testTemplate, metricTemplate, writeBuffer, download };
 })(typeof window !== 'undefined' ? window : globalThis);

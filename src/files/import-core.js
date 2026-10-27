@@ -9,7 +9,8 @@
   const findHeader = (rows) => rows.findIndex((r) => text(r[0]) === '出席番号' && text(r[1]) === '氏名' && text(r[2]) === 'クラス');
   const splitRosterHeader = (r) => isIdHeader(r[0]) && text(r[1]) === '学年' && text(r[2]) === 'クラス' && text(r[3]) === '出席番号' && text(r[4]) === '氏名';
   const isPlaceholder = (v) => /^(（ここに指標名|指標名[①-⑳]?)/.test(text(v));
-  const inputHelp = '「指標」シートの D2 を実際の指標名（例：家庭学習時間（分/日））に書き換え、D3 以降の生徒行に数字を入力してください。E列も使う場合は E2 と E3 以降を記入します。未回答は空欄のままにします。「記入例」「書き方」は取り込みません。';
+  const inputHelp = '「指標」シートの F9 以降の黄色の見出しを実際の指標名（例：家庭学習時間（分/日））に書き換え、F10 以降の生徒行に数字を入力してください。灰色のA〜E列は変更せず、未回答は空欄にします。「記入例」「書き方」は取り込みません。';
+  const legacyMetricHelp = '「指標」シートの D2 を実際の指標名（例：家庭学習時間（分/日））に書き換え、D3 以降の生徒行に数字を入力してください。E列も使う場合は E2 と E3 以降を記入します。未回答は空欄のままにします。「記入例」「書き方」は取り込みません。';
 
   // Keep the stored class name intact. Split only recognized grade/class forms for Excel.
   function splitClassName(value) {
@@ -134,20 +135,24 @@
   }
 
   function parseMetricRows(rows, students, metrics) {
-    const hi = findHeader(rows);
-    if (hi < 0) return { errors: ['「出席番号・氏名・クラス」の見出し行が見つかりません。' + inputHelp] };
+    const headers = [];
+    rows.forEach((r, i) => { if (splitRosterHeader(r) || (text(r[0]) === '出席番号' && text(r[1]) === '氏名' && text(r[2]) === 'クラス')) headers.push(i); });
+    if (headers.length !== 1) return { errors: ['名簿の見出し行が見つからない、または複数あります。' + inputHelp] };
+    const hi = headers[0], splitRoster = splitRosterHeader(rows[hi]);
+    const start = splitRoster ? 5 : 3, help = splitRoster ? inputHelp : legacyMetricHelp;
     const header = rows[hi], cols = [];
-    for (let c = 3; c < header.length; c++) {
+    for (let c = start; c < header.length; c++) {
       const label = text(header[c]);
       if (label && !isIdHeader(label) && !isPlaceholder(label)) cols.push({ c, label });
     }
-    if (!cols.length) return { errors: ['指標名がまだ入力されていません。' + inputHelp] };
+    if (!cols.length) return { errors: ['指標名がまだ入力されていません。' + help] };
     const width = Math.max(header.length, ...rows.slice(hi + 1).map((r) => r.length));
-    for (let c = 3; c < width; c++) {
-      if ((!text(header[c]) || isPlaceholder(header[c])) && rows.slice(hi + 1).some((r) => text(r[c]))) return { errors: ['指標名が未入力の列に値があります。' + inputHelp] };
+    for (let c = start; c < width; c++) {
+      if ((!text(header[c]) || isPlaceholder(header[c])) && rows.slice(hi + 1).some((r) => text(r[c]))) return { errors: ['指標名が未入力の列に値があります。' + help] };
     }
     if (new Set(cols.map((c) => c.label)).size !== cols.length) return { errors: ['指標名が重複しています。同じ指標は1列にしてください。'] };
-    const { matched, errors } = matchedRows(rows, hi, students, cols.map((c) => c.c));
+    const identityColumns = splitRoster ? { id: 0, grade: 1, className: 2, number: 3, name: 4 } : null;
+    const { matched, errors } = matchedRows(rows, hi, students, cols.map((c) => c.c), identityColumns);
     const plans = cols.map((col) => {
       const values = {};
       for (const { row, student, rowNumber } of matched) {
@@ -163,7 +168,7 @@
       if (isScale && vals.some((v) => !Number.isInteger(v) || v < 1 || v > 5)) errors.push('「' + col.label + '」は5段階です。1〜5の整数に修正してください。');
       return { label: col.label, values, count: vals.length, existing, isScale, zeroBlocked: !existing && !autoScale && vals.some((v) => v === 0) && vals.every((v) => Number.isInteger(v) && v >= 0 && v <= 5) };
     }).filter((p) => p.count > 0);
-    if (!plans.length && !errors.length) errors.push('指標の数値がまだ入力されていません。' + inputHelp);
+    if (!plans.length && !errors.length) errors.push('指標の数値がまだ入力されていません。' + help);
     return { errors, plans };
   }
   root.GD_IMPORT = { createMatcher, selectSheet, findHeader, idColumn, isIdHeader, isPlaceholder, numeric, matchedRows, parseMetricRows, inputHelp, splitClassName, testLayout, parseTestKind };
