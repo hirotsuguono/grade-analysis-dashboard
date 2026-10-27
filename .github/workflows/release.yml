@@ -1,0 +1,94 @@
+name: Publish verified release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version, for example v0.5.0
+        required: true
+        type: string
+      target_commit:
+        description: Full 40-character commit SHA on main
+        required: true
+        type: string
+      release_id:
+        description: Existing draft Release ID
+        required: true
+        type: string
+      publish:
+        description: Attach the ZIP and publish as Latest (false verifies only)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.repository == 'hirotsuguono/grade-analysis-dashboard' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Validate the version, source commit and existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_COMMIT: ${{ inputs.target_commit }}
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: >-
+          python3 scripts/release.py --preflight
+          --version "$RELEASE_VERSION" --commit "$RELEASE_COMMIT"
+          --release-id "$RELEASE_ID"
+
+  verify:
+    needs: preflight
+    uses: ./.github/workflows/offline-tests.yml
+    with:
+      target_commit: ${{ inputs.target_commit }}
+
+  release:
+    needs: [preflight, verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # Use the workflow's trusted main revision for automation, not target code.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v5
+        with:
+          name: offline-distribution
+          path: ${{ runner.temp }}/release-input
+      - name: Verify the tested artifact and optionally publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_COMMIT: ${{ inputs.target_commit }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          RELEASE_PUBLISH: ${{ inputs.publish }}
+        shell: bash
+        run: |
+          args=(--version "$RELEASE_VERSION" --commit "$RELEASE_COMMIT" --release-id "$RELEASE_ID"
+                --asset "$RUNNER_TEMP/release-input/grade-analysis-dashboard.zip")
+          if [[ "$RELEASE_PUBLISH" == "true" ]]; then
+            args+=(--publish)
+          fi
+          python3 scripts/release.py "${args[@]}"

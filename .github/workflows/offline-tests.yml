@@ -4,6 +4,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      target_commit:
+        description: Exact commit to verify for a release
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -20,6 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ inputs.target_commit || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@v5
