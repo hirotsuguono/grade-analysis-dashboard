@@ -284,14 +284,15 @@ test('legacy templates with inserted whole columns keep shifted grade/date and o
   }
 });
 test('metric template IDs round-trip and all examples are explicit synthetic names', async () => {
-  const h = harness(), d = dataset(); h.api.setData(d); h.api.issueMetricTemplate();
+  const h = harness(), d = dataset(); h.api.setData(d); await h.api.issueMetricTemplate();
   const wb = h.downloads[0].wb, rows = xlsx.utils.sheet_to_json(wb.Sheets['指標'], {header: 1, defval: ''});
-  const id = rows[1].indexOf('生徒ID'); assert.equal(id, 5); assert.equal(rows[2][id], 's1');
-  rows[1][3] = '家庭学習時間'; rows[2][3] = 10;
+  const id = rows[8].indexOf('生徒ID'); assert.equal(id, 0); assert.equal(rows[9][id], 's1');
+  rows[8][5] = '家庭学習時間'; rows[9][5] = 10;
   await h.api.importMetricTemplate(fileFromSheets([['指標', rows]]));
   assert.equal(d.metrics[0].values.s1, 10); assert.equal(d.metrics.length, 1);
   const examples = xlsx.utils.sheet_to_json(wb.Sheets['記入例'], {header: 1, defval: ''});
-  assert.ok(examples.filter(r => typeof r[0] === 'number').every(r => /^架空生徒/.test(r[1])));
+  assert.equal(examples.slice(9).length, 4);
+  assert.ok(examples.slice(9).every(r => /^架空生徒/.test(r[4])));
 });
 test('class reassignment rejects duplicate names, duplicate rows, and occupied destination tuples', () => {
   const h = harness(), d = dataset(); h.api.setData(d); h.elements.reassignAddNew = {checked: true};

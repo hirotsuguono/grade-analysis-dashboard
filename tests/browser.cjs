@@ -229,7 +229,7 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     const metricPath = await downloadWorkbook('#metricTplBtn');
     wb = XLSX.read(fs.readFileSync(metricPath), { type: 'buffer' });
     const mr = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
-    mr[1][3] = '架空Excel指標'; mr[2][3] = 4;
+    mr[8][5] = '架空Excel指標'; mr[9][5] = 4;
     wb.Sheets[wb.SheetNames[0]] = XLSX.utils.aoa_to_sheet(mr);
     await page.locator('#metricXlsxInput').setInputFiles({ name: 'synthetic-metric.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })) });
     await page.waitForFunction(() => data.metrics.some(m => m.label === '架空Excel指標'));
