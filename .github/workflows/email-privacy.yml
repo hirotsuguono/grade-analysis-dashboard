@@ -13,14 +13,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5; verified upstream tag
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6; verified upstream tag
         with:
           python-version: '3.12'
       - name: Test privacy checks
         run: python3 -m unittest discover -s tests -p 'test_commit_email.py'
       - name: Verify Git identities and messages throughout history
         run: python3 scripts/check_commit_email.py
+
+      - name: Inspect source and ZIP content without logging rejected values
+        run: |
+          python3 -m unittest discover -s tests -p 'test_content_privacy.py'
+          python3 scripts/check_content_privacy.py

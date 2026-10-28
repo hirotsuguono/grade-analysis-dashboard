@@ -164,7 +164,7 @@ test('a serialized 105-pupil roster creates three classes of 35 and fresh IDs wi
 test('split-grade roster flows into test Excel, history matching and JSON save/reload without changing IDs', async () => {
   const data = plain(plan([[1, 1, 1, '架空 同名', ''], [2, 1, 1, '架空 同名', '']]).dataset);
   const downloads = [], alerts = [];
-  const context = vm.createContext({console, crypto: webcrypto, TextEncoder,
+  const context = vm.createContext({ Blob, DecompressionStream,console, crypto: webcrypto, TextEncoder,
     XLSX: {...XLSX, writeFile(wb) { downloads.push(wb); }},
     alert(m) { alerts.push(m); }, confirm() { return true; },
     window: {addEventListener() {}}, document: {addEventListener() {}, getElementById() {return null;}}});
@@ -187,7 +187,7 @@ test('split-grade roster flows into test Excel, history matching and JSON save/r
   data.students[0].className = '2年A組'; data.students[0].number = '5';
   wb.Sheets['② 点数入力'] = XLSX.utils.aoa_to_sheet(rows);
   const bytes = XLSX.write(wb, {type:'buffer', bookType:'xlsx'});
-  await context.api.importTestTemplate({arrayBuffer:async () => bytes});
+  await context.api.importTestTemplate(new Blob([bytes]));
   assert.equal(data.tests.length, 1, alerts.join('\n'));
   assert.deepEqual(Array.from(data.scores, s => [s.studentId, s.total]), [[data.students[0].id, 0], [data.students[1].id, 8]]);
   const saved = plain(context.api.current());
@@ -242,7 +242,7 @@ test('serialized xlsx template accepts roster data without importing example she
 
 test('initial datasets satisfy application save/reload schema for roster and first scores', () => {
   const source = fs.readFileSync(path.join(root, 'script.js'), 'utf8').replace(/\ninit\(\);\s*$/, '');
-  const context = vm.createContext({ console, crypto: webcrypto, TextEncoder, XLSX, window: { addEventListener() {} }, document: { addEventListener() {}, getElementById() { return null; } } });
+  const context = vm.createContext({ Blob, DecompressionStream, console, crypto: webcrypto, TextEncoder, XLSX, window: { addEventListener() {} }, document: { addEventListener() {}, getElementById() { return null; } } });
   vm.runInContext(source + '\nglobalThis.checkDataset = validateDataset;', context);
   for (const result of [plan(two), plan([[2, 'A', 1, '架空 あおい', 0], [2, 'B', 1, '架空 そら', '欠']], { testName: '第1回' })]) {
     const reloaded = plain(result.dataset);

@@ -92,6 +92,12 @@ for (const dialog of document.querySelectorAll('dialog')) {
 }
 
 function enhance() {
+  // These are browser hints; extensions, translation services and device policy remain outside app control.
+  for (const field of document.querySelectorAll('input, textarea')) {
+    field.setAttribute('autocomplete', 'off'); field.setAttribute('autocorrect', 'off');
+    field.setAttribute('autocapitalize', 'off'); field.setAttribute('spellcheck', 'false');
+    field.setAttribute('translate', 'no');
+  }
   const sampleNote = document.getElementById('sampleAssociationNote');
   if (sampleNote) sampleNote.hidden = data?.samplePurpose !== 'fabricated-association-demo';
   tabs.forEach(tab => {

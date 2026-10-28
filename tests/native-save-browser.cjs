@@ -22,11 +22,11 @@ async function selectPath(file){
   await exec('xdotool',['windowfocus','--sync',id]);
   await exec('xdotool',['key','--clearmodifiers','alt+n']);
   await exec('xdotool',['key','--clearmodifiers','ctrl+a']);
-  await exec('xdotool',['type','--clearmodifiers','--delay','10',path.basename(file)]);
+  await exec('xdotool',['type','--clearmodifiers','--delay','10',file]);
   const desktop=path.join(temp,'native-save-current.png');
   await exec('import',['-window','root',desktop]);
   const tsv=(await exec('tesseract',[desktop,'stdout','tsv'])).stdout;
-  const save=tsv.split('\n').map(line=>line.split('\t')).find(fields=>fields[11]?.trim()==='Save');
+  const save=tsv.split('\n').map(line=>line.split('\t')).find(fields=>/^save$/i.test(fields[11]?.trim() || ''));
   if(!save)throw Error('Native Save button not found');
   await exec('xdotool',['mousemove','--sync',String(Math.round(Number(save[6])+Number(save[8])/2)),String(Math.round(Number(save[7])+Number(save[9])/2))]);
   await exec('xdotool',['click','1']);
@@ -44,7 +44,7 @@ async function selectPath(file){
     assert.equal(await page.evaluate(()=>canPickSaveFile()),true);
     await page.evaluate(()=>{const native=window.showSaveFilePicker;window.showSaveFilePicker=async function(options){try{return await native.call(window,options)}catch(e){console.log('NATIVE PICKER ERROR',e.name,e.message);throw e;}};});
     const prefix=path.basename(temp);
-    const original=path.join(temp,'original.json'),copy=path.join(os.homedir(),prefix+'-copy.json'),second=path.join(os.homedir(),prefix+'-second.json');
+    const original=path.join(temp,'original.json'),copy=path.join(temp,prefix+'-copy.json'),second=path.join(temp,prefix+'-second.json');
     generated.push(copy,second);
     const fixture=JSON.parse(fs.readFileSync(path.join(app,'files/sample-data.json')));
     fs.writeFileSync(original,JSON.stringify(fixture));

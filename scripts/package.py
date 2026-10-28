@@ -21,13 +21,13 @@ FILES = (
     'files/vendor/sheetjs.LICENSE', 'files/vendor/exceljs.LICENSE', 'files/vendor/exceljs.BUNDLED-LICENSES.txt', 'files/licenses/THIRD-PARTY-NOTICES.md',
 )
 VENDOR = {
-    'files/vendor/echarts.min.js': 'e84270bd0cd5bdf60fefc26d00c2a391cb2e81f4d26a7a9ee16185a54773a3cf',
+    'files/vendor/echarts.min.js': 'b66b25aeb4df84e33199dc21694014d336d222cbd9deb0e5a7c14bd6aa0d0fd0',
     'files/vendor/echarts.LICENSE': '634293835b43a6dd2094fa39182a3d9a6b9ca43b7fdb9ac354e8037af2a3093a',
-    'files/vendor/echarts.NOTICE': 'fa99ac3af859d0e13166906dc53a73ad34a08898da7e8ae83407275496e9e30c',
+    'files/vendor/echarts.NOTICE': 'd491d358344f842685c1b1585970999db65fe30ecf7ef3867af8814f4016c016',
     'files/vendor/xlsx.full.min.js': 'cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41',
     'files/vendor/sheetjs.LICENSE': '4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64',
     'files/vendor/exceljs.min.js': '7e49da68588e250dbb8bba190d2caa8ab3787cc0284bda1d8b2f805c4df742c9',
-    'files/vendor/exceljs.BUNDLED-LICENSES.txt': 'f0fb05d61f9a9a62bc199cda8039e9d1198aff0773d5aa2f3d2ef65937730501',
+    'files/vendor/exceljs.BUNDLED-LICENSES.txt': 'e07d83706096a8f62f6b4355fd4b73696f729a139adcdaec727d86f872c53447',
     'files/vendor/exceljs.LICENSE': '2ee88321435317a4dbf464f275b88fe2efe6968c381f5ce34b5de539200e5855',
 }
 PREFIX = 'grade-analysis-dashboard/'
@@ -61,6 +61,13 @@ def payloads(source):
             actual.add(item.relative_to(source).as_posix())
     require(actual == set(FILES), 'Source runtime allowlist mismatch (missing or unexpected files)')
     data = {name: (source / name).read_bytes() for name in FILES}
+    from check_content_privacy import check_bytes
+    for name, content in data.items():
+        check_bytes(content, name, name)
+    version = json.loads((ROOT / 'package.json').read_text())['version']
+    html = data['Index.html'].decode('utf8')
+    require(f'data-version="{version}">v{version}</span>' in html, 'Application version mismatch')
+    require(f'v{version}' in data['はじめに.txt'].decode('utf-8-sig'), 'Readme version mismatch')
     for name, digest in VENDOR.items():
         require(hashlib.sha256(data[name]).hexdigest() == digest, 'Vendor checksum mismatch: ' + name)
     require(data['LICENSE'] == (ROOT / 'LICENSE').read_bytes(), 'Application LICENSE mismatch')

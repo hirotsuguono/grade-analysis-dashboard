@@ -506,7 +506,16 @@ function validateDataset(parsed) {
   if (errors.length) return errors;
 
   if (parsed.name != null && typeof parsed.name !== 'string') add('データ名は文字列である必要があります。');
+  const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const optionalText = v => v == null || typeof v === 'string';
+  const number = v => v == null || v === '' ||
+    (typeof v === 'number' && Number.isSafeInteger(v) && v > 0) ||
+    (typeof v === 'string' && /^\d+$/.test(v) && Number.isSafeInteger(Number(v)) && Number(v) > 0);
+  const grade = v => v == null || v === '' || (Number.isInteger(v) && v >= 1 && v <= 3);
+  if (parsed.version != null && ![1, 2, 3].includes(parsed.version)) add('version は1〜3の整数にしてください。');
   const settings = parsed.settings;
+  if (settings?.adminPinHash != null && !validPinHash(settings.adminPinHash)) add('PINのハッシュ形式が不正です。');
+  if (settings?.rti != null && !object(settings.rti)) add('RTI設定はオブジェクトにしてください。');
   if (settings != null && (typeof settings !== 'object' || Array.isArray(settings))) add('settings はオブジェクトである必要があります。');
   if (settings?.rti != null) {
     const { tier2, tier3 } = settings.rti;
@@ -517,19 +526,20 @@ function validateDataset(parsed) {
 
   const studentIds = new Set();
   parsed.students.forEach((s, i) => {
-    if (!s || typeof s !== 'object') { add(`students[${i}] がオブジェクトではありません。`); return; }
+    if (!s || typeof s !== 'object' || Array.isArray(s)) { add(`students[${i}] がオブジェクトではありません。`); return; }
     if (typeof s.id !== 'string' || !s.id) add(`students[${i}].id が空、または文字列ではありません。`);
     else if (studentIds.has(s.id)) add(`生徒ID「${s.id}」が重複しています。`);
     else studentIds.add(s.id);
     if (typeof s.name !== 'string' || !s.name.trim()) add(`students[${i}].name が空です。`);
     if (s.className != null && typeof s.className !== 'string') add(`students[${i}].className は文字列にしてください。`);
-    if (s.classHistory != null && (!Array.isArray(s.classHistory) || s.classHistory.some(h => !h || typeof h !== 'object'))) add(`students[${i}].classHistory が不正です。`);
+    if (!number(s.number)) add(`students[${i}].number は正の整数・数字の文字列・未設定にしてください。`);
+    if (s.classHistory != null && (!Array.isArray(s.classHistory) || s.classHistory.some(h => !object(h) || !optionalText(h.className) || !number(h.number) || !optionalText(h.at) || (h.at && normalizeDateValue(h.at) !== h.at)))) add(`students[${i}].classHistory が不正です。`);
   });
 
   const testIds = new Set();
   const testsById = new Map();
   parsed.tests.forEach((t, i) => {
-    if (!t || typeof t !== 'object') { add(`tests[${i}] がオブジェクトではありません。`); return; }
+    if (!t || typeof t !== 'object' || Array.isArray(t)) { add(`tests[${i}] がオブジェクトではありません。`); return; }
     if (typeof t.id !== 'string' || !t.id) add(`tests[${i}].id が空、または文字列ではありません。`);
     else if (testIds.has(t.id)) add(`テストID「${t.id}」が重複しています。`);
     else { testIds.add(t.id); testsById.set(t.id, t); }
@@ -537,7 +547,8 @@ function validateDataset(parsed) {
     if (!Number.isFinite(t.maxScore) || t.maxScore <= 0) add(`テスト「${t.name || t.id || i}」の満点が不正です。`);
     if (t.kind != null && (typeof t.kind !== 'string' || !Object.hasOwn(TEST_KINDS, t.kind))) add(`テスト「${t.name || t.id || i}」の種類が不正です。`);
     if (t.series != null && typeof t.series !== 'string') add(`テスト「${t.name || t.id || i}」の比較系列が不正です。`);
-    if (t.date && normalizeDateValue(t.date) !== t.date) add(`テスト「${t.name || t.id || i}」の実施日が不正です。`);
+    if (!grade(t.gradeYear)) add(`tests[${i}].gradeYear は1〜3の整数・未設定にしてください。`);
+    if (!optionalText(t.date) || (t.date && normalizeDateValue(t.date) !== t.date)) add(`テスト「${t.name || t.id || i}」の実施日が不正です。`);
     if (t.domains != null && (!Array.isArray(t.domains) || t.domains.some(d => !d || typeof d.key !== 'string' || typeof d.label !== 'string' || !Number.isFinite(d.max) || d.max <= 0))) add(`テスト「${t.name || t.id || i}」の分野が不正です。`);
     if (t.questions != null && !Array.isArray(t.questions)) {
       add(`テスト「${t.name || t.id || i}」の questions が配列ではありません。`);
@@ -545,9 +556,10 @@ function validateDataset(parsed) {
       const qKeys = new Set();
       let qMaxSum = 0;
       for (const q of t.questions) {
-        if (!q || typeof q !== 'object') { add(`テスト「${t.name || t.id || i}」の問題が不正です。`); continue; }
+        if (!object(q)) { add(`テスト「${t.name || t.id || i}」の問題が不正です。`); continue; }
         if (!q || typeof q.key !== 'string' || !q.key || qKeys.has(q.key)) add(`テスト「${t.name || t.id || i}」の問題キーが空、または重複しています。`);
         else qKeys.add(q.key);
+        if (!optionalText(q.label) || !optionalText(q.domain)) add('問題名・分野キーは文字列にしてください。');
         if (!Number.isFinite(q.max) || q.max <= 0) add(`テスト「${t.name || t.id || i}」の問題配点が不正です。`);
         else qMaxSum += q.max;
       }
@@ -568,10 +580,14 @@ function validateDataset(parsed) {
   }
   const scoreKeys = new Set();
   parsed.scores.forEach((rec, i) => {
-    if (!rec || typeof rec !== 'object') { add(`scores[${i}] がオブジェクトではありません。`); return; }
+    if (!object(rec)) { add(`scores[${i}] がオブジェクトではありません。`); return; }
     if (!studentIds.has(rec.studentId)) add(`scores[${i}] が存在しない生徒IDを参照しています。`);
     const test = testsById.get(rec.testId);
     if (!test) add(`scores[${i}] が存在しないテストIDを参照しています。`);
+    if (rec.absent != null && typeof rec.absent !== 'boolean') add(`scores[${i}].absent は真偽値にしてください。`);
+    for (const field of ['domains', 'questions']) {
+      if (rec[field] != null && (!object(rec[field]) || Object.values(rec[field]).some(v => v != null && (!Number.isFinite(v) || v < 0)))) add(`scores[${i}].${field} は数値・未設定の値を持つオブジェクトにしてください。`);
+    }
     const key = `${rec.studentId}:${rec.testId}`;
     if (scoreKeys.has(key)) add(`生徒ID「${rec.studentId}」のテスト「${rec.testId}」が重複しています。`);
     scoreKeys.add(key);
@@ -594,7 +610,7 @@ function validateDataset(parsed) {
   if (parsed.metrics != null && !Array.isArray(parsed.metrics)) add('metrics は配列である必要があります。');
   const metricIds = new Set();
   for (const m of (Array.isArray(parsed.metrics) ? parsed.metrics : [])) {
-    if (!m || typeof m !== 'object' || !m.values || typeof m.values !== 'object' || Array.isArray(m.values)) {
+    if (!object(m) || !m.values || typeof m.values !== 'object' || Array.isArray(m.values)) {
       add('指標にはオブジェクト形式の values が必要です。'); continue;
     }
     if (typeof m.id !== 'string' || !m.id || metricIds.has(m.id)) add('指標IDが空、または重複しています。');
@@ -610,7 +626,7 @@ function validateDataset(parsed) {
 
   if (parsed.interventions != null && !Array.isArray(parsed.interventions)) add('interventions は配列である必要があります。');
   for (const iv of (Array.isArray(parsed.interventions) ? parsed.interventions : [])) {
-    if (!iv || typeof iv !== 'object') { add('支援記録はオブジェクトにしてください。'); continue; }
+    if (!object(iv)) { add('支援記録はオブジェクトにしてください。'); continue; }
     if (iv.kind != null && iv.kind !== 'all' && (typeof iv.kind !== 'string' || !Object.hasOwn(TEST_KINDS, iv.kind))) add('支援記録のテスト種類が不正です。');
     if (iv && !studentIds.has(iv.studentId)) add(`支援記録「${iv.title || iv.id}」が存在しない生徒IDを参照しています。`);
     if (typeof iv.id !== 'string' || typeof iv.title !== 'string' || typeof iv.subject !== 'string') add('支援記録のID・内容・教科は文字列にしてください。');
@@ -633,79 +649,104 @@ function validateDataset(parsed) {
 }
 
 function applyJsonText(text, name, handle) {
+  const previous = { data, fileHandle, fileName, dirty, lastDiskText, activeDataToken,
+    pendingDownload, isAdmin, scoreIndex, ui: { ...ui } };
+  let committed = false;
   let parsed;
   try {
-    parsed = JSON.parse(text);
-  } catch {
-    alert('JSONの形式が正しくありません。');
-    return;
-  }
-  // 旧版の削除処理が残した、所有者のいない支援記録は読み込み時に安全に除外する
-  let removedOrphanInterventions = 0;
-  if (parsed && Array.isArray(parsed.students) && Array.isArray(parsed.interventions)) {
-    const ids = new Set(parsed.students.filter(Boolean).map((s) => s.id));
-    const before = parsed.interventions.length;
-    parsed.interventions = parsed.interventions.filter((iv) => iv && ids.has(iv.studentId));
-    removedOrphanInterventions = before - parsed.interventions.length;
-  }
-  const validationErrors = validateDataset(parsed);
-  if (validationErrors.length) {
-    alert('成績データに問題があります。修正してから開いてください。\n\n・' + validationErrors.join('\n・'));
-    return;
-  }
-  data = parsed;
-  activeDataToken++;
-  pendingDownload = null;
-  let migrated = removedOrphanInterventions > 0;
-  if (!data.metrics) { data.metrics = []; migrated = true; }
-  // 移行：出席番号(number)が無い生徒は id を初期値として補う
-  for (const s of data.students) {
-    if (s.number == null || s.number === '') {
-      s.number = parseInt(s.id, 10) || '';
-      migrated = true;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      alert('JSONの形式が正しくありません。');
+      return;
     }
-  }
-  // 移行（V2 / version 3）：設定と支援記録
-  if (!data.settings || typeof data.settings !== 'object') { data.settings = {}; migrated = true; }
-  if (!data.settings.rti) { data.settings.rti = { tier2: 60, tier3: 40 }; migrated = true; }
-  if (data.settings.adminPinHash === undefined) { data.settings.adminPinHash = null; migrated = true; }
-  if (!Array.isArray(data.interventions)) { data.interventions = []; migrated = true; }
-  if (!data.version || data.version < 3) { data.version = 3; migrated = true; }
-  fileHandle = handle || null;
-  fileName = name;
-  dirty = migrated;
-  lastDiskText = text;  // 読み込んだ時点のディスク内容を記録
-  rebuildIndex();
+    // 旧版の削除処理が残した、所有者のいない支援記録は読み込み時に安全に除外する
+    let removedOrphanInterventions = 0;
+    if (parsed && Array.isArray(parsed.students) && Array.isArray(parsed.interventions)) {
+      const ids = new Set(parsed.students.filter(Boolean).map((s) => s.id));
+      const before = parsed.interventions.length;
+      parsed.interventions = parsed.interventions.filter((iv) => iv && ids.has(iv.studentId));
+      removedOrphanInterventions = before - parsed.interventions.length;
+    }
+    const validationErrors = validateDataset(parsed);
+    if (validationErrors.length) {
+      alert('成績データに問題があります。修正してから開いてください。\n\n・' + validationErrors.join('\n・'));
+      return;
+    }
+    let migrated = removedOrphanInterventions > 0;
+    if (!parsed.metrics) { parsed.metrics = []; migrated = true; }
+    // 移行：出席番号(number)が無い生徒は id を初期値として補う
+    for (const s of parsed.students) {
+      if (s.number == null || s.number === '') {
+        const candidate = Number.parseInt(s.id, 10);
+        s.number = Number.isSafeInteger(candidate) && candidate > 0 ? candidate : '';
+        migrated = true;
+      }
+    }
+    // 移行（V2 / version 3）：設定と支援記録
+    if (!parsed.settings || typeof parsed.settings !== 'object') { parsed.settings = {}; migrated = true; }
+    if (!parsed.settings.rti) { parsed.settings.rti = { tier2: 60, tier3: 40 }; migrated = true; }
+    if (parsed.settings.adminPinHash === undefined) { parsed.settings.adminPinHash = null; migrated = true; }
+    if (!Array.isArray(parsed.interventions)) { parsed.interventions = []; migrated = true; }
+    if (!parsed.version || parsed.version < 3) { parsed.version = 3; migrated = true; }
+    data = parsed;
+    committed = true;
+    activeDataToken++;
+    pendingDownload = null;
+    fileHandle = handle || null;
+    fileName = name;
+    dirty = migrated;
+    lastDiskText = text;  // 読み込んだ時点のディスク内容を記録
+    rebuildIndex();
 
-  // 選択状態を初期化
-  ui.ovClass = ui.inClass = ui.anClass = ui.trendClass = ui.metClass = 'all';
-  ui.inSubject = ui.ovSubject = ui.anSubject = ui.listSubject = 'all';
-  ui.listClass = 'all'; ui.listMode = 'total'; ui.listSort = null; ui.listPivot = 60;
-  ui.listGrade = 'all'; ui.listTerm = 'all';
-  ui.rtiSubject = 'all'; ui.rtiClass = 'all'; ui.rtiBasis = 'latest'; ui.rtiSelectedIv = null;
-  ui.trendKind = ui.rtiKind = 'all';
-  isAdmin = false; // ファイルを開くたびに教員モードへ戻す
-  ui.trendSubject = data.tests.length ? data.tests[0].subject : '';
-  const lastTest = data.tests.length ? data.tests[data.tests.length - 1].id : '';
-  ui.ovTest = ui.inTest = ui.anTest = lastTest;
-  ui.trendSelected = new Set();
-  ui.trendSearch = '';
-  ui.metricId = data.metrics.length ? data.metrics[0].id : '';
-  ui.corrX = data.metrics.length ? 'm:' + data.metrics[0].id : (lastTest ? 't:' + lastTest : '');
-  ui.corrY = lastTest ? 't:' + lastTest : '';
+    // 選択状態を初期化
+    ui.ovClass = ui.inClass = ui.anClass = ui.trendClass = ui.metClass = 'all';
+    ui.inSubject = ui.ovSubject = ui.anSubject = ui.listSubject = 'all';
+    ui.listClass = 'all'; ui.listMode = 'total'; ui.listSort = null; ui.listPivot = 60;
+    ui.listGrade = 'all'; ui.listTerm = 'all';
+    ui.rtiSubject = 'all'; ui.rtiClass = 'all'; ui.rtiBasis = 'latest'; ui.rtiSelectedIv = null;
+    ui.trendKind = ui.rtiKind = 'all';
+    isAdmin = false; // ファイルを開くたびに教員モードへ戻す
+    ui.trendSubject = data.tests.length ? data.tests[0].subject : '';
+    const lastTest = data.tests.length ? data.tests[data.tests.length - 1].id : '';
+    ui.ovTest = ui.inTest = ui.anTest = lastTest;
+    ui.trendSelected = new Set();
+    ui.trendSearch = '';
+    ui.metricId = data.metrics.length ? data.metrics[0].id : '';
+    ui.corrX = data.metrics.length ? 'm:' + data.metrics[0].id : (lastTest ? 't:' + lastTest : '');
+    ui.corrY = lastTest ? 't:' + lastTest : '';
 
-  $('emptyState').hidden = true;
-  $('appMain').hidden = false;
-  $('saveBtn').disabled = false;
-  $('rosterBtn').disabled = false;
-  $('backupBtn').disabled = false;
-  $('roleBtn').disabled = false;
-  updateRoleUI(); // ロールに応じたUI（admin-onlyの表示制御）を反映
-  $('datasetName').textContent = `${data.name || ''}（${fileName}）`;
-  updateSaveStatus();
-  renderAll();
-  if (removedOrphanInterventions) {
-    alert(`削除済みの生徒に紐づいていた支援記録 ${removedOrphanInterventions}件を整理しました。右上の「保存」でデータファイルへ反映してください。`);
+    $('emptyState').hidden = true;
+    $('appMain').hidden = false;
+    $('saveBtn').disabled = false;
+    $('rosterBtn').disabled = false;
+    $('backupBtn').disabled = false;
+    $('roleBtn').disabled = false;
+    updateRoleUI(); // ロールに応じたUI（admin-onlyの表示制御）を反映
+    $('datasetName').textContent = `${data.name || ''}（${fileName}）`;
+    updateSaveStatus();
+    renderAll();
+    if (removedOrphanInterventions) {
+      alert(`削除済みの生徒に紐づいていた支援記録 ${removedOrphanInterventions}件を整理しました。右上の「保存」でデータファイルへ反映してください。`);
+    }
+    return true;
+  } catch {
+    if (committed) {
+      ({ data, fileHandle, fileName, dirty, lastDiskText, activeDataToken,
+        pendingDownload, isAdmin, scoreIndex } = previous);
+      Object.assign(ui, previous.ui);
+      // Repaint the previous dataset where possible; restoring the model must not depend on rendering.
+      try {
+        $('emptyState').hidden = !!data;
+        $('appMain').hidden = !data;
+        for (const id of ['saveBtn', 'rosterBtn', 'backupBtn', 'roleBtn']) $(id).disabled = !data;
+        $('datasetName').textContent = data ? `${data.name || ''}（${fileName}）` : '';
+        updateRoleUI(); updateSaveStatus();
+        if (data) renderAll();
+      } catch { /* Keep the original data and save target even if repaint also fails. */ }
+    }
+    alert('JSONを開けませんでした。元のデータ・保存先・未保存の変更は保持しています。');
+    return false;
   }
 }
 
@@ -1366,8 +1407,8 @@ function refreshQuestionDomainSelects() {
   const domains = builderDomainKeys();
   for (const sel of $('tfQuestions').querySelectorAll('.bq-domain')) {
     const cur = sel.value;
-    sel.innerHTML = '<option value="">分野なし</option>' +
-      domains.map((d) => `<option value="${d.key}">${esc(d.label || '(無名)')}</option>`).join('');
+    sel.replaceChildren(new Option('分野なし', ''),
+      ...domains.map(d => new Option(d.label || '(無名)', d.key)));
     if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
   }
 }
@@ -2338,6 +2379,14 @@ function handleListSort(key) {
   renderList();
 }
 
+function safeExcelRows(rows) {
+  return rows.map(row => row.map(value => {
+    if (value == null) return '';
+    if (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) return value;
+    throw new Error('Excelに出力する値は文字列または有限な数値にしてください。');
+  }));
+}
+
 function exportList() {
   if (typeof XLSX === 'undefined') { alert('Excel出力ライブラリの読み込みに失敗しました。'); return; }
   const cols = listColumns();
@@ -2364,7 +2413,7 @@ function exportList() {
     }
     rows.push(row);
   }
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const ws = XLSX.utils.aoa_to_sheet(safeExcelRows(rows));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'データ一覧');
   const cls = ui.listClass === 'all' ? '全クラス' : ui.listClass;
@@ -2373,13 +2422,8 @@ function exportList() {
 }
 
 /* ========== 権限（管理者モード） ========== */
-async function sha256Hex(text) {
-  try {
-    if (crypto && crypto.subtle) {
-      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-      return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    }
-  } catch { /* 非セキュアコンテキスト等 → フォールバック */ }
+function legacyPinHash(text) {
+  // Preserve the exact representation written by earlier non-Web-Crypto environments.
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (const ch of text) {
     const c = ch.charCodeAt(0);
@@ -2387,6 +2431,26 @@ async function sha256Hex(text) {
     h2 = Math.imul(h2 ^ c, 1597334677);
   }
   return (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
+}
+
+function isLegacyPinHash(hash) {
+  // Two unpadded, lower-case uint32 hexadecimal values, each 1–8 characters.
+  // A multi-character component cannot start with zero.
+  return typeof hash === 'string' && /^(?:0|[1-9a-f][0-9a-f]{0,7})(?:0|[1-9a-f][0-9a-f]{0,7})$/.test(hash);
+}
+
+function validPinHash(hash) {
+  return typeof hash === 'string' && (/^[a-f0-9]{64}$/i.test(hash) || isLegacyPinHash(hash));
+}
+
+async function sha256Hex(text) {
+  try {
+    if (crypto && crypto.subtle) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch { /* 非セキュアコンテキスト等 → フォールバック */ }
+  return legacyPinHash(text);
 }
 
 function updateRoleUI() {
@@ -2409,7 +2473,7 @@ function openAdminDialog() {
   const hasPin = !!data.settings.adminPinHash;
   $('adminDialogNote').textContent = hasPin
     ? 'PINを入力すると、名簿管理・削除・設定などの管理機能が使えるようになります。'
-    : 'PINが未設定です。最初のPIN（数字4〜8桁）を決めて入力してください。以後、管理機能はこのPINで保護されます。';
+    : 'PINが未設定です。最初のPIN（数字4〜8桁）を決めて入力してください。以後のPINは誤操作防止用です。JSONの暗号化やアクセス制限は行いません。';
   $('adminPinInput').value = '';
   $('adminDialog').showModal();
   $('adminPinInput').focus();
@@ -2425,7 +2489,9 @@ async function submitAdminDialog(e) {
     markDirty();
     isAdmin = true;
     alert('PINを設定し、管理者モードに切り替えました。忘れないよう控えてください。');
-  } else if (data.settings.adminPinHash === hash) {
+  } else if (isLegacyPinHash(data.settings.adminPinHash)
+    ? data.settings.adminPinHash === legacyPinHash('gd-v2:' + pin)
+    : data.settings.adminPinHash.toLowerCase() === hash) {
     isAdmin = true;
   } else {
     alert('PINが違います。');
@@ -3087,7 +3153,7 @@ function exportTemplate() {
     rows.push(row);
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const ws = XLSX.utils.aoa_to_sheet(safeExcelRows(rows));
   ws['!cols'] = header.map((h, i) => ({ wch: i === 1 ? 14 : Math.max(8, h.length + 2) }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '点数入力');
@@ -3201,8 +3267,7 @@ async function issueNewTestTemplate() {
 
 // テンプレートからテストを取込
 async function importTestTemplate(file) {
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array' });
+  const wb = await window.GD_IMPORT.readWorkbook(file, XLSX);
   const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['② 点数入力', '新規テスト']);
   const settingsNames = wb.SheetNames.filter(n => ['① テスト設定', 'テスト設定'].includes(n));
   if (settingsNames.length > 1) { alert('テスト設定のシートが複数あります。1枚にしてください。'); return; }
@@ -3338,8 +3403,7 @@ async function issueMetricTemplate() {
 
 // テンプレートから指標を取込（複数列対応）
 async function importMetricTemplate(file) {
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array' });
+  const wb = await window.GD_IMPORT.readWorkbook(file, XLSX);
   const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['指標']);
   const { plans, errors } = window.GD_IMPORT.parseMetricRows(rows, data.students, data.metrics);
   if (errors.length) {

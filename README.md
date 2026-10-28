@@ -4,7 +4,7 @@
 
 ## ダウンロードして使う
 
-**[配布用ZIPをダウンロード](https://github.com/hirotsuguono/grade-analysis-dashboard/releases/latest/download/grade-analysis-dashboard.zip)**
+**[最新版のZIPをダウンロード](https://github.com/hirotsuguono/grade-analysis-dashboard/raw/refs/heads/main/downloads/grade-analysis-dashboard.zip)**
 
 > **Windowsでは、ZIPをダブルクリックして中身が見えても、まだ展開されていません。** ZIPの中からHTMLを開くと、画面の色や配置が崩れたり、別のページを開けなかったりすることがあります。次の手順で「すべて展開」してから使ってください。
 
@@ -14,15 +14,11 @@
 
 **見た目が崩れる・別のページを開けない場合：** ダウンロードしたZIPへ戻り、手順1から「すべて展開」を行って、展開先の `Index.html` を開き直してください。エクスプローラーで開いている場所の途中に `.zip` が含まれていれば、まだZIPの中です。
 
-ダウンロードできない場合は[予備のリンク](https://github.com/hirotsuguono/grade-analysis-dashboard/raw/refs/heads/main/downloads/grade-analysis-dashboard.zip)をお試しください。
+[正式公開済みのRelease版ZIP](https://github.com/hirotsuguono/grade-analysis-dashboard/releases/latest/download/grade-analysis-dashboard.zip)も利用できます。上の最新版ZIPには、Release公開前の修正が含まれることがあります。
 
 インストール・アカウント登録・サーバーの操作は不要で、オフラインでも使えます。**移動・コピーは展開したフォルダごと**行い、`Index.html` だけを取り出さないでください。デスクトップに入口を置く場合は、`Index.html` のショートカット（Macはエイリアス）を作ります。コードが表示された場合は、右クリックしてブラウザで開いてください。
 
 **自動保存はありません。** 変更後は「保存」でJSONをダウンロードし、次回は「保存したJSONを開く」で最新版を選んでください。JSON・Excel・印刷物には入力した情報が含まれるため、保存先や共有相手を確認してください。
-
-## 開発の記録
-
-変更につながった課題やレビューは、[開発の記録](docs/development/README.md)で読めます。各時点のコードと変更内容はGitHubのコミット履歴に残しています。
 
 ## ライセンス
 

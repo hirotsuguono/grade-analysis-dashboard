@@ -1,4 +1,5 @@
 #!/bin/sh
 set -eu
 root=$(git rev-parse --show-toplevel)
-exec python3 "$root/scripts/check_commit_email.py" --identity
+python3 "$root/scripts/check_commit_email.py" --identity
+python3 "$root/scripts/check_content_privacy.py" --staged
