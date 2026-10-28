@@ -21,3 +21,5 @@ ExcelJS: Copyright Guyon Roche and contributors. The unmodified browser distribu
 ExcelJS 4.4.0 の公式 npm browser bundle とバイト一致を確認しています。内蔵 JSZip は **3.10.1**（ライセンス選択 MIT）、core-js は **3.33.0**（MIT）です。実行時の依存解決結果ではなく、配布バンドルのヘッダー・ソースマップ・ソース本文を確認しています。依存ライセンス全文は `exceljs.BUNDLED-LICENSES.txt` を参照してください。
 
 ECharts 6.1.0 は Lines 系列の tooltip に関する既知修正を含みます（[Apache の告知](https://lists.apache.org/thread/1g6xk7gd9vg1c6zyqqt2lnko10zomc3o)、[修正](https://github.com/apache/echarts/pull/21608)）。本アプリがその発生条件に該当することは確認されていません。アプリでは tooltip を richText に固定しています。
+
+補足のサーバー依存ライセンス一覧にある解決版は、ブラウザ同梱版の一覧ではありません。バンドルと照合できた Day.js は **1.11.10**、util は **0.10.4** です。実体で検証した版と補足資料を区別し、依存解決だけで同梱版を推測しません。

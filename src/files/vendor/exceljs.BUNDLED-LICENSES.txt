@@ -1,6 +1,8 @@
 ExcelJS 4.4.0 dependency license texts
 
-Collected from published npm packages in the ExcelJS dependency tree.
+Supplementary notices collected from a resolved server dependency tree.
+Versions in that supplementary collection are not a browser-bundle inventory.
+The verified browser inventory below takes precedence for shipped versions.
 Some server-only dependencies are not used by the browser bundle.
 Identical notices are grouped; trailing whitespace is normalized.
 Original copyright notices and license terms are retained.
@@ -827,7 +829,7 @@ Components: data-view-buffer 1.0.2, define-data-property 1.1.4, safe-array-conca
     SOFTWARE.
 
 
-Components: dayjs 1.11.23
+Components: dayjs 1.11.10 (verified distributed browser source)
 
     MIT License
 
@@ -4677,3 +4679,82 @@ The `lib/node` directory borrows files from joyent/node which uses the following
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
     IN THE SOFTWARE.
+
+
+Verified browser inventory corrections
+
+Source-map source text independently matches published sources for Day.js
+1.11.10 (not 1.11.23), util 0.10.4, readable-stream 3.6.2, uuid 8.3.2,
+process 0.11.10, safe-buffer 5.2.1, JSZip 3.10.1 and core-js 3.33.0.
+The supplementary server tree above may include additional unused modules or
+other resolved versions; those version labels do not describe the browser file.
+Transformed modules and the empty Browserify shim are not assigned a version
+merely by resolving dependencies today. Their upstream license text is retained.
+
+Components: util 0.10.4 (verified browser source)
+
+Copyright Joyent, Inc. and other Node contributors. All rights reserved.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+
+
+Components: process 0.11.10 (verified browser source)
+
+(The MIT License)
+
+Copyright (c) 2013 Roman Shtylman <shtylman@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+'Software'), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+Components: saxes (ISC; attribution from published saxes 5.0.1 package metadata)
+
+The published package declares ISC and author Louis-Dominique Dubeau, but
+does not ship a separate LICENSE file. The standard ISC terms are reproduced
+here with that attribution, supplementing the package metadata above.
+
+Copyright Louis-Dominique Dubeau
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
