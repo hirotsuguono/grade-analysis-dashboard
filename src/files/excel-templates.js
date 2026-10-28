@@ -27,9 +27,15 @@
     autoSmall: format(color.gray, { size: 9 }), autoBig: format(color.gray, { size: 18, center: true, bold: true }),
   };
   const hints = ['1〜3', '組だけ（例：1、A）', '1〜99', '姓名を入力'];
+  // Never pass user-supplied objects (formula/result, hyperlinks or rich text) to a writer.
+  function safeValue(value) {
+    if (value == null) return '';
+    if (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) return value;
+    throw new Error('Excelに出力する値は文字列または有限な数値にしてください。');
+  }
   function cell(X, ws, row, col, value, s = style.input) {
     const key = X.utils.encode_cell({ r: row, c: col });
-    ws[key] = { t: typeof value === 'number' ? 'n' : 's', v: value == null ? '' : value, s };
+    ws[key] = { t: typeof value === 'number' ? 'n' : 's', v: safeValue(value), s };
     if (s.numFmt) ws[key].z = s.numFmt;
   }
   function band(X, ws, row, first, last, value, s, height) {
@@ -212,7 +218,7 @@
       for (const [address, value] of Object.entries(source)) {
         if (address.startsWith('!')) continue;
         const target = ws.getCell(address);
-        target.value = value.f ? { formula: value.f, result: value.v } : value.t === 'z' ? null : value.v;
+        target.value = value.f ? { formula: safeValue(value.f), result: safeValue(value.v) } : value.t === 'z' ? null : safeValue(value.v);
         if (value.s) target.style = JSON.parse(JSON.stringify(value.s));
         if (value.z) target.numFmt = value.z;
       }
