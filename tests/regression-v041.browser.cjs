@@ -55,7 +55,7 @@ module.exports = async (parent, fixture) => {
     const before = await page.evaluate(() => JSON.stringify(data));
     await page.evaluate(async () => {
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['架空']]), '指標');
-      const container = XLSX.CFB.read(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }), { type: 'array' });
+      const container = XLSX.CFB.read(new Uint8Array(XLSX.write(wb, { bookType: 'xlsx', type: 'array' })), { type: 'array' });
       const sheet = XLSX.CFB.find(container, '/xl/worksheets/sheet1.xml');
       sheet.content = new TextEncoder().encode(new TextDecoder().decode(sheet.content).replace('ref="A1"', 'ref="A1:XFD1048576"'));
       sheet.size = sheet.content.length;
