@@ -47,7 +47,9 @@ module.exports = async (parent, fixture) => {
       const inst = echarts.getInstanceByDom(document.getElementById(id));
       if (!inst || !inst.getOption().series?.length) return [];
       const option = inst.getOption();
-      return [{ id, types: option.series.map(s => s.type), safe: option.tooltip.every(t => t.renderMode === 'richText'), finite: !JSON.stringify(option.series.map(s => s.data)).includes('NaN') }];
+      const finite = value => typeof value === 'number' ? Number.isFinite(value) :
+        Array.isArray(value) ? value.every(finite) : value && typeof value === 'object' ? Object.values(value).every(finite) : true;
+      return [{ id, types: option.series.map(s => s.type), safe: option.tooltip.every(t => t.renderMode === 'richText'), finite: option.series.every(s => finite(s.data)) }];
     }));
     assert.ok(chartState.length >= 7);
     for (const type of ['bar', 'line', 'boxplot', 'scatter']) assert.ok(chartState.some(c => c.types.includes(type)), type);
