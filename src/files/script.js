@@ -514,7 +514,7 @@ function validateDataset(parsed) {
   const grade = v => v == null || v === '' || (Number.isInteger(v) && v >= 1 && v <= 3);
   if (parsed.version != null && ![1, 2, 3].includes(parsed.version)) add('version は1〜3の整数にしてください。');
   const settings = parsed.settings;
-  if (settings?.adminPinHash != null && (typeof settings.adminPinHash !== 'string' || !/^[a-f0-9]{64}$/i.test(settings.adminPinHash))) add('PINのハッシュ形式が不正です。');
+  if (settings?.adminPinHash != null && !validPinHash(settings.adminPinHash)) add('PINのハッシュ形式が不正です。');
   if (settings?.rti != null && !object(settings.rti)) add('RTI設定はオブジェクトにしてください。');
   if (settings != null && (typeof settings !== 'object' || Array.isArray(settings))) add('settings はオブジェクトである必要があります。');
   if (settings?.rti != null) {
@@ -2422,13 +2422,8 @@ function exportList() {
 }
 
 /* ========== 権限（管理者モード） ========== */
-async function sha256Hex(text) {
-  try {
-    if (crypto && crypto.subtle) {
-      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-      return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    }
-  } catch { /* 非セキュアコンテキスト等 → フォールバック */ }
+function legacyPinHash(text) {
+  // Preserve the exact representation written by earlier non-Web-Crypto environments.
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (const ch of text) {
     const c = ch.charCodeAt(0);
@@ -2436,6 +2431,26 @@ async function sha256Hex(text) {
     h2 = Math.imul(h2 ^ c, 1597334677);
   }
   return (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
+}
+
+function isLegacyPinHash(hash) {
+  // Two unpadded, lower-case uint32 hexadecimal values, each 1–8 characters.
+  // A multi-character component cannot start with zero.
+  return typeof hash === 'string' && /^(?:0|[1-9a-f][0-9a-f]{0,7})(?:0|[1-9a-f][0-9a-f]{0,7})$/.test(hash);
+}
+
+function validPinHash(hash) {
+  return typeof hash === 'string' && (/^[a-f0-9]{64}$/i.test(hash) || isLegacyPinHash(hash));
+}
+
+async function sha256Hex(text) {
+  try {
+    if (crypto && crypto.subtle) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch { /* 非セキュアコンテキスト等 → フォールバック */ }
+  return legacyPinHash(text);
 }
 
 function updateRoleUI() {
@@ -2474,7 +2489,9 @@ async function submitAdminDialog(e) {
     markDirty();
     isAdmin = true;
     alert('PINを設定し、管理者モードに切り替えました。忘れないよう控えてください。');
-  } else if (data.settings.adminPinHash === hash) {
+  } else if (isLegacyPinHash(data.settings.adminPinHash)
+    ? data.settings.adminPinHash === legacyPinHash('gd-v2:' + pin)
+    : data.settings.adminPinHash.toLowerCase() === hash) {
     isAdmin = true;
   } else {
     alert('PINが違います。');
