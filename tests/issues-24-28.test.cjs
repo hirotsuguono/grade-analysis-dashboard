@@ -26,7 +26,7 @@ function harness(d = fixture()) {
     innerHTML: '', textContent: '', hidden: false, classList: { toggle() {} },
     closest() { return this; }, querySelector() { return this; }, querySelectorAll() { return []; },
   };
-  const ctx = vm.createContext({ input: d, XLSX, console, CSS: { escape: s => s },
+  const ctx = vm.createContext({ Blob, DecompressionStream, input: d, XLSX, console, CSS: { escape: s => s },
     window: { addEventListener() {} },
     document: { addEventListener() {}, getElementById: element, querySelector() { return null; } },
     alert: s => alerts.push(s), confirm: () => true,
@@ -125,7 +125,7 @@ test('#26 Excel取込でも設問の未入力を保持し、明示的0点を完�
     ['分野','','','','','読解','読解'],['配点','','','','',50,50],['生徒ID','学年','クラス','出席番号','氏名','問1','問2'],
     ['a',1,'1',1,'架空生徒1',50,''],['b',1,'1',2,'架空生徒2',50,0],['c',1,'1',3,'架空生徒3','欠','']];
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '新規テスト');
-  h.ctx.importFile = { arrayBuffer: async () => XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) };
+  h.ctx.importFile = new Blob([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })]);
   await h.run('importTestTemplate(importFile)');
   assert.equal(h.run("getScore('a',data.tests.at(-1).id).total"), null);
   assert.equal(h.run("getScore('b',data.tests.at(-1).id).total"), 50);

@@ -2378,6 +2378,14 @@ function handleListSort(key) {
   renderList();
 }
 
+function safeExcelRows(rows) {
+  return rows.map(row => row.map(value => {
+    if (value == null) return '';
+    if (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) return value;
+    throw new Error('Excelに出力する値は文字列または有限な数値にしてください。');
+  }));
+}
+
 function exportList() {
   if (typeof XLSX === 'undefined') { alert('Excel出力ライブラリの読み込みに失敗しました。'); return; }
   const cols = listColumns();
@@ -2404,7 +2412,7 @@ function exportList() {
     }
     rows.push(row);
   }
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const ws = XLSX.utils.aoa_to_sheet(safeExcelRows(rows));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'データ一覧');
   const cls = ui.listClass === 'all' ? '全クラス' : ui.listClass;
@@ -3127,7 +3135,7 @@ function exportTemplate() {
     rows.push(row);
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const ws = XLSX.utils.aoa_to_sheet(safeExcelRows(rows));
   ws['!cols'] = header.map((h, i) => ({ wch: i === 1 ? 14 : Math.max(8, h.length + 2) }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '点数入力');
@@ -3241,8 +3249,7 @@ async function issueNewTestTemplate() {
 
 // テンプレートからテストを取込
 async function importTestTemplate(file) {
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array' });
+  const wb = await window.GD_IMPORT.readWorkbook(file, XLSX);
   const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['② 点数入力', '新規テスト']);
   const settingsNames = wb.SheetNames.filter(n => ['① テスト設定', 'テスト設定'].includes(n));
   if (settingsNames.length > 1) { alert('テスト設定のシートが複数あります。1枚にしてください。'); return; }
@@ -3378,8 +3385,7 @@ async function issueMetricTemplate() {
 
 // テンプレートから指標を取込（複数列対応）
 async function importMetricTemplate(file) {
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array' });
+  const wb = await window.GD_IMPORT.readWorkbook(file, XLSX);
   const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['指標']);
   const { plans, errors } = window.GD_IMPORT.parseMetricRows(rows, data.students, data.metrics);
   if (errors.length) {

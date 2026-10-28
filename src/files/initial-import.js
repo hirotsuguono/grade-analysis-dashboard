@@ -45,6 +45,8 @@
     const summary = { studentCount: 0, classCount: 0, scoreCount: 0, absentCount: 0, blankCount: 0, testName: '', duplicateNameCount: 0 };
     const fail = () => ({ summary, errors, warnings });
     if (!wb || !Array.isArray(wb.SheetNames) || !wb.Sheets) { errors.push('Excelファイルを読み取れませんでした。初回登録テンプレートを使用してください。'); return fail(); }
+    try { global.GD_IMPORT.validateWorkbook(wb, XLSX); }
+    catch (error) { errors.push(error.message); return fail(); }
     let sheetName;
     if (wb.SheetNames.includes('名簿入力')) sheetName = '名簿入力';
     else if (wb.SheetNames.includes('初回登録')) sheetName = '初回登録';

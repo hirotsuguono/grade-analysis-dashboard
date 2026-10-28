@@ -16,7 +16,7 @@ const students = () => [
 const dataset = () => ({ version: 3, name: '架空', students: students(), tests: [], scores: [], metrics: [{ id: 'm1', label: '家庭学習時間', type: 'number', values: { s1: 45, s2: 20 } }] });
 function harness() {
   const alerts = [], confirms = [], downloads = [], elements = {};
-  const context = vm.createContext({
+  const context = vm.createContext({ Blob, DecompressionStream,
     console, crypto: webcrypto, TextEncoder,
     XLSX: { ...xlsx, writeFile(wb, name) { downloads.push({ wb, name }); } },
     alert(message) { alerts.push(message); }, confirm(message) { confirms.push(message); return context.confirmResult; },
@@ -34,7 +34,7 @@ function fileFromSheets(sheets) {
   const wb = xlsx.utils.book_new();
   for (const [name, rows] of sheets) xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(rows), name);
   const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  return { arrayBuffer: async () => buf };
+  return new Blob([buf]);
 }
 function configuredFile(wb, rows, name = '架空の新テスト', grade = '', date = '2026-05-22') {
   const settings = wb.Sheets['① テスト設定'];

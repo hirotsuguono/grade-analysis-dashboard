@@ -13,7 +13,7 @@ const source = name => fs.readFileSync(path.join(root, name), 'utf8');
 
 function harness() {
   const alerts = [], confirms = [];
-  const context = vm.createContext({
+  const context = vm.createContext({ Blob, DecompressionStream,
     console, crypto: webcrypto, TextEncoder, XLSX,
     alert: message => alerts.push(message),
     confirm(message) { confirms.push(message); return true; },
@@ -68,7 +68,7 @@ function initialPlan(h, date) {
 }
 async function importNew(h, date) {
   const buffer = bufferOf(newWorkbook(date));
-  await h.api.importTestTemplate({ arrayBuffer: async () => buffer });
+  await h.api.importTestTemplate(new Blob([buffer]));
 }
 
 const validDates = [

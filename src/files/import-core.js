@@ -1,6 +1,91 @@
 /* Pure, offline-safe Excel import validation. No dataset is changed here. */
 (function (root) {
   'use strict';
+  // Limits apply before SheetJS parsing and before any sheet-to-array conversion.
+  const limits = Object.freeze({ fileBytes: 10 * 1024 * 1024, expandedBytes: 40 * 1024 * 1024,
+    entryBytes: 16 * 1024 * 1024, entries: 256, sheets: 32, rows: 10000, columns: 256, cells: 1000000 });
+  const limitError = () => new Error('Excelの容量または範囲が上限を超えています（10MB、展開40MB、32シート、各10000行・256列、全シート計100万セル）。必要な範囲だけを新しいExcelへコピーしてください。');
+  function validateWorkbook(wb, X) {
+    if (!wb || !Array.isArray(wb.SheetNames) || !wb.Sheets || wb.SheetNames.length > limits.sheets) throw limitError();
+    let cells = 0, actualTotal = 0;
+    for (const name of wb.SheetNames) {
+      const sheet = wb.Sheets[name];
+      if (!sheet || typeof sheet !== 'object') throw limitError();
+      for (const ref of [sheet['!ref'], sheet['!fullref']].filter(Boolean)) {
+        if (typeof ref !== 'string' || !/^[A-Z]+[1-9]\d*(?::[A-Z]+[1-9]\d*)?$/.test(ref)) throw limitError();
+        const range = X.utils.decode_range(ref);
+        if (range.s.r > range.e.r || range.s.c > range.e.c || range.e.r >= limits.rows || range.e.c >= limits.columns) throw limitError();
+      }
+      const range = sheet['!ref'] ? X.utils.decode_range(sheet['!ref']) : null;
+      if (range) cells += (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1);
+      if (cells > limits.cells) throw limitError();
+      let actual = 0;
+      for (const key of Object.keys(sheet)) {
+        if (key.startsWith('!')) continue;
+        if (!/^[A-Z]+[1-9]\d*$/.test(key)) throw limitError();
+        const cell = X.utils.decode_cell(key);
+        if (cell.r >= limits.rows || cell.c >= limits.columns || ++actual > limits.cells || ++actualTotal > limits.cells) throw limitError();
+      }
+    }
+    return wb;
+  }
+  async function inspectZip(bytes) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const u16 = n => view.getUint16(n, true), u32 = n => view.getUint32(n, true);
+    let end = -1;
+    for (let n = bytes.length - 22; n >= Math.max(0, bytes.length - 65557); n--) {
+      if (u32(n) === 0x06054b50 && n + 22 + u16(n + 20) === bytes.length) { end = n; break; }
+    }
+    if (end < 0 || u16(end + 4) || u16(end + 6) || u16(end + 8) !== u16(end + 10)) throw limitError();
+    const count = u16(end + 10), size = u32(end + 12), start = u32(end + 16);
+    if (!count || count > limits.entries || start + size !== end) throw limitError();
+    let cursor = start, declared = 0, expanded = 0;
+    const names = new Set(), segments = [];
+    for (let i = 0; i < count; i++) {
+      if (cursor + 46 > end || u32(cursor) !== 0x02014b50) throw limitError();
+      const flags = u16(cursor + 8), method = u16(cursor + 10);
+      const compressed = u32(cursor + 20), uncompressed = u32(cursor + 24);
+      const nameLength = u16(cursor + 28), extra = u16(cursor + 30), comment = u16(cursor + 32), local = u32(cursor + 42);
+      declared += uncompressed;
+      if (flags & 1 || ![0, 8].includes(method) || uncompressed > limits.entryBytes || declared > limits.expandedBytes || u16(cursor + 34) || cursor + 46 + nameLength + extra + comment > end) throw limitError();
+      const name = Array.from(bytes.subarray(cursor + 46, cursor + 46 + nameLength), c => String.fromCharCode(c)).join('');
+      if (!name || names.has(name) || name.startsWith('/') || name.split('/').includes('..')) throw limitError();
+      names.add(name);
+      if (local + 30 > start || u32(local) !== 0x04034b50 || u16(local + 8) !== method || u16(local + 6) !== flags) throw limitError();
+      const localNameLength = u16(local + 26), localExtra = u16(local + 28), begin = local + 30 + localNameLength + localExtra;
+      if (localNameLength !== nameLength || begin + compressed > start || begin < local) throw limitError();
+      for (let j = 0; j < nameLength; j++) if (bytes[local + 30 + j] !== bytes[cursor + 46 + j]) throw limitError();
+      if (segments.some(([a, b]) => local < b && begin + compressed > a)) throw limitError();
+      segments.push([local, begin + compressed]);
+      let actual = 0;
+      if (method === 0) actual = compressed;
+      else {
+        if (typeof DecompressionStream === 'undefined') throw new Error('このブラウザではExcelの展開量を検査できません。学校で承認された最新のChromeまたはEdgeを使用してください。');
+        const reader = new Blob([bytes.subarray(begin, begin + compressed)]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            actual += value.byteLength;
+            if (actual > limits.entryBytes || expanded + actual > limits.expandedBytes || actual > uncompressed) { await reader.cancel(); throw limitError(); }
+          }
+        } finally { reader.releaseLock(); }
+      }
+      if (actual !== uncompressed) throw limitError();
+      expanded += actual;
+      if (expanded > limits.expandedBytes) throw limitError();
+      cursor += 46 + nameLength + extra + comment;
+    }
+    if (cursor !== end) throw limitError();
+  }
+  async function readWorkbook(file, X) {
+    if (!file || !Number.isFinite(file.size) || file.size <= 0 || file.size > limits.fileBytes) throw limitError();
+    const buffer = await file.arrayBuffer(), bytes = new Uint8Array(buffer);
+    if (!bytes.length || bytes.length > limits.fileBytes) throw limitError();
+    if (bytes[0] === 0x50 && bytes[1] === 0x4b) await inspectZip(bytes);
+    else if (![0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1].every((v, i) => bytes[i] === v)) throw new Error('.xlsx または .xls 形式のExcelを使用してください。');
+    return validateWorkbook(X.read(buffer, { type: 'array', sheetRows: limits.rows + 1, cellHTML: false, cellStyles: false }), X);
+  }
   const text = (v) => v == null ? '' : String(v).trim();
   const nameKey = (v) => text(v).replace(/\s+/g, '');
   const numberKey = (v) => /^\d+$/.test(text(v)) ? String(Number(text(v))) : text(v);
@@ -95,6 +180,7 @@
   }
 
   function selectSheet(wb, XLSX, preferredNames) {
+    validateWorkbook(wb, XLSX);
     for (const name of preferredNames) {
       if (wb.SheetNames.includes(name)) return { name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }) };
     }
@@ -171,5 +257,5 @@
     if (!plans.length && !errors.length) errors.push('指標の数値がまだ入力されていません。' + help);
     return { errors, plans };
   }
-  root.GD_IMPORT = { createMatcher, selectSheet, findHeader, idColumn, isIdHeader, isPlaceholder, numeric, matchedRows, parseMetricRows, inputHelp, splitClassName, testLayout, parseTestKind };
+  root.GD_IMPORT = { limits, validateWorkbook, inspectZip, readWorkbook, createMatcher, selectSheet, findHeader, idColumn, isIdHeader, isPlaceholder, numeric, matchedRows, parseMetricRows, inputHelp, splitClassName, testLayout, parseTestKind };
 })(typeof window !== 'undefined' ? window : globalThis);

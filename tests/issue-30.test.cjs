@@ -10,7 +10,7 @@ const XLSX = require(path.join(root, 'vendor/xlsx.full.min.js'));
 const ExcelJS = require(path.join(root, 'vendor/exceljs.min.js'));
 function harness() {
   const alerts = [], confirms = [];
-  const context = vm.createContext({ XLSX, console, window: { ExcelJS, crypto: webcrypto, addEventListener() {} },
+  const context = vm.createContext({ Blob, DecompressionStream, XLSX, console, window: { ExcelJS, crypto: webcrypto, addEventListener() {} },
     document: { addEventListener() {}, getElementById() { return null; } },
     alert: s => alerts.push(s), confirm: s => { confirms.push(s); return context.allowImport !== false; } });
   for (const name of ['import-core.js', 'excel-templates.js', 'initial-import.js']) vm.runInContext(fs.readFileSync(path.join(root, name), 'utf8'), context);
@@ -37,7 +37,7 @@ function configured(h) {
 }
 async function importWorkbook(h, wb) {
   const bytes = await h.excel.writeBuffer(wb);
-  await h.api.importTestTemplate({ arrayBuffer: async () => bytes });
+  await h.api.importTestTemplate(new Blob([bytes]));
 }
 test('指標の実ファイルもテスト用と同じ書式・黄色の回答欄・灰色の名簿・F10固定になる', async () => {
   const h = harness(), wb = h.excel.metricTemplate(XLSX, h.api.getData().students);
@@ -66,7 +66,7 @@ test('書式付き指標Excelを実ファイルで往復し、数値0・5段階�
   const wb = h.excel.metricTemplate(XLSX, d.students);
   for (const [key,value] of Object.entries({F9:'架空の学習時間',F10:0,F11:15,G9:'架空の5段階',G10:1,G12:5,J9:'架空の増減',J10:-2.5})) set(wb,'指標',key,value);
   wb.SheetNames = ['書き方','記入例','指標'];
-  await h.api.importMetricTemplate({arrayBuffer: async () => h.excel.writeBuffer(wb)});
+  await h.api.importMetricTemplate(new Blob([await h.excel.writeBuffer(wb)]));
   assert.equal(d.metrics.length, 3, h.alerts.join('\n'));
   const metric = label => d.metrics.find(m => m.label === label);
   assert.equal(metric('架空の学習時間').type, 'number');
@@ -77,7 +77,7 @@ test('書式付き指標Excelを実ファイルで往復し、数値0・5段階�
   assert.equal(JSON.stringify(d.students), roster);
   assert.equal(h.api.validateDataset(d).length, 0);
   set(wb,'指標','F10',''); set(wb,'指標','F11',0);
-  await h.api.importMetricTemplate({arrayBuffer: async () => h.excel.writeBuffer(wb)});
+  await h.api.importMetricTemplate(new Blob([await h.excel.writeBuffer(wb)]));
   assert.deepEqual({...metric('架空の学習時間').values}, {a:0,b:0});
   assert.equal(metric('架空の学習時間').type, 'number');
 });
@@ -94,7 +94,7 @@ test('新しい指標Excelの仮見出し・ID・学年・氏名・数値・重�
     const rows=XLSX.utils.sheet_to_json(wb.Sheets['指標'],{header:1,defval:''});
     rows[8][5]='架空の指標'; rows[9][5]=2; edit(rows);
     wb.Sheets['指標']=XLSX.utils.aoa_to_sheet(rows);
-    await h.api.importMetricTemplate({arrayBuffer:async()=>h.excel.writeBuffer(wb)});
+    await h.api.importMetricTemplate(new Blob([await h.excel.writeBuffer(wb)]));
     assert.equal(JSON.stringify(d),before,JSON.stringify(rows));
     assert.equal(h.confirms.length,0);
     assert.ok(h.alerts.length);
@@ -103,7 +103,7 @@ test('新しい指標Excelの仮見出し・ID・学年・氏名・数値・重�
 test('未記入の新しい指標Excelには新しい入力位置を案内する', async () => {
   const h=harness(), d=h.api.getData(), before=JSON.stringify(d);
   const wb=h.excel.metricTemplate(XLSX,d.students);
-  await h.api.importMetricTemplate({arrayBuffer:async()=>h.excel.writeBuffer(wb)});
+  await h.api.importMetricTemplate(new Blob([await h.excel.writeBuffer(wb)]));
   assert.match(h.alerts.join('\n'), /F9.*F10/);
   assert.equal(JSON.stringify(d),before);
 });

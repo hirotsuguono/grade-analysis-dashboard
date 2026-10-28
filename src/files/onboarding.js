@@ -93,12 +93,12 @@
     if (!file) return;
     pending = null;
     try {
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const workbook = await window.GD_IMPORT.readWorkbook(file, XLSX);
       const plan = window.GD_INITIAL.planWorkbook(workbook, XLSX);
       showPlan(plan);
       if (!plan.errors.length) pending = plan;
-    } catch {
-      showPlan({ errors: ['Excelを読み込めませんでした。初回登録用テンプレートを使い、.xlsx形式で保存してから選び直してください。'] });
+    } catch (error) {
+      showPlan({ errors: [error.message || 'Excelを読み込めませんでした。初回登録用テンプレートを使い、.xlsx形式で保存してから選び直してください。'] });
     }
   };
   byId('initialApplyBtn').onclick = () => {
