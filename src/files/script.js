@@ -678,7 +678,8 @@ function applyJsonText(text, name, handle) {
     // 移行：出席番号(number)が無い生徒は id を初期値として補う
     for (const s of parsed.students) {
       if (s.number == null || s.number === '') {
-        s.number = parseInt(s.id, 10) || '';
+        const candidate = Number.parseInt(s.id, 10);
+        s.number = Number.isSafeInteger(candidate) && candidate > 0 ? candidate : '';
         migrated = true;
       }
     }
@@ -2457,7 +2458,7 @@ function openAdminDialog() {
   const hasPin = !!data.settings.adminPinHash;
   $('adminDialogNote').textContent = hasPin
     ? 'PINを入力すると、名簿管理・削除・設定などの管理機能が使えるようになります。'
-    : 'PINが未設定です。最初のPIN（数字4〜8桁）を決めて入力してください。以後、管理機能はこのPINで保護されます。';
+    : 'PINが未設定です。最初のPIN（数字4〜8桁）を決めて入力してください。以後のPINは誤操作防止用です。JSONの暗号化やアクセス制限は行いません。';
   $('adminPinInput').value = '';
   $('adminDialog').showModal();
   $('adminPinInput').focus();

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" translate="no">
 
 <head>
   <meta charset="UTF-8">
@@ -96,7 +96,7 @@
         <button type="button" class="btn btn-primary" id="initialTemplateBtn">① 名簿登録用Excelを発行</button>
         <button type="button" class="btn btn-ghost" id="initialImportBtn">② 記入したExcelを読み込む</button>
       </div>
-      <input type="file" id="initialXlsxInput" accept=".xlsx,.xls" hidden>
+      <input type="file" id="initialXlsxInput" accept=".xlsx,.xls" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
       <div id="initialPreview" class="initial-preview" role="status" aria-live="polite" hidden></div>
       <button type="button" class="btn btn-primary" id="initialApplyBtn" disabled hidden>確認した内容で登録</button>
       <details class="manual-roster-alternative"><summary>Excelを使わずに登録する</summary><p>名簿を直接入力してから、テストやアンケートを追加できます。</p><button type="button" class="btn btn-ghost" id="manualRosterBtn">Excelを使わず名簿を入力</button></details>
@@ -200,7 +200,7 @@
               <select id="trendClass"></select>
             </label>
             <label class="side-field">テストの種類<select id="trendKind"></select></label>
-            <label class="sr-only" for="trendSearch">生徒名で検索</label><input type="search" id="trendSearch" placeholder="生徒名で検索">
+            <label class="sr-only" for="trendSearch">生徒名で検索</label><input type="search" id="trendSearch" placeholder="生徒名で検索" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
             <div class="side-actions">
               <button class="btn btn-ghost btn-sm" id="trendClearBtn">選択をクリア</button>
               <button class="btn btn-primary btn-sm" id="printKarteBtn" disabled>面談カルテを印刷</button>
@@ -388,9 +388,9 @@
             <option value="rate">得点率(%)</option>
           </select>
         </label>
-        <label class="check-inline"><input type="checkbox" id="listHeat" checked> 色付け</label>
+        <label class="check-inline"><input type="checkbox" id="listHeat" checked autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> 色付け</label>
         <label>基準点
-          <input type="number" id="listPivot" min="0" max="100" value="60" class="pivot-input"> %
+          <input type="number" id="listPivot" min="0" max="100" value="60" class="pivot-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> %
         </label>
         <span class="toolbar-spacer"></span>
         <button class="btn btn-ghost" id="listExportBtn">Excelで書き出し</button>
@@ -408,7 +408,7 @@
     <section class="update-card" aria-labelledby="updateCardTitle">
       <div class="update-card-copy">
         <h2 id="updateCardTitle">アプリのバージョンと更新</h2>
-        <p class="update-current-version">ご利用中：<span id="appVersion" class="app-version" data-version="0.4.0">v0.4.0</span></p>
+        <p class="update-current-version">ご利用中：<span id="appVersion" class="app-version" data-version="0.4.1">v0.4.1</span></p>
       </div>
       <div class="update-card-actions">
         <a id="latestReleaseLink" class="update-download-link" href="https://github.com/hirotsuguono/grade-analysis-dashboard/releases/latest" target="_blank" rel="noopener noreferrer">
@@ -433,6 +433,7 @@
     </details>
     <nav class="app-footer-links" aria-label="サポート">
       <a href="files/manual.html">使い方とデータの扱い</a>
+      <span>不具合報告には実名・成績・支援記録を添付せず、架空データで再現してください。</span>
       <span class="update-online-note">GitHubは別タブで開きます（オンライン）</span>
     </nav>
   </footer>
@@ -450,7 +451,7 @@
         <button type="button" class="btn btn-primary" id="saveOverwriteBtn">上書き保存</button>
         <button type="button" class="btn btn-ghost" id="saveAsBtn">名前を付けて保存</button>
       </div>
-      <label>ダウンロードするファイル名<input type="text" id="saveDownloadName" autocomplete="off"></label>
+      <label>ダウンロードするファイル名<input type="text" id="saveDownloadName" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
       <button type="button" class="btn btn-ghost" id="saveDownloadBtn">JSONをダウンロード</button>
       <p class="form-note">ダウンロードでは保存場所や完了をアプリから確認できません。ファイルを確認後、下の「保存を確認しました」を押してください。保存場所を毎回選びたい場合は、ブラウザのダウンロード設定で「保存場所を確認する」を有効にします。</p>
       <p id="saveResult" role="status" aria-live="polite"></p>
@@ -466,7 +467,7 @@
       <h2 id="comparisonTitle">テストの種類・比較対象</h2>
       <label>設定するテスト<select id="cfTest"></select></label>
       <label>テストの種類<select id="cfKind"></select></label>
-      <label>単元名・試験シリーズ（任意）<input id="cfSeries" type="text" placeholder="例：Unit 3、実力テストA"></label>
+      <label>単元名・試験シリーズ（任意）<input id="cfSeries" type="text" placeholder="例：Unit 3、実力テストA" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
       <label>比較するテスト<select id="cfCompare"></select></label>
       <p id="cfStatus" role="status" aria-live="polite"></p>
       <p class="form-note">過去の同じ教科から選択できます。満点が違う場合も得点率で比較します。範囲・難しさが異なるため、得点の変化を学力や支援の効果と断定しません。設定を変更したらJSONを保存してください。</p>
@@ -480,15 +481,15 @@
       <p class="form-note">必要な項目を選び、プレビューを確認して印刷します。選択はこの利用中だけ保持し、成績データは変更しません。表とグラフは現在の個人推移の教科・テスト種類を使います。</p>
       <fieldset class="karte-options" id="karteOptions">
         <legend>表示する項目</legend>
-        <label><input type="checkbox" data-karte="basic"> 生徒の基本情報</label>
-        <label><input type="checkbox" data-karte="history"> クラス履歴</label>
-        <label><input type="checkbox" data-karte="records"> テストの記録</label>
-        <label><input type="checkbox" data-karte="score"> 得点</label>
-        <label><input type="checkbox" data-karte="rate"> 得点率</label>
-        <label><input type="checkbox" data-karte="average"> クラス平均</label>
-        <label><input type="checkbox" data-karte="trend"> 得点推移グラフ</label>
-        <label><input type="checkbox" data-karte="domain"> 分野別推移グラフ</label>
-        <label><input type="checkbox" data-karte="memo"> 面談メモ欄</label>
+        <label><input type="checkbox" data-karte="basic" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> 生徒の基本情報</label>
+        <label><input type="checkbox" data-karte="history" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> クラス履歴</label>
+        <label><input type="checkbox" data-karte="records" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> テストの記録</label>
+        <label><input type="checkbox" data-karte="score" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> 得点</label>
+        <label><input type="checkbox" data-karte="rate" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> 得点率</label>
+        <label><input type="checkbox" data-karte="average" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> クラス平均</label>
+        <label><input type="checkbox" data-karte="trend" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> 得点推移グラフ</label>
+        <label><input type="checkbox" data-karte="domain" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> 分野別推移グラフ</label>
+        <label><input type="checkbox" data-karte="memo" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> 面談メモ欄</label>
       </fieldset>
       <p id="karteStatus" role="status" aria-live="polite"></p>
       <div id="kartePreview" class="karte-preview" aria-label="面談カルテのプレビュー"></div>
@@ -524,9 +525,9 @@
       <h2>管理者モード</h2>
       <p class="form-note" id="adminDialogNote"></p>
       <label>PIN（数字4〜8桁）
-        <input type="password" id="adminPinInput" inputmode="numeric" pattern="[0-9]*" autocomplete="off" required>
+        <input type="password" id="adminPinInput" inputmode="numeric" pattern="[0-9]*" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
       </label>
-      <p class="form-note admin-warn">※ この切替は誤操作防止のための仕組みです。データそのものの保護は、ファイルを置く共有フォルダのアクセス権で行ってください。</p>
+      <p class="form-note admin-warn">PINは誤操作防止用です。ログインや暗号化ではありません。JSONを読める人は内容を確認できます。校内共用サーバーのアクセス権とバックアップは学校で管理してください。</p>
       <div class="dialog-actions">
         <button type="button" class="btn btn-ghost" id="adminCancel">キャンセル</button>
         <button type="submit" class="btn btn-primary" id="adminSubmit">切り替える</button>
@@ -542,17 +543,18 @@
       <h4>RTI しきい値（得点率%）</h4>
       <div class="form-row form-row-2">
         <label>Tier 3（集中支援）… この値未満
-          <input type="number" id="setTier3" min="1" max="99" required>
+          <input type="number" id="setTier3" min="1" max="99" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
         </label>
         <label>Tier 2（補足支援）… この値未満
-          <input type="number" id="setTier2" min="1" max="99" required>
+          <input type="number" id="setTier2" min="1" max="99" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
         </label>
       </div>
       <p class="form-note">例：Tier 3=40、Tier 2=60 のとき、40%未満がTier 3、40〜59%がTier 2、60%以上がTier 1</p>
 
-      <h4>管理者PIN</h4>
+      <h4>管理者PIN（誤操作防止）</h4>
+      <p class="form-note">PINでJSONは暗号化されません。ファイルの閲覧・編集権限は学校で管理してください。</p>
       <label>新しいPIN（数字4〜8桁・変更する場合のみ入力）
-        <input type="password" id="setPin" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="変更しない場合は空欄">
+        <input type="password" id="setPin" inputmode="numeric" pattern="[0-9]*" placeholder="変更しない場合は空欄" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
       </label>
 
       <div class="dialog-actions">
@@ -568,18 +570,18 @@
       <h2 id="ivDialogTitle">支援の記録</h2>
       <div class="iv-student-summary" id="ivStudentSummary"></div>
       <label>支援の内容
-        <input type="text" id="ivTitle" required placeholder="例：授業中に、取り組む手順を一緒に確認した">
+        <input type="text" id="ivTitle" required placeholder="例：授業中に、取り組む手順を一緒に確認した" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
       </label>
       <div class="form-row form-row-2">
         <label>開始日
-          <input type="date" id="ivStart" required>
+          <input type="date" id="ivStart" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
         </label>
         <label>対象教科
           <select id="ivSubject"></select>
         </label>
       </div>
       <label>メモ（任意）
-        <textarea id="ivNote" rows="3" placeholder="保護者連絡済み、家庭学習の様子など"></textarea>
+        <textarea id="ivNote" rows="3" placeholder="保護者連絡済み、家庭学習の様子など" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></textarea>
       </label>
       <div class="dialog-actions">
         <button type="button" class="btn btn-ghost" id="ivCancel">キャンセル</button>
@@ -592,7 +594,7 @@
   <dialog id="metricDialog">
     <form class="dialog-form" id="metricForm">
       <h2>指標を追加</h2>
-      <label>指標名 <input type="text" id="mfLabel" required placeholder="例：読書量（冊/月）"></label>
+      <label>指標名 <input type="text" id="mfLabel" required placeholder="例：読書量（冊/月）" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
       <label>種類
         <select id="mfType">
           <option value="number">数値（時間・冊数など）</option>
@@ -631,8 +633,8 @@
       <div class="rpane" id="rpane-reassign">
         <p>新年度のクラス名簿を貼り付けてください。<strong>氏名で照合</strong>し、クラスと出席番号を更新します（成績は保持）。</p>
         <p class="form-note">1行に1人。<code>氏名 ⇥ 新クラス ⇥ 新番号</code>（Excelの3列をコピーして貼り付け）</p>
-        <textarea id="reassignText" rows="9" placeholder="架空生徒001	2A	1&#10;架空生徒002	2B	5"></textarea>
-        <label class="roster-check"><input type="checkbox" id="reassignAddNew" checked> 名簿にない生徒は新規追加（転入）する</label>
+        <textarea id="reassignText" rows="9" placeholder="架空生徒001	2A	1&#10;架空生徒002	2B	5" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></textarea>
+        <label class="roster-check"><input type="checkbox" id="reassignAddNew" checked autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> 名簿にない生徒は新規追加（転入）する</label>
         <div id="reassignPreview" class="reassign-preview" hidden></div>
         <div class="dialog-actions">
           <button type="button" class="btn btn-ghost" id="reassignCheckBtn">照合する</button>
@@ -651,8 +653,8 @@
     <form class="dialog-form" id="testForm">
       <h2>テストを追加</h2>
       <div class="form-row form-row-4">
-        <label>テスト名 <input type="text" id="tfName" required placeholder="例：後期期末テスト"></label>
-        <label>教科 <input type="text" id="tfSubject" required placeholder="例：英語"></label>
+        <label>テスト名 <input type="text" id="tfName" required placeholder="例：後期期末テスト" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+        <label>教科 <input type="text" id="tfSubject" required placeholder="例：英語" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
         <label>実施学年
           <select id="tfGrade">
             <option value="">未設定</option>
@@ -661,10 +663,10 @@
             <option value="3">3年</option>
           </select>
         </label>
-        <label>実施日 <input type="date" id="tfDate"></label>
-        <label>満点 <input type="number" id="tfMax" required value="100" min="1"></label>
+        <label>実施日 <input type="date" id="tfDate" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+        <label>満点 <input type="number" id="tfMax" required value="100" min="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
         <label>テストの種類<select id="tfKind"></select></label>
-        <label>単元名・試験シリーズ（任意）<input type="text" id="tfSeries"></label>
+        <label>単元名・試験シリーズ（任意）<input type="text" id="tfSeries" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
       </div>
       <p class="form-note">実施学年＝「何年生のときのテストか」。実施日を設定すると、後から過去のテストを追加しても時系列が正しく並びます。</p>
 
@@ -691,9 +693,9 @@
   <dialog id="newDialog">
     <form class="dialog-form" id="newForm">
       <h2>新規データを作成</h2>
-      <label>データ名 <input type="text" id="nfName" required placeholder="例：1年 英語"></label>
+      <label>データ名 <input type="text" id="nfName" required placeholder="例：1年 英語" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
       <label>名簿（1行に1人。「氏名 ⇥ クラス ⇥ 出席番号」。クラス・番号は省略可）
-        <textarea id="nfRoster" rows="10" placeholder="架空生徒001	1A	1&#10;架空生徒002	1A	2"></textarea>
+        <textarea id="nfRoster" rows="10" placeholder="架空生徒001	1A	1&#10;架空生徒002	1A	2" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></textarea>
       </label>
       <div class="dialog-actions">
         <button type="button" class="btn btn-ghost" id="nfCancel">キャンセル</button>
@@ -718,9 +720,9 @@
     </div>
   </dialog>
 
-  <input type="file" id="fileInput" accept=".json,application/json" hidden>
-  <input type="file" id="testXlsxInput" accept=".xlsx,.xls" hidden>
-  <input type="file" id="metricXlsxInput" accept=".xlsx,.xls" hidden>
+  <input type="file" id="fileInput" accept=".json,application/json" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
+  <input type="file" id="testXlsxInput" accept=".xlsx,.xls" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
+  <input type="file" id="metricXlsxInput" accept=".xlsx,.xls" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
 
   <script src="files/import-core.js"></script>
   <script src="files/vendor/exceljs.min.js"></script>

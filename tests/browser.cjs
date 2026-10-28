@@ -300,7 +300,7 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     check('タグ入りクラス名の安全な表示・開始時基準値の境界値と不正入力拒否・現在データ保持');
     await require('./intervention-validation.cjs')(page, fixture);
     check('支援記録の日付・状態・メモの検証・不正入力時の未保存データ保持・日付順表示と保存再開');
-    for (const file of fs.readdirSync(__dirname).filter(name => /^regression-issue-\d+\.browser\.cjs$/.test(name)).sort()) {
+    for (const file of fs.readdirSync(__dirname).filter(name => /^regression-(?:issue-\d+|v041)\.browser\.cjs$/.test(name)).sort()) {
       await require(path.join(__dirname, file))(page, fixture);
       check(file);
     }
