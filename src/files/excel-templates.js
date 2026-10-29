@@ -85,6 +85,40 @@
     }
     return wb;
   }
+  function reassignTemplate(X, data, config) {
+    const errors = root.GD_ROSTER.configErrors(config);
+    if (errors.length) throw new Error(errors.join('\n'));
+    const students = root.GD_ROSTER.selectedStudents(data.students, config);
+    if (!students.length) throw new Error('対象の名簿がありません。対象を選び直してください。');
+    const classes = root.GD_ROSTER.destinations(config), wb = X.utils.book_new();
+    const lastRow = 8 + students.length;
+    const ws = makeSheet(X, wb, 'クラス替え', [22, 24, 19, 13, 19, 13], lastRow, true);
+    header(X, ws, 5, 'クラス替え・所属の訂正', '名簿入りExcel ／ 氏名や生徒IDは変更しません。',
+      '1 新クラス・新番号を入力　→　2 読込・確認　→　3 控えを保存して反映',
+      config.mode === 'partial' ? '一部変更：変更しない人は新クラス・新番号を両方空欄にします。生徒の行は削除しません。' : '対象全員：全員の新クラス・新番号を記入します。変更しない人も現在と同じ所属を記入します。');
+    band(X, ws, 5, 0, 3, '現在の名簿　｜　編集不要', style.section, 28);
+    band(X, ws, 5, 4, 5, '新しい所属　｜　入力する欄', style.section, 28);
+    band(X, ws, 6, 0, 5, '新クラスは候補から選択します。名簿にない生徒は追加されません。点数・支援記録はそのままです。', style.note, 28);
+    ws['!rows'][7] = { hpt: 10 };
+    root.GD_ROSTER.headers.forEach((v, c) => cell(X, ws, 8, c, v, style.header));
+    students.forEach((s, i) => {
+      [s.id, s.name, s.className || '', s.number ?? '', '', ''].forEach((v, c) => cell(X, ws, 9 + i, c, v,
+        c >= 4 ? style.inputCenter : c === 0 ? style.autoSmall : c === 1 ? style.auto : style.autoCenter));
+    });
+    validation(ws, `E10:E${lastRow + 1}`, { type: 'list', formulae: ['ReassignClasses'], promptTitle: '新クラス', prompt: '画面で設定した移動先から選びます。', error: '新クラスは候補から選んでください。' });
+    validation(ws, `F10:F${lastRow + 1}`, { type: 'whole', operator: 'greaterThan', formulae: [0], promptTitle: '新番号', prompt: '正の整数を入力します。', error: '新番号は正の整数です。' });
+    ws['!freeze'] = { rows: 9, cols: 4 };
+    const settings = makeSheet(X, wb, '発行設定', [22, 45, 3, 22], Math.max(18, classes.length + 7));
+    header(X, settings, 3, '発行設定 ／ 編集不要', '設定はアプリの画面で選び、変更する場合はExcelを発行し直します。',
+      '記入する場所は「クラス替え」シートの黄色い欄です。');
+    root.GD_ROSTER.metadata(config, data.name).forEach(([key, value], i) => {
+      cell(X, settings, 6 + i, 0, key, style.label); cell(X, settings, 6 + i, 1, value, style.auto);
+    });
+    cell(X, settings, 6, 3, '新クラスの候補', style.header);
+    classes.forEach((name, i) => cell(X, settings, 7 + i, 3, name, style.autoCenter));
+    wb.Workbook = { Names: [{ Name: 'ReassignClasses', Ref: `'発行設定'!$D$8:$D$${classes.length + 7}` }] };
+    return wb;
+  }
   function testTemplate(X, students) {
     const wb = X.utils.book_new();
     const settings = makeSheet(X, wb, '① テスト設定', [23, 12, 12, 12, 14, 24], 23);
@@ -225,6 +259,7 @@
       for (const range of source['!merges'] || []) ws.mergeCells(range.s.r+1, range.s.c+1, range.e.r+1, range.e.c+1);
       for (const { range, rule } of source['!validations'] || []) ws.dataValidations.add(range, rule);
     }
+    for (const name of wb.Workbook?.Names || []) book.definedNames.add(name.Ref, name.Name);
     return book.xlsx.writeBuffer();
   }
   async function download(wb, name) {
@@ -233,5 +268,5 @@
     const link = document.createElement('a'); link.href = url; link.download = name; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
-  root.GD_EXCEL = { rosterTemplate, testTemplate, metricTemplate, writeBuffer, download };
+  root.GD_EXCEL = { rosterTemplate, reassignTemplate, testTemplate, metricTemplate, writeBuffer, download };
 })(typeof window !== 'undefined' ? window : globalThis);
