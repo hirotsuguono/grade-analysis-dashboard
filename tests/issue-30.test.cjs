@@ -140,6 +140,49 @@ test('#30 テスト実ファイルの書式・配点数式・日付・選択欄�
   assert.equal(scores.getCell('F10').value, '');
   assert.equal(XLSX.read(bytes, { type: 'array' }).Workbook.CalcPr.fullCalcOnLoad, '1');
 });
+test('テストExcelの50問分に同じ列幅・書式・入力規則を保存し、未使用欄は空欄にする', async () => {
+  const h = harness(), { book } = await written(h.excel, configured(h));
+  const scores = book.getWorksheet('② 点数入力');
+  assert.equal(scores.columnCount, 55);
+  assert.equal(book.getWorksheet('記入例').columnCount, 10);
+  for (const column of ['F', 'J', 'K', 'T', 'BC']) {
+    assert.equal(scores.getColumn(column).width, 16, column);
+    for (const row of [7, 8, 9, 10, 12]) {
+      assert.deepEqual(scores.getCell(column + row).style, scores.getCell('F' + row).style, column + row);
+    }
+    assert.equal(scores.getCell(column + '8').dataValidation.type, 'decimal');
+    const rule = scores.getCell(column + '10').dataValidation;
+    assert.equal(rule.type, 'custom');
+    assert.equal(rule.formulae[0], `OR(${column}10="",${column}10="欠",AND(ISNUMBER(${column}10),ISNUMBER(${column}$8),${column}$8>0,${column}10>=0,${column}10<=${column}$8))`);
+  }
+  for (const column of ['J', 'K', 'T', 'BC']) {
+    for (const row of [7, 8, 9, 10, 12]) assert.equal(scores.getCell(column + row).value, '', column + row);
+  }
+  assert.equal(scores.views[0].topLeftCell, 'F10');
+  assert.equal(scores.pageSetup.printArea, 'A1:J12');
+  assert.equal(scores.pageSetup.printTitlesRow, '6:9');
+});
+test('50問目の欄まで実ファイルで取り込み、途中の空き列を無視して0点も保持する', async () => {
+  const h = harness(), wb = configured(h), roster = JSON.stringify(h.api.getData().students);
+  for (const [address, value] of Object.entries({
+    F10: 20, G10: 10, H10: 10, I10: 10,
+    K7: '架空の追加分野', K8: 10, K9: '問6', K10: 0,
+    BC7: '架空の最終分野', BC8: 5, BC9: '問50', BC10: 5,
+  })) set(wb, '② 点数入力', address, value);
+  await importWorkbook(h, wb);
+  const d = h.api.getData();
+  assert.equal(d.tests.length, 1, h.alerts.join('\n'));
+  assert.equal(d.tests[0].questions.length, 6);
+  assert.equal(d.tests[0].maxScore, 115);
+  assert.deepEqual(Array.from(d.tests[0].questions, q => q.label), ['問1', '問2', '問3', '問4', '問6', '問50']);
+  assert.equal(d.scores.length, 1);
+  assert.equal(d.scores[0].studentId, 'a');
+  assert.equal(d.scores[0].questions.q5, 0);
+  assert.equal(d.scores[0].questions.q6, 5);
+  assert.equal(d.scores[0].total, 55);
+  assert.equal(JSON.stringify(d.students), roster);
+  assert.equal(h.api.validateDataset(d).length, 0);
+});
 test('#30 名簿4列の書式付きExcelを読んでもテスト・点数は作られない', async () => {
   const h = harness(), wb = h.initial.createTemplate(XLSX);
   XLSX.utils.sheet_add_aoa(wb.Sheets['名簿入力'], [[1, '1', 1, '架空あおい'], [2, 'A', 1, '架空そら']], { origin: 'A10' });
