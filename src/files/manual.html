@@ -530,16 +530,18 @@
       </table>
       <div class="warn"><strong>相関≠因果。</strong>「読書量と読解力に相関がある」ことは「読書をさせれば読解力が上がる」ことを保証しません。指導の仮説づくりの材料として使ってください。</div>
 
-      <h3>効果量とカイ二乗検定</h3>
+      <h3 id="effect-size-guide">効果量とカイ二乗検定</h3>
       <table>
         <tr>
-          <th>効果量（Cohen's d）</th>
-          <td><strong>変化や差の大きさを、点数のばらつきを物差しにして測り直した標準化指標</strong>です。「平均が3点上がった」が大きい変化なのか誤差なのかを判断できます。目安：±0.2未満＝ごく小さい／0.5前後＝中くらい／0.8以上＝大きい。教育介入では d=0.4 前後が「1年間の通常授業以上の効果」の目安とされます（Hattie）。<br><br>
+          <th>効果量（d / dz）</th>
+          <td><strong>差や変化の大きさを、点数のばらつき（標準偏差）を物差しにして表す標準化指標</strong>です。別集団の比較には集団内のばらつきを使う d、同じ生徒の前後比較には一人ずつの差のばらつきを使う dz を表示します。支援画面の個人の標準化変化量は、その時点のクラスのばらつきを使う参考値です。計算の物差しが異なるため、これらの値をそのまま横並びには比較できません。<br><br>
+          独立した2群の d について、Cohen（1992, Table 1, p. 157）は小＝0.2・中＝0.5・大＝0.8という慣例的な目安を示しています。本アプリでは、絶対値で 0.2未満＝ごく小さい／0.2以上0.5未満＝小さい／0.5以上0.8未満＝中くらい／0.8以上＝大きい、と区分しています。<strong>この4段階は原典の表をそのまま転載したものではなく、目安の値を境にした本アプリの便宜的な区分です。</strong>統計的な有意差や指導上の重要性を決める基準ではありません。効果量が小さくても誤差だとは限らず、大きくても授業・支援の効果を証明するものではありません。人数・欠席や未入力・テストの範囲や難しさを確認してください。この版の前後比較には、t検定や信頼区間の表示はありません。<br><br>
+          dz の定義と d との違いは Lakens（2013）を参照しています。本アプリの値を「何年分の学習効果」に換算する計算はありません。Hattie（2008）は教育研究の背景資料であり、この区分表や本アプリ独自の支援画面の個人の標準化変化量の直接の根拠にはしていません。<br><br>
           アプリでは次の<strong>5か所</strong>に自動表示されます：<br>
-          ① <strong>概要</strong>：平均点の前回比（クラス全体の伸びの大きさ）<br>
+          ① <strong>概要</strong>：同じ生徒の前後の得点率差を標準化した値（dz）<br>
           ② <strong>概要</strong>：クラス間の差（1組と3組の差は大きいのか）<br>
-          ③ <strong>分野・問題分析</strong>：前回比で伸びた／下がった分野<br>
-          ④ <strong>支援（RTI）</strong>：支援開始後の個人の伸び（クラスのばらつき基準）<br>
+          ③ <strong>分野・問題分析</strong>：前回比の得点率差を標準化した値が大きい分野（dz）<br>
+          ④ <strong>支援（RTI）</strong>：支援開始後の個人の標準化変化量（クラスのばらつき基準の参考値）<br>
           ⑤ <strong>相関分析</strong>：アンケート高評価群と低評価群の平均点差<br>
           画面上の「効果量とは？」や d の値をクリックすると、いつでも説明が読めます</td>
         </tr>
@@ -548,6 +550,14 @@
           <td>「相関分析」で横軸に<strong>5段階アンケート</strong>、縦軸に<strong>テスト</strong>を選ぶと、回答×成績帯（低・中・高）のクロス集計表と検定結果が自動表示されます。5段階のようなカテゴリデータでは相関係数より適切な方法です。「関連あり（5%水準で有意）」＝偶然では説明しにくい偏りがある、という意味。関連の強さは Cramér's V（0.1未満=ごく弱い／0.3=弱い／0.5=中程度）で示します</td>
         </tr>
       </table>
+      <h4>説明の根拠と参考文献</h4>
+      <p>リンク先は外部サイトです（オンライン）。教育研究の背景資料と、数値の目安・計算方法の根拠を分けて記載しています。</p>
+      <ul>
+        <li><strong>d の目安：</strong>Cohen, J. (1992). A power primer. <cite>Psychological Bulletin, 112</cite>(1), 155–159. Table 1（p. 157）. DOI: <a href="https://doi.org/10.1037/0033-2909.112.1.155" target="_blank" rel="noopener">10.1037/0033-2909.112.1.155</a>。</li>
+        <li><strong>前後比較の dz：</strong>Lakens, D. (2013). Calculating and reporting effect sizes to facilitate cumulative science: a practical primer for t-tests and ANOVAs. <cite>Frontiers in Psychology, 4</cite>, 863. DOI: <a href="https://doi.org/10.3389/fpsyg.2013.00863" target="_blank" rel="noopener">10.3389/fpsyg.2013.00863</a>。</li>
+        <li><strong>統計的な確かさの解釈：</strong>American Statistical Association. (2016, March 7). <a href="https://www.amstat.org/asa/files/pdfs/p-valuestatement.pdf" target="_blank" rel="noopener">American Statistical Association releases statement on statistical significance and p-values</a>（声明公表資料）。</li>
+        <li><strong>教育研究の背景資料：</strong>Hattie, J. (2008). <cite>Visible Learning: A Synthesis of Over 800 Meta-Analyses Relating to Achievement</cite>. Routledge. 出版社のオンライン書誌の初出年に合わせた表記。DOI: <a href="https://doi.org/10.4324/9780203887332" target="_blank" rel="noopener">10.4324/9780203887332</a>。</li>
+      </ul>
       <p>成績帯の区切りは「支援（RTI）」のしきい値と共通です（設定から変更できます）。</p>
     </section>
 
