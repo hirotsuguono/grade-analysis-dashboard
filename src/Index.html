@@ -631,15 +631,30 @@
 
       <!-- クラス替え一括取込 -->
       <div class="rpane" id="rpane-reassign">
-        <p>新年度のクラス名簿を貼り付けてください。<strong>氏名で照合</strong>し、クラスと出席番号を更新します（成績は保持）。</p>
-        <p class="form-note">1行に1人。<code>氏名 ⇥ 新クラス ⇥ 新番号</code>（Excelの3列をコピーして貼り付け）</p>
-        <textarea id="reassignText" rows="9" placeholder="架空生徒001	2A	1&#10;架空生徒002	2B	5" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></textarea>
-        <label class="roster-check"><input type="checkbox" id="reassignAddNew" checked autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> 名簿にない生徒は新規追加（転入）する</label>
-        <div id="reassignPreview" class="reassign-preview" hidden></div>
-        <div class="dialog-actions">
-          <button type="button" class="btn btn-ghost" id="reassignCheckBtn">照合する</button>
-          <button type="button" class="btn btn-primary" id="reassignApplyBtn" disabled>反映する</button>
+        <p>対象と移動先を選び、名簿入りExcelへ<strong>新クラス・新番号</strong>だけを記入します。生徒IDで照合し、点数・指標・支援記録を引き継ぎます。</p>
+        <div class="form-row form-row-2">
+          <label>変更する名簿<select id="reassignScope"></select></label>
+          <label>移動先の学年<select id="reassignGrade"><option value="1">1年</option><option value="2">2年</option><option value="3">3年</option></select></label>
+          <label>組名<select id="reassignNaming"><option value="numbers">1・2・3組</option><option value="letters">A・B・C組</option></select></label>
+          <label>移動先のクラス数<input id="reassignCount" type="number" min="1" max="50" value="3" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+          <label>変更対象<select id="reassignMode"><option value="all">対象全員を記入</option><option value="partial">一部だけ変更</option></select></label>
+          <label>変更の種類<select id="reassignKind"><option value="move">クラス替え・所属変更</option><option value="correction">入力ミスの訂正（履歴を増やさない）</option></select></label>
+          <label>変更日<input id="reassignDate" type="date" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
         </div>
+        <p class="form-note">反映するとすぐに所属が変わります。未来の日付での予約、年度の作成、卒業・転入の処理は行いません。一部変更では、変更しない人の新クラス・新番号を両方空欄にします。</p>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-ghost" id="reassignTemplateBtn">① 名簿入りExcelを発行</button>
+          <button type="button" class="btn btn-ghost" id="reassignImportBtn">② 記入後に読み込み</button>
+        </div>
+        <div id="reassignPreview" class="reassign-preview" role="status" aria-live="polite" hidden></div>
+        <div id="reassignCommit" hidden>
+          <p class="form-note">反映前のJSONの控えを保存してください。旧クラス別の集計画面は追加せず、通常の集計は現在のクラスのままです。</p>
+          <button type="button" class="btn btn-ghost" id="reassignBackupBtn">③ 反映前のJSONの控えを保存</button>
+          <label class="roster-check"><input type="checkbox" id="reassignBackupConfirmed" disabled> 控えJSONが所定の場所に保存されたことを確認しました</label>
+          <div class="dialog-actions"><button type="button" class="btn btn-primary" id="reassignApplyBtn" disabled>④ 確認した変更を反映</button></div>
+        </div>
+        <p class="form-note" id="reassignUndoNote">直前の一括変更は、この画面を閉じた後も同じ利用中なら取り消せます。その後に名簿を編集した場合やJSONを開き直した場合は、控えJSONから戻してください。</p>
+        <button type="button" class="btn btn-ghost" id="reassignUndoBtn" disabled>直前の一括変更を取り消す</button>
       </div>
 
       <div class="dialog-actions roster-close-row">
@@ -723,8 +738,10 @@
   <input type="file" id="fileInput" accept=".json,application/json" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
   <input type="file" id="testXlsxInput" accept=".xlsx,.xls" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
   <input type="file" id="metricXlsxInput" accept=".xlsx,.xls" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
+  <input type="file" id="reassignXlsxInput" accept=".xlsx,.xls" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
 
   <script src="files/import-core.js"></script>
+  <script src="files/roster-reassign.js"></script>
   <script src="files/vendor/exceljs.min.js"></script>
   <script src="files/excel-templates.js"></script>
   <script src="files/initial-import.js"></script>
