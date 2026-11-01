@@ -1189,6 +1189,13 @@ dialog#rosterDialog {
   color: var(--danger);
 }
 
+.reassign-preview .table-wrap { max-height: 300px; overflow: auto; margin-top: 10px; }
+.reassign-preview table { width: 100%; min-width: 480px; border-collapse: collapse; }
+.reassign-preview th, .reassign-preview td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+.reassign-preview th { position: sticky; top: 0; background: var(--surface); }
+.roster-check input[type="checkbox"] { width: auto; flex: 0 0 auto; }
+.roster-dialog .form-row select { min-width: 0; width: 100%; }
+
 .roster-close-row {
   border-top: 1px solid var(--border);
   padding-top: 14px;

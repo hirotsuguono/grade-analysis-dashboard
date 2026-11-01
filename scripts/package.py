@@ -14,7 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 FILES = (
     'Index.html', 'LICENSE', 'はじめに.txt',
     'files/style.css', 'files/script.js', 'files/accessibility.js',
-    'files/import-core.js', 'files/initial-import.js', 'files/onboarding.js', 'files/excel-templates.js',
+    'files/import-core.js', 'files/roster-reassign.js', 'files/initial-import.js', 'files/onboarding.js', 'files/excel-templates.js',
     'files/manual.html', 'files/sample-data.json', 'files/sample-data.js',
     'files/vendor/echarts.min.js', 'files/vendor/xlsx.full.min.js', 'files/vendor/exceljs.min.js',
     'files/vendor/echarts.LICENSE', 'files/vendor/echarts.NOTICE',

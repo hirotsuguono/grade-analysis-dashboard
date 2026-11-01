@@ -191,14 +191,9 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     await nameInput.fill('架空編集001');
     assert.equal(await page.evaluate(() => data.students.find(s => s.id === sortedStudents()[0].id).name), '架空編集001');
     const beforeScores = await page.evaluate(() => data.scores.length);
-    await page.locator('[data-rtab="reassign"]').click();
-    await page.locator('#reassignText').fill('架空編集001\t2A\t1');
-    await page.locator('#reassignCheckBtn').click();
-    await page.locator('#reassignApplyBtn').click();
-    assert.equal(await page.evaluate(() => data.students.find(s => s.name === '架空編集001').className), '2A');
     assert.equal(await page.evaluate(() => data.scores.length), beforeScores);
     await page.locator('#rosterCloseBtn').click();
-    check('名簿編集・クラス替え・既存成績保持');
+    check('名簿編集・既存成績保持');
     await reset();
     await tab('input');
     const downloadWorkbook = async button => {
@@ -300,7 +295,7 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     check('タグ入りクラス名の安全な表示・開始時基準値の境界値と不正入力拒否・現在データ保持');
     await require('./intervention-validation.cjs')(page, fixture);
     check('支援記録の日付・状態・メモの検証・不正入力時の未保存データ保持・日付順表示と保存再開');
-    for (const file of fs.readdirSync(__dirname).filter(name => /^regression-(?:issue-\d+|v041|pin-compat)\.browser\.cjs$/.test(name)).sort()) {
+    for (const file of fs.readdirSync(__dirname).filter(name => /^regression-(?:issue-\d+|v041|pin-compat|roster-reassign)\.browser\.cjs$/.test(name)).sort()) {
       await require(path.join(__dirname, file))(page, fixture);
       check(file);
     }

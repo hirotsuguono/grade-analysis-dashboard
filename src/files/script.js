@@ -2827,9 +2827,9 @@ function removeStudentData(sid) {
 function openRosterDialog() {
   if (!requireAdmin()) return;
   switchRosterPane('edit');
-  $('reassignText').value = '';
-  $('reassignPreview').hidden = true;
-  $('reassignApplyBtn').disabled = true;
+  clearReassignPreview();
+  fillReassignScope();
+  $('reassignDate').value = localDateString();
   renderRosterTable();
   $('rosterDialog').showModal();
 }
@@ -2867,6 +2867,7 @@ function renderRosterTable() {
   html += '</tbody></table>';
   if (!students.length) html = '<div class="table-empty">生徒がいません。</div>';
   $('rosterTableWrap').innerHTML = html;
+  updateReassignUndo();
 }
 
 function handleRosterEdit(input) {
@@ -2876,6 +2877,8 @@ function handleRosterEdit(input) {
   const field = input.dataset.field;
   let val = input.value.trim();
   if (field === 'number') val = val === '' ? '' : (parseInt(val, 10) || '');
+  if (String(s[field] ?? '') === String(val)) return;
+  invalidateReassignRoster();
   s[field] = val;
   markDirty();
 }
@@ -2887,6 +2890,7 @@ function handleRosterDelete(sid) {
     ? `${s.name} さんには成績・指標・支援記録のいずれかがあります。削除すると一緒に消えます。\n本当に削除しますか？`
     : `${s.name} さんを名簿から削除しますか？`;
   if (!confirm(warn)) return;
+  invalidateReassignRoster();
   removeStudentData(sid);
   if (ui.rtiSelectedIv && !data.interventions.some((iv) => iv.id === ui.rtiSelectedIv)) ui.rtiSelectedIv = null;
   rebuildIndex();
@@ -2896,6 +2900,7 @@ function handleRosterDelete(sid) {
 }
 
 function addRosterStudent() {
+  invalidateReassignRoster();
   const id = nextStudentId();
   data.students.push({ id, name: '（新入生）', className: '', number: '' });
   markDirty();
@@ -2911,114 +2916,146 @@ function addRosterStudent() {
 
 /* ---- クラス替え一括取込 ---- */
 let reassignPlan = null;
+let reassignUndo = null;
+let reassignBackupText = null;
+let reassignImportSerial = 0;
 
-function buildReassignPlan() {
-  const lines = $('reassignText').value.split('\n').map((l) => l.replace(/\r/, '')).filter((l) => l.trim());
-  const byName = new Map();
-  for (const s of data.students) {
-    const key = s.name.replace(/\s+/g, '');
-    if (!byName.has(key)) byName.set(key, []);
-    byName.get(key).push(s);
-  }
-  const updates = [];
-  const newcomers = [];
-  const dupes = [];
-  const seenStudents = new Set();
-  const seenSlots = new Set();
-  for (const line of lines) {
-    const [name, klass, num] = line.split('\t').map((x) => (x || '').trim());
-    if (!name) continue;
-    const key = name.replace(/\s+/g, '');
-    const matched = byName.get(key);
-    if (num && (!/^\d+$/.test(num) || Number(num) < 1)) { dupes.push(name + '（番号は1以上の整数）'); continue; }
-    const numberVal = num ? Number(num) : '';
-    const slot = klass && num ? klass + '#' + numberVal : '';
-    if (slot && seenSlots.has(slot)) { dupes.push(name + '（組・番号が重複）'); continue; }
-    if (slot) seenSlots.add(slot);
-    if (matched && matched.length === 1) {
-      if (seenStudents.has(matched[0].id)) { dupes.push(name + '（同じ生徒の行が重複）'); continue; }
-      seenStudents.add(matched[0].id);
-      updates.push({ student: matched[0], className: klass || '', number: numberVal });
-    } else if (matched && matched.length > 1) {
-      dupes.push(name);
-    } else {
-      newcomers.push({ name, className: klass || '', number: numberVal });
-    }
-  }
-  const projected = data.students.map((s) => { const u = updates.find((x) => x.student.id === s.id); return u || s; }).concat($('reassignAddNew').checked ? newcomers : []);
-  const occupied = new Set();
-  for (const s of projected) {
-    if (!s.className || !s.number) continue;
-    const slot = s.className + '#' + s.number;
-    if (occupied.has(slot)) dupes.push(s.className + ' ' + s.number + '番（反映後の組・番号が重複）');
-    occupied.add(slot);
-  }
-  return { updates, newcomers, dupes };
+function clearReassignPreview() {
+  reassignImportSerial++;
+  reassignPlan = null; reassignBackupText = null;
+  for (const id of ['reassignPreview', 'reassignCommit']) if ($(id)) $(id).hidden = true;
+  if ($('reassignApplyBtn')) $('reassignApplyBtn').disabled = true;
+  if ($('reassignBackupConfirmed')) { $('reassignBackupConfirmed').checked = false; $('reassignBackupConfirmed').disabled = true; }
 }
 
-function previewReassign() {
-  reassignPlan = buildReassignPlan();
-  const { updates, newcomers, dupes } = reassignPlan;
-  const addNew = $('reassignAddNew').checked;
+function updateReassignUndo() {
+  if (reassignUndo && (reassignUndo.token !== activeDataToken || reassignUndo.after !== JSON.stringify(data.students))) reassignUndo = null;
+  if ($('reassignUndoBtn')) $('reassignUndoBtn').disabled = !reassignUndo;
+}
+
+function invalidateReassignRoster() {
+  clearReassignPreview(); reassignUndo = null; updateReassignUndo();
+}
+
+function fillReassignScope() {
+  const select = $('reassignScope'), previous = select.value;
+  const options = [['all', '', '名簿全員']];
+  for (const grade of [1, 2, 3]) {
+    if (data.students.some(s => window.GD_IMPORT.splitClassName(s.className).grade === String(grade))) options.push(['grade', String(grade), `${grade}年生`]);
+  }
+  for (const klass of classList()) options.push(['class', klass, klass]);
+  select.innerHTML = options.map(([type, value, label]) => `<option value="${esc(JSON.stringify([type, value]))}">${esc(label)}</option>`).join('');
+  if ([...select.options].some(o => o.value === previous)) select.value = previous;
+}
+
+function reassignConfig() {
+  const [sourceType, sourceValue] = JSON.parse($('reassignScope').value);
+  return { sourceType, sourceValue, grade: Number($('reassignGrade').value), naming: $('reassignNaming').value,
+    count: Number($('reassignCount').value), mode: $('reassignMode').value, kind: $('reassignKind').value, date: $('reassignDate').value };
+}
+
+async function issueReassignTemplate() {
+  if (!requireAdmin()) return;
+  clearReassignPreview();
+  try {
+    const errors = validateDataset(data);
+    if (errors.length) throw new Error('現在のデータを修正してから発行してください。\n' + errors.join('\n'));
+    const wb = window.GD_EXCEL.reassignTemplate(XLSX, { ...data, students: sortedStudents() }, reassignConfig());
+    await window.GD_EXCEL.download(wb, 'クラス替え入力用.xlsx');
+  } catch (e) { alert('クラス替え用Excelを発行できませんでした。\n' + e.message); }
+}
+
+function showReassignErrors(errors) {
   const el = $('reassignPreview');
-  let html = `更新：<strong>${updates.length}名</strong>`;
-  html += `　／　新規追加：<strong>${addNew ? newcomers.length : 0}名</strong>`;
-  if (!addNew && newcomers.length) html += `（${newcomers.length}名は取込みません）`;
-  if (dupes.length) {
-    html += `<br><span class="pv-warn">⚠ 反映できない行：${esc(dupes.join('、'))}（名簿編集タブで個別に直してください）</span>`;
-  }
-  if (!updates.length && !(addNew && newcomers.length)) {
-    html += '<br>反映できる変更がありません。形式（氏名⇥クラス⇥番号）を確認してください。';
-  }
-  el.innerHTML = html;
+  el.innerHTML = '<p class="pv-warn">変更は反映していません。Excelを修正するか、最新の名簿から発行し直してください。</p><ul>' +
+    errors.map(message => `<li>${esc(message)}</li>`).join('') + '</ul>';
   el.hidden = false;
-  $('reassignApplyBtn').disabled = dupes.length > 0 || (!updates.length && !(addNew && newcomers.length));
+}
+
+async function importReassignWorkbook(file) {
+  if (!requireAdmin()) return;
+  clearReassignPreview();
+  const serial = reassignImportSerial, token = activeDataToken, before = JSON.stringify(data.students);
+  try {
+    const wb = await window.GD_IMPORT.readWorkbook(file, XLSX);
+    if (serial !== reassignImportSerial) return;
+    if (token !== activeDataToken || before !== JSON.stringify(data.students)) { showReassignErrors(['読み込み中に名簿が変わりました。現在のJSONからExcelを発行し直してください。']); return; }
+    const plan = window.GD_ROSTER.planWorkbook(wb, XLSX, data, localDateString());
+    if (plan.errors.length) { showReassignErrors(plan.errors); return; }
+    const c = plan.config;
+    $('reassignScope').value = JSON.stringify([c.sourceType, c.sourceValue]);
+    $('reassignGrade').value = String(c.grade); $('reassignNaming').value = c.naming; $('reassignCount').value = String(c.count);
+    $('reassignCount').max = c.naming === 'letters' ? '26' : '50';
+    $('reassignMode').value = c.mode; $('reassignKind').value = c.kind; $('reassignDate').value = c.date;
+    const rows = plan.changes.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(s.fromClass || '未設定')}・${esc(s.fromNumber || '未設定')}番</td><td>${esc(s.className)}・${esc(s.number)}番</td></tr>`).join('');
+    const el = $('reassignPreview');
+    el.innerHTML = `<p><strong>変更 ${plan.changes.length}名</strong> ／ 変更なし ${plan.unchanged}名 ／ 対象 ${plan.targetCount}名<br>` +
+      `${c.kind === 'move' ? '所属変更・旧所属を履歴に記録' : '入力ミスの訂正・履歴は増やしません'} ／ 変更日 ${esc(c.date)}</p>` +
+      (rows ? '<div class="table-wrap"><table><thead><tr><th>氏名</th><th>変更前</th><th>変更後</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<p>反映する変更はありません。</p>');
+    el.hidden = false;
+    if (plan.changes.length) { reassignPlan = { ...plan, before, token }; $('reassignCommit').hidden = false; }
+  } catch (e) {
+    if (serial === reassignImportSerial && token === activeDataToken) showReassignErrors([e.message]);
+  }
+}
+
+function saveReassignBackup() {
+  if (!requireAdmin() || !reassignPlan) return;
+  if (reassignPlan.token !== activeDataToken || reassignPlan.before !== JSON.stringify(data.students)) { clearReassignPreview(); showReassignErrors(['名簿が変更されています。Excelを発行し直してください。']); return; }
+  reassignBackupText = null;
+  $('reassignBackupConfirmed').checked = false; $('reassignBackupConfirmed').disabled = true;
+  $('reassignApplyBtn').disabled = true;
+  try {
+    const errors = validateDataset(data);
+    if (errors.length) { alert('現在のデータを修正してから控えを保存してください。\n' + errors.join('\n')); return; }
+    const text = JSON.stringify(data, null, 2);
+    downloadBackupJson(text);
+    reassignBackupText = text;
+    $('reassignBackupConfirmed').checked = false; $('reassignBackupConfirmed').disabled = false;
+    $('reassignApplyBtn').disabled = true;
+  } catch { alert('控えJSONをダウンロードできませんでした。もう一度お試しください。変更は反映していません。'); }
 }
 
 function applyReassign() {
-  if (!reassignPlan) return;
-  // Revalidate text and add-new choice at commit time; never apply a stale preview.
-  const latest = buildReassignPlan();
-  if (latest.dupes.length || JSON.stringify(latest) !== JSON.stringify(reassignPlan)) { alert('入力に変更または重複があります。もう一度「確認」してください。変更は反映していません。'); return; }
-  const { updates, newcomers } = reassignPlan;
-  if (!confirm(`クラス替えを反映しますか？ 更新 ${updates.length}名／追加 ${$('reassignAddNew').checked ? newcomers.length : 0}名`)) return;
-  const today = localDateString();
-  for (const u of updates) {
-    // クラスが変わる場合、旧クラス・番号を履歴として残す
-    if ((u.student.className || '') !== (u.className || '') || String(u.student.number ?? '') !== String(u.number ?? '')) {
-      if (!Array.isArray(u.student.classHistory)) u.student.classHistory = [];
-      u.student.classHistory.push({
-        className: u.student.className || '',
-        number: u.student.number != null ? u.student.number : '',
-        at: today,
-      });
-    }
-    u.student.className = u.className;
-    u.student.number = u.number;
-  }
-  if ($('reassignAddNew').checked) {
-    for (const n of newcomers) {
-      data.students.push({ id: nextStudentId(), name: n.name, className: n.className, number: n.number });
-    }
-  }
+  if (!requireAdmin() || !reassignPlan) return;
+  if (reassignPlan.token !== activeDataToken || reassignPlan.before !== JSON.stringify(data.students)) { clearReassignPreview(); showReassignErrors(['名簿が変わっています。変更は反映していません。Excelを発行し直してください。']); return; }
+  if (!$('reassignBackupConfirmed').checked || reassignBackupText !== JSON.stringify(data, null, 2)) { $('reassignApplyBtn').disabled = true; alert('反映前の最新JSONの控えを保存し、保存先を確認してください。'); return; }
+  const next = window.GD_ROSTER.changedStudents(data.students, reassignPlan);
+  const errors = validateDataset({ ...data, students: next });
+  if (errors.length) { showReassignErrors(errors); return; }
+  if (!confirm(`確認した ${reassignPlan.changes.length}名の所属・番号を反映しますか？\n点数・指標・支援記録は引き継がれます。`)) return;
+  reassignUndo = { before: JSON.parse(reassignPlan.before), after: JSON.stringify(next), token: activeDataToken };
+  data.students = next;
   markDirty();
-  reassignPlan = null;
-  $('reassignText').value = '';
-  $('reassignPreview').hidden = true;
-  $('reassignApplyBtn').disabled = true;
+  clearReassignPreview();
+  fillReassignScope();
   switchRosterPane('edit');
   renderRosterTable();
   renderAll();
-  alert('クラス替えを反映しました。過去の成績はそのまま引き継がれています。');
+  alert('所属の変更を反映しました。内容を確認してJSONを保存してください。通常のクラス別集計は現在の所属で行います。');
+}
+
+function undoReassign() {
+  if (!requireAdmin()) return;
+  updateReassignUndo();
+  if (!reassignUndo) { alert('その後に名簿を編集したか、JSONを開き直したため取り消せません。必要なら控えJSONから戻してください。'); return; }
+  if (!confirm('直前の一括変更を取り消して、所属・番号・所属履歴を反映前に戻しますか？\nその後に入力した点数・支援記録は保持します。')) return;
+  data.students = reassignUndo.before;
+  reassignUndo = null; clearReassignPreview(); markDirty();
+  fillReassignScope(); renderRosterTable(); renderAll();
+  alert('直前の一括変更を取り消しました。必要に応じてJSONを保存してください。');
 }
 
 /* ========== バックアップ（日付つき控えのダウンロード） ========== */
 function backupJson() {
   if (!data) return;
-  const text = JSON.stringify(data, null, 2);
+  downloadBackupJson(JSON.stringify(data, null, 2));
+}
+
+function downloadBackupJson(text) {
   const now = new Date();
   const p = (n) => String(n).padStart(2, '0');
-  const stamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}`;
+  const stamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}-${String(now.getMilliseconds()).padStart(3, '0')}`;
   const base = (fileName || 'seiseki-data.json').replace(/\.json$/i, '');
   const blob = new Blob([text], { type: 'application/json' });
   const a = document.createElement('a');
@@ -3666,8 +3703,16 @@ function init() {
     const btn = e.target.closest('.row-del');
     if (btn) handleRosterDelete(btn.closest('tr').dataset.sid);
   });
-  $('reassignCheckBtn').onclick = previewReassign;
+  $('reassignTemplateBtn').onclick = issueReassignTemplate;
+  $('reassignImportBtn').onclick = () => $('reassignXlsxInput').click();
+  $('reassignXlsxInput').onchange = e => { const file = e.target.files[0]; e.target.value = ''; if (file) importReassignWorkbook(file); };
+  for (const id of ['reassignScope', 'reassignGrade', 'reassignNaming', 'reassignCount', 'reassignMode', 'reassignKind', 'reassignDate']) {
+    $(id).oninput = () => { clearReassignPreview(); $('reassignCount').max = $('reassignNaming').value === 'letters' ? '26' : '50'; };
+  }
+  $('reassignBackupBtn').onclick = saveReassignBackup;
+  $('reassignBackupConfirmed').onchange = () => { $('reassignApplyBtn').disabled = !reassignPlan || !$('reassignBackupConfirmed').checked; };
   $('reassignApplyBtn').onclick = applyReassign;
+  $('reassignUndoBtn').onclick = undoReassign;
 
   // 入力用Excel発行
   $('exportTemplateBtn').onclick = exportTemplate;
