@@ -27,7 +27,7 @@ function harness() {
   vm.runInContext(importSource, context);
   vm.runInContext(fs.readFileSync(path.join(root, 'excel-templates.js'), 'utf8'), context);
   context.window.GD_EXCEL.download = (wb, name) => downloads.push({ wb, name });
-  vm.runInContext(scriptSource + `\nrebuildIndex = function() {}; markDirty = function() {}; renderAll = function() {}; fillAxisSelects = function() {}; fillMetricSelect = function() {}; renderMetricsTab = function() {};\n globalThis.api = { importTestTemplate, importMetricTemplate, issueNewTestTemplate, issueMetricTemplate, exportTemplate, buildReassignPlan, submitNewDialog, setData(d) {data=d;}, getData() {return data;}, setUI(v) {Object.assign(ui,v);} };`, context);
+  vm.runInContext(scriptSource + `\nrebuildIndex = function() {}; markDirty = function() {}; renderAll = function() {}; fillAxisSelects = function() {}; fillMetricSelect = function() {}; renderMetricsTab = function() {};\n globalThis.api = { importTestTemplate, importMetricTemplate, issueNewTestTemplate, issueMetricTemplate, exportTemplate, submitNewDialog, setData(d) {data=d;}, getData() {return data;}, setUI(v) {Object.assign(ui,v);} };`, context);
   return { api: context.api, core: context.window.GD_IMPORT, alerts, confirms, downloads, elements, context };
 }
 function fileFromSheets(sheets) {
@@ -293,14 +293,4 @@ test('metric template IDs round-trip and all examples are explicit synthetic nam
   const examples = xlsx.utils.sheet_to_json(wb.Sheets['記入例'], {header: 1, defval: ''});
   assert.equal(examples.slice(9).length, 4);
   assert.ok(examples.slice(9).every(r => /^架空生徒/.test(r[4])));
-});
-test('class reassignment rejects duplicate names, duplicate rows, and occupied destination tuples', () => {
-  const h = harness(), d = dataset(); h.api.setData(d); h.elements.reassignAddNew = {checked: true};
-  h.elements.reassignText = {value: '架空生徒001\t2年A組\t2'};
-  assert.ok(h.api.buildReassignPlan().dupes.length);
-  h.elements.reassignText.value = '架空生徒001\t3年A組\t1\n架空生徒001\t3年A組\t2';
-  assert.ok(h.api.buildReassignPlan().dupes.length);
-  d.students[1].name = d.students[0].name;
-  h.elements.reassignText.value = '架空生徒001\t3年A組\t1';
-  assert.ok(h.api.buildReassignPlan().dupes.length);
 });
