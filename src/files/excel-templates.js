@@ -111,19 +111,24 @@
     band(X, settings, 23, 0, 5, '次のシート：② 点数入力', style.steps, 30);
     function scoreSheet(name, roster, example = false) {
       const lastRow = Math.max(9, roster.length + 8);
+      const questionColumns = example ? 5 : 50;
+      const lastQuestionCol = 5 + questionColumns - 1;
       const ws = makeSheet(X, wb, name, [17, 7, 9, 11, 22, 16, 16, 16, 16, 16], lastRow, true);
+      // Extend the entry grid while preserving the existing title layout and print setup.
+      ws['!cols'] = [17, 7, 9, 11, 22, ...Array(questionColumns).fill(16)].map(wch => ({ wch }));
+      ws['!ref'] = X.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lastRow, c: lastQuestionCol } });
       header(X, ws, 9, '点数入力' + (example ? ' ／ 記入例' : ''),
         example ? '記入例：英語 ／ 1学期期末テスト ／ 2026/06/24 ／ 100点（すべて架空）' : '教科未設定 ／ テスト名未設定 ／ 満点 100点',
         '1 分野名・配点・問題名を記入する　→　2 生徒ごとの点数を入力する　→　3 保存して取り込む',
-        '列の追加はJ列以降へ（直前の列全体をコピーし、7〜9行目も記入）。空欄＝未入力 ／ 0＝0点 ／ 欠＝欠席。');
+        example ? '空欄＝未入力 ／ 0＝0点 ／ 欠＝欠席。実際の入力は「② 点数入力」シートへ。' :
+          '問題欄は50問分。使わない列は空欄のままにします。空欄＝未入力 ／ 0＝0点 ／ 欠＝欠席。');
       if (!example) ws.A2 = { t: 's', f: 'IF(\'① テスト設定\'!B8="","教科未設定",\'① テスト設定\'!B8)&" ／ "&IF(\'① テスト設定\'!B10="","テスト名未設定",\'① テスト設定\'!B10)&" ／ 満点 "&\'① テスト設定\'!B12&"点"', v: '教科未設定 ／ テスト名未設定 ／ 満点 100点', s: style.subtitle };
       band(X, ws, 5, 0, 4, '自動入力の名簿　｜　編集不要', style.section, 28);
-      band(X, ws, 5, 5, 8, '入力する欄　｜　ここから右側が得点用です', style.section, 28);
-      cell(X, ws, 5, 9, '追加欄 →', style.section);
+      band(X, ws, 5, 5, lastQuestionCol, example ? '入力する欄　｜　ここから右側が得点用です' : '入力する欄　｜　50問分・使わない列は空欄', style.section, 28);
       band(X, ws, 6, 0, 4, '1 分野名 →', style.label, 28);
       band(X, ws, 7, 0, 4, '2 配点（この列の満点） →', style.label, 28);
       ['生徒ID', '学年', 'クラス', '出席番号', '氏名'].forEach((v, c) => cell(X, ws, 8, c, v, style.header));
-      for (let c = 5; c < 10; c++) {
+      for (let c = 5; c <= lastQuestionCol; c++) {
         cell(X, ws, 6, c, ['リスニング', '読解', 'ライティング', '文法'][c-5] || '', style.inputCenter);
         cell(X, ws, 7, c, c < 9 ? 25 : '', style.inputCenter);
         cell(X, ws, 8, c, c < 9 ? `問${c-4}` : '', style.inputCenter);
@@ -136,7 +141,7 @@
       roster.forEach((s, i) => {
         const parts = root.GD_IMPORT.splitClassName(s.className);
         [s.id, parts.grade, parts.className, s.number ?? '', s.name].forEach((v, c) => cell(X, ws, 9+i, c, v, c === 0 ? style.autoSmall : c === 4 ? style.auto : style.autoCenter));
-        for (let c = 5; c < 10; c++) cell(X, ws, 9+i, c, example && c < 9 ? values[i]?.[c-5] ?? '' : '', style.inputCenter);
+        for (let c = 5; c <= lastQuestionCol; c++) cell(X, ws, 9+i, c, example && c < 9 ? values[i]?.[c-5] ?? '' : '', style.inputCenter);
       });
       ws['!freeze'] = { rows: 9, cols: 5 }; ws['!repeatRows'] = '6:9';
     }
