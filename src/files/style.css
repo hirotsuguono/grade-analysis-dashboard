@@ -1911,3 +1911,23 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
 .prepare-hint { font-size:12px; color:#536276; margin:12px 0 0; }
 @media(max-width:900px) { .start-grid { grid-template-columns:1fr; } .start-card { padding:22px; } .start-card .btn-lg { width:auto; align-self:flex-start; min-width:210px; } }
 @media(max-width:560px) { .empty-state { padding:28px 16px; } .start-intro .welcome-intro br { display:none; } .prepare-panel { padding:14px; } .prepare-actions .btn { width:100%; } .setup-actions .btn { width:100%; } }
+
+/* Teaching notes remain ordinary text, including long words and line breaks. */
+.teaching-notes { margin: 16px 0; }
+.teaching-notes > summary { cursor: pointer; font-size: 17px; font-weight: 700; padding: 4px 0; }
+.teaching-notes > summary span { font-size: 13px; font-weight: 400; }
+.teaching-notes .card-note { margin: 8px 0 12px; }
+.teaching-target-controls { margin-top: 12px; }
+.teaching-target-controls label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.teaching-target-controls select, .teaching-target-controls input { width: 100%; min-width: 0; }
+.teaching-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.teaching-fields label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.teaching-fields textarea { width: 100%; min-width: 0; resize: vertical; }
+.teaching-editor-label { font-weight: 700; }
+.teaching-actions { justify-content: flex-start; flex-wrap: wrap; }
+.teaching-note { border-top: 1px solid var(--border); padding: 14px 0; overflow-wrap: anywhere; }
+.teaching-note dt { font-weight: 700; margin-top: 8px; }
+.teaching-note dd { margin: 4px 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.teaching-note .btn { margin: 4px 8px 0 0; }
+.teaching-pagination { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 700px) { .teaching-fields { grid-template-columns: 1fr; } }

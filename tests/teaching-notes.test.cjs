@@ -51,6 +51,11 @@ test('同じクラス名でも対象生徒が変われば下書きのキーを�
   d.students[0].id='new-cohort'; const next=core.target(d,'英語','2年A組','t1');
   assert.notEqual(core.key(old),core.key(next));
 });
+test('旧JSONでテスト名が空でも参照対象を安全な表示名で保持する', () => {
+  const d=dataset(); d.tests[0].name=''; const note=draft(d);
+  assert.equal(note.target.testId,'t1'); assert.ok(note.target.testName.length>0);
+  assert.deepEqual(core.validate(d.teachingNotes),[]);
+});
 test('不正な型・日付・ID・状態・過大入力は受理しない', () => {
   for (const change of [n=>n.observation={formula:'1'},n=>n.date='2026-02-30',n=>n.date=20260601,
     n=>n.target.className=2,n=>n.target.subject={},n=>n.target.studentIds=['s1','s1'],n=>n.target.studentIds=[{}],

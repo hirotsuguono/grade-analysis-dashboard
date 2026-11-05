@@ -142,6 +142,7 @@
       && document.documentElement.dataset.accessibilityInitialized === 'true'
       && window.echarts && window.XLSX && window.ExcelJS && window.GD_EXCEL && window.GD_IMPORT && window.GD_INITIAL
       && window.GRADE_DASHBOARD_SAMPLE && window.GD_TEACHING
+      && document.documentElement.dataset.teachingNotesInitialized === 'true'
       && getComputedStyle(document.documentElement).getPropertyValue('--dashboard-style-loaded').trim() === '1') {
     byId('startupHelp').hidden = true;
   }
