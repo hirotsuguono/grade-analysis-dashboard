@@ -145,16 +145,23 @@
 
       <details class="card teaching-notes" id="teachingNotesCard">
         <summary>指導メモ <span id="teachingCount"></span></summary>
-        <p class="card-note">クラス全体の気づき・次の指導・振り返りを残します。書きかけもアプリ内に保持し、右上の「保存」でJSONへ一緒に保存します。個人への対応は「支援（RTI）」に記録できます。</p>
-        <form id="teachingForm" novalidate>
-          <div class="form-row form-row-2 teaching-target-controls">
-            <label>対象教科<select id="teachingSubject" autocomplete="off" translate="no"></select></label>
-            <label>対象クラス<select id="teachingClass" autocomplete="off" translate="no"></select></label>
-            <label>参考テスト（任意）<select id="teachingTest" autocomplete="off" translate="no"></select></label>
-            <label>記録日<input id="teachingDate" type="date" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+        <p class="teaching-intro">クラス全体の気づきと、次の授業に生かすことを残せます。個人への対応は「支援（RTI）」に記録できます。</p>
+        <form id="teachingForm" class="teaching-editor" aria-labelledby="teachingEditorTitle" novalidate>
+          <div class="teaching-section-heading">
+            <h3 id="teachingEditorTitle">メモを書く</h3>
+            <span id="teachingEditorLabel" class="teaching-badge"></span>
           </div>
-          <p id="teachingTarget" class="card-note"></p>
-          <p id="teachingEditorLabel" class="teaching-editor-label"></p>
+          <p class="teaching-section-help">1欄から記録できます。振り返りは後から追記できます。</p>
+          <fieldset class="teaching-target">
+            <legend>このメモの対象</legend>
+            <div class="teaching-target-controls">
+              <label>対象教科<select id="teachingSubject" autocomplete="off" translate="no"></select></label>
+              <label>対象クラス<select id="teachingClass" autocomplete="off" translate="no"></select></label>
+              <label>参考テスト（任意）<select id="teachingTest" autocomplete="off" translate="no"></select></label>
+              <label>記録日<input id="teachingDate" type="date" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+            </div>
+            <p id="teachingTarget" class="teaching-target-summary"></p>
+          </fieldset>
           <div class="teaching-fields">
             <label>気づいたこと<textarea id="teachingObservation" rows="4" maxlength="4000" placeholder="例：根拠を選ぶ問題の得点率が低かった" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></textarea></label>
             <label>次の指導<textarea id="teachingPlan" rows="4" maxlength="4000" placeholder="例：本文の根拠に線を引いて理由を説明する活動を入れる" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></textarea></label>
@@ -165,12 +172,18 @@
             <button id="teachingNew" type="button" class="btn btn-ghost">新しい記録</button>
             <button id="teachingDiscard" type="button" class="btn btn-ghost" disabled>編集中の内容を破棄</button>
           </div>
+          <p class="teaching-save-note"><strong>最後に、右上の「保存」でJSONへ保存</strong><span>「記録する」だけではファイルに保存されません。書きかけも一緒に保存できます。</span></p>
           <p id="teachingStatus" role="status" aria-live="polite"></p>
         </form>
-        <h3>過去の記録・書きかけ</h3>
-        <label>表示対象<select id="teachingHistoryScope" autocomplete="off" translate="no"><option value="all">すべての記録</option><option value="current">今の対象と同じ記録</option></select></label>
-        <div id="teachingHistory"></div>
-        <div class="teaching-pagination"><button type="button" id="teachingPrev" class="btn btn-ghost">前へ</button><span id="teachingPage"></span><button type="button" id="teachingNext" class="btn btn-ghost">次へ</button></div>
+        <section class="teaching-history-panel" aria-labelledby="teachingHistoryTitle">
+          <div class="teaching-section-heading">
+            <h3 id="teachingHistoryTitle">過去の記録・書きかけ</h3>
+            <label class="teaching-history-filter">表示対象<select id="teachingHistoryScope" aria-describedby="teachingHistoryHelp" autocomplete="off" translate="no"><option value="all">すべての記録</option><option value="current">今の対象と同じ記録</option></select></label>
+          </div>
+          <p id="teachingHistoryHelp" class="teaching-section-help"></p>
+          <div id="teachingHistory"></div>
+          <div class="teaching-pagination"><button type="button" id="teachingPrev" class="btn btn-ghost">前へ</button><span id="teachingPage"></span><button type="button" id="teachingNext" class="btn btn-ghost">次へ</button></div>
+        </section>
       </details>
 
       <div class="card-grid two-col">

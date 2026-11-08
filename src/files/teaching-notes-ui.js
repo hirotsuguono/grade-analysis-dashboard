@@ -48,9 +48,11 @@
   }
   function label() {
     const note = selected();
-    byId('teachingEditorLabel').textContent = !note ? (list().length >= core.MAX_NOTES ? '件数上限です。既存の記録を整理してから追加してください。' : '新しい記録（少なくとも1欄を入力）')
-      : note.status === 'draft' ? '書きかけ（JSONにも保存されます）'
-      : note.editing ? '追記・編集中（記録済みの内容は保持しています）' : '記録済み（アプリ内）。追記できます';
+    byId('teachingEditorTitle').textContent = note?.status === 'recorded' ? 'メモを追記・編集する' : 'メモを書く';
+    const badge = byId('teachingEditorLabel');
+    badge.textContent = !note ? (list().length >= core.MAX_NOTES ? '件数上限' : '新しい記録')
+      : note.status === 'draft' ? '書きかけ' : note.editing ? '追記・編集中' : '記録済み';
+    badge.dataset.kind = !note ? 'new' : note.status === 'draft' ? 'draft' : note.editing ? 'editing' : 'recorded';
     byId('teachingRecord').textContent = note?.status === 'recorded' ? '変更を記録' : '記録する';
     byId('teachingRecord').disabled = !Object.entries(input()).some(([k,v]) => k !== 'date' && v.trim());
     byId('teachingDiscard').disabled = !note || (note.status === 'recorded' && !note.editing);
@@ -76,11 +78,21 @@
       .slice().sort((a,b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
     const pages = Math.max(1,Math.ceil(rows.length / 20)); state.page = Math.min(state.page,pages-1);
     const wrap = byId('teachingHistory'); wrap.replaceChildren();
-    if (!rows.length) wrap.append(element('p','まだ記録はありません。','card-note'));
+    byId('teachingHistoryHelp').textContent = state.filter === 'current'
+      ? '入力欄と同じ教科・クラス・参考テストのメモを表示しています。'
+      : '選択中のテストに関係なく、これまでのメモを表示しています。';
+    if (!rows.length) wrap.append(element('p',state.filter === 'current' ? 'この対象の記録はまだありません。' : 'まだ記録はありません。上の入力欄から最初のメモを残せます。','teaching-empty'));
     for (const note of rows.slice(state.page*20,state.page*20+20)) {
       const item = element('article',undefined,'teaching-note'); item.dataset.noteId = note.id;
-      item.append(element('h4',`${note.date || '日付未入力'} ／ ${note.target.subject || '全教科共通'} ／ ${note.target.className || '全クラス共通'}`));
-      item.append(element('p',`${note.status === 'draft' ? '下書き' : '記録済み'}${note.editing ? '・編集中の内容あり' : ''} ／ 参考：${note.target.testName || 'なし'} ／ 記録時 ${note.target.studentIds.length}名`,'card-note'));
+      item.dataset.active = String(note.id === state.id);
+      const heading = element('div',undefined,'teaching-note-heading');
+      heading.append(element('h4',`${note.date || '日付未入力'} ／ ${note.target.subject || '全教科共通'} ／ ${note.target.className || '全クラス共通'}`));
+      const badge = element('span',note.status === 'draft' ? '書きかけ' : note.editing ? '追記・編集中' : '記録済み','teaching-badge');
+      badge.dataset.kind = note.status === 'draft' ? 'draft' : note.editing ? 'editing' : 'recorded';
+      heading.append(badge); item.append(heading);
+      item.append(element('p',`参考テスト：${note.target.testName || '関連付けなし'} ／ 記録時 ${note.target.studentIds.length}名`,'teaching-note-meta'));
+      const preview = [note.observation,note.plan,note.reflection].find(text => text.trim());
+      if (preview) item.append(element('p',preview,'teaching-note-preview'));
       const dl = element('dl');
       for (const [k,title] of [['observation','気づいたこと'],['plan','次の指導'],['reflection','振り返り']]) if (note[k]) {
         dl.append(element('dt',title),element('dd',note[k]));
@@ -88,16 +100,19 @@
       if (dl.childElementCount) {
         const body = element('details'); body.append(element('summary','本文を表示'),dl); item.append(body);
       }
-      item.append(button(note.status === 'draft' || note.editing ? '書きかけを再開' : '追記・編集',() => {
+      const actions = element('div',undefined,'teaching-note-actions');
+      actions.append(button(note.status === 'draft' || note.editing ? '書きかけを再開' : '追記・編集',() => {
         state.id = note.id; state.target = note.target; editor(); message('記録時の対象を表示しています。別の対象には「新しい記録」を使ってください。');
+        history();
         byId('teachingDate').focus();
       },note.id));
-      item.append(button('削除',() => {
+      const remove = button('削除',() => {
         if (!confirm('この指導メモを削除しますか？編集中の内容も削除します。JSONへ保存する前なら、保存済みのJSONから戻せます。')) return;
         core.remove(data,note.id); markDirty();
         if (state.id === note.id) { state.id = null; state.target = defaultTarget(); editor(); }
-        history(); label(); message('メモを削除しました。右上の「保存」でJSONへ反映してください。'); byId('teachingNew').focus();
-      },note.id));
+        history(); label(); message('メモを削除しました。'); byId('teachingNew').focus();
+      },note.id);
+      remove.classList.add('teaching-delete'); actions.append(remove); item.append(actions);
       wrap.append(item);
     }
     byId('teachingPage').textContent = `${state.page+1} / ${pages}ページ（${rows.length}件）`;
@@ -125,7 +140,7 @@
         state.id = core.create(data,state.target,v,stamp(),id).id;
       } else core.write(data,state.id,v,stamp());
       markDirty(); label(); history();
-      message('入力をアプリ内に保持しています。右上の「保存」でJSONへ保存してください。');
+      message(selected()?.status === 'recorded' ? '記録済みの本文を残して、編集内容をアプリ内に保持しています。' : '書きかけをアプリ内に保持しています。');
       return true;
     } catch (error) { message(error.message); return false; }
   }
@@ -144,7 +159,7 @@
   byId('teachingForm').onsubmit = event => {
     event.preventDefault(); if (!write()) return;
     if (!state.id) return;
-    try { core.record(data,state.id,stamp()); markDirty(); editor(); history(); message('アプリ内に記録しました。右上の「保存」でJSONへ保存してください。'); }
+    try { core.record(data,state.id,stamp()); markDirty(); editor(); history(); message('アプリ内に記録しました。'); }
     catch (error) { message(error.message); }
   };
   byId('teachingNew').onclick = () => {
