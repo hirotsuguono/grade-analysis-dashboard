@@ -645,12 +645,16 @@ function validateDataset(parsed) {
       add('支援記録の開始時基準値は0〜100の数値、または未設定にしてください。');
     }
   }
+  if (parsed.teachingNotes !== undefined) {
+    if (typeof window.GD_TEACHING?.validate !== 'function') add('指導メモの検証機能を読み込めません。アプリをすべて展開し直してください。');
+    else window.GD_TEACHING.validate(parsed.teachingNotes).forEach(add);
+  }
   return errors;
 }
 
 function applyJsonText(text, name, handle) {
   const previous = { data, fileHandle, fileName, dirty, lastDiskText, activeDataToken,
-    pendingDownload, isAdmin, scoreIndex, ui: { ...ui } };
+    pendingDownload, isAdmin, scoreIndex, ui: { ...ui }, teachingUi: window.GD_TEACHING_UI?.snapshot() };
   let committed = false;
   let parsed;
   try {
@@ -735,6 +739,7 @@ function applyJsonText(text, name, handle) {
       ({ data, fileHandle, fileName, dirty, lastDiskText, activeDataToken,
         pendingDownload, isAdmin, scoreIndex } = previous);
       Object.assign(ui, previous.ui);
+      window.GD_TEACHING_UI?.restore(previous.teachingUi);
       // Repaint the previous dataset where possible; restoring the model must not depend on rendering.
       try {
         $('emptyState').hidden = !!data;
@@ -965,6 +970,7 @@ function renderCurrentTab() {
 
 /* ========== 概要タブ ========== */
 function renderOverview() {
+  window.GD_TEACHING_UI?.render();
   const test = testById(ui.ovTest);
   const students = studentsOf(ui.ovClass);
   const kpiEl = $('kpiGrid');
