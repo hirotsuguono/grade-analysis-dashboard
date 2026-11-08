@@ -19,7 +19,9 @@
   <!-- 外部ファイルを読み込めない場合も、この案内はHTMLだけで表示します。 -->
   <section id="startupHelp" aria-labelledby="startupHelpTitle" style="margin: 1rem; padding: 1rem; border: 2px solid #985900; border-radius: .5rem; background: #fffbeb; color: #1a1a2e; font-family: sans-serif; line-height: 1.7;">
     <h2 id="startupHelpTitle">画面が動かないときは</h2>
+    <p><strong>Windowsでは、ZIPを開いただけでは展開されていません。</strong>ダウンロードしたZIPを右クリックして「すべて展開」を選び、展開先を選んで「展開」を押してください。MacはZIPをダブルクリックして展開します。</p>
     <p><strong>Index.html だけでは動きません。</strong>ZIPをもう一度すべて展開し、files フォルダと同じ場所にある Index.html を開いてください。</p>
+    <p>展開先は「ダウンロード」フォルダでも使えます。デスクトップへ移す必要はありません。</p>
     <p>移動・コピーは、展開したフォルダを中身ごと行います。デスクトップに入口を置く場合は、Index.html のショートカット（Macはエイリアス）を作り、元のフォルダはそのまま保管してください。</p>
     <p>保存した成績JSONはアプリとは別のファイルです。削除せず保管し、起動後に「保存したJSONを開く」で選んでください。</p>
     <noscript><p>ブラウザのJavaScriptが無効になっています。JavaScriptを有効にしてから開き直してください。</p></noscript>
@@ -140,6 +142,49 @@
       </div>
 
       <div class="kpi-grid" id="kpiGrid"></div>
+
+      <details class="card teaching-notes" id="teachingNotesCard">
+        <summary>指導メモ <span id="teachingCount"></span></summary>
+        <p class="teaching-intro">クラス全体の気づきと、次の授業に生かすことを残せます。個人への対応は「支援（RTI）」に記録できます。</p>
+        <form id="teachingForm" class="teaching-editor" aria-labelledby="teachingEditorTitle" novalidate>
+          <div class="teaching-section-heading">
+            <h3 id="teachingEditorTitle">メモを書く</h3>
+            <span id="teachingEditorLabel" class="teaching-badge"></span>
+          </div>
+          <p class="teaching-section-help">1欄から記録できます。振り返りは後から追記できます。</p>
+          <fieldset class="teaching-target">
+            <legend>このメモの対象</legend>
+            <div class="teaching-target-controls">
+              <label>対象教科<select id="teachingSubject" autocomplete="off" translate="no"></select></label>
+              <label>対象クラス<select id="teachingClass" autocomplete="off" translate="no"></select></label>
+              <label>参考テスト（任意）<select id="teachingTest" autocomplete="off" translate="no"></select></label>
+              <label>記録日<input id="teachingDate" type="date" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+            </div>
+            <p id="teachingTarget" class="teaching-target-summary"></p>
+          </fieldset>
+          <div class="teaching-fields">
+            <label>気づいたこと<textarea id="teachingObservation" rows="4" maxlength="4000" placeholder="例：根拠を選ぶ問題の得点率が低かった" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></textarea></label>
+            <label>次の指導<textarea id="teachingPlan" rows="4" maxlength="4000" placeholder="例：本文の根拠に線を引いて理由を説明する活動を入れる" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></textarea></label>
+            <label>振り返り<textarea id="teachingReflection" rows="4" maxlength="4000" placeholder="後から追記できます。3欄すべての入力は不要です" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></textarea></label>
+          </div>
+          <div class="dialog-actions teaching-actions">
+            <button id="teachingRecord" type="submit" class="btn btn-primary">記録する</button>
+            <button id="teachingNew" type="button" class="btn btn-ghost">新しい記録</button>
+            <button id="teachingDiscard" type="button" class="btn btn-ghost" disabled>編集中の内容を破棄</button>
+          </div>
+          <p class="teaching-save-note"><strong>最後に、右上の「保存」でJSONへ保存</strong><span>「記録する」だけではファイルに保存されません。書きかけも一緒に保存できます。</span></p>
+          <p id="teachingStatus" role="status" aria-live="polite"></p>
+        </form>
+        <section class="teaching-history-panel" aria-labelledby="teachingHistoryTitle">
+          <div class="teaching-section-heading">
+            <h3 id="teachingHistoryTitle">過去の記録・書きかけ</h3>
+            <label class="teaching-history-filter">表示対象<select id="teachingHistoryScope" aria-describedby="teachingHistoryHelp" autocomplete="off" translate="no"><option value="all">すべての記録</option><option value="current">今の対象と同じ記録</option></select></label>
+          </div>
+          <p id="teachingHistoryHelp" class="teaching-section-help"></p>
+          <div id="teachingHistory"></div>
+          <div class="teaching-pagination"><button type="button" id="teachingPrev" class="btn btn-ghost">前へ</button><span id="teachingPage"></span><button type="button" id="teachingNext" class="btn btn-ghost">次へ</button></div>
+        </section>
+      </details>
 
       <div class="card-grid two-col">
         <div class="card">
@@ -633,15 +678,30 @@
 
       <!-- クラス替え一括取込 -->
       <div class="rpane" id="rpane-reassign">
-        <p>新年度のクラス名簿を貼り付けてください。<strong>氏名で照合</strong>し、クラスと出席番号を更新します（成績は保持）。</p>
-        <p class="form-note">1行に1人。<code>氏名 ⇥ 新クラス ⇥ 新番号</code>（Excelの3列をコピーして貼り付け）</p>
-        <textarea id="reassignText" rows="9" placeholder="架空生徒001	2A	1&#10;架空生徒002	2B	5" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></textarea>
-        <label class="roster-check"><input type="checkbox" id="reassignAddNew" checked autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"> 名簿にない生徒は新規追加（転入）する</label>
-        <div id="reassignPreview" class="reassign-preview" hidden></div>
-        <div class="dialog-actions">
-          <button type="button" class="btn btn-ghost" id="reassignCheckBtn">照合する</button>
-          <button type="button" class="btn btn-primary" id="reassignApplyBtn" disabled>反映する</button>
+        <p>対象と移動先を選び、名簿入りExcelへ<strong>新クラス・新番号</strong>だけを記入します。生徒IDで照合し、点数・指標・支援記録を引き継ぎます。</p>
+        <div class="form-row form-row-2">
+          <label>変更する名簿<select id="reassignScope"></select></label>
+          <label>移動先の学年<select id="reassignGrade"><option value="1">1年</option><option value="2">2年</option><option value="3">3年</option></select></label>
+          <label>組名<select id="reassignNaming"><option value="numbers">1・2・3組</option><option value="letters">A・B・C組</option></select></label>
+          <label>移動先のクラス数<input id="reassignCount" type="number" min="1" max="50" value="3" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+          <label>変更対象<select id="reassignMode"><option value="all">対象全員を記入</option><option value="partial">一部だけ変更</option></select></label>
+          <label>変更の種類<select id="reassignKind"><option value="move">クラス替え・所属変更</option><option value="correction">入力ミスの訂正（履歴を増やさない）</option></select></label>
+          <label>変更日<input id="reassignDate" type="date" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
         </div>
+        <p class="form-note">反映するとすぐに所属が変わります。未来の日付での予約、年度の作成、卒業・転入の処理は行いません。一部変更では、変更しない人の新クラス・新番号を両方空欄にします。</p>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-ghost" id="reassignTemplateBtn">① 名簿入りExcelを発行</button>
+          <button type="button" class="btn btn-ghost" id="reassignImportBtn">② 記入後に読み込み</button>
+        </div>
+        <div id="reassignPreview" class="reassign-preview" role="status" aria-live="polite" hidden></div>
+        <div id="reassignCommit" hidden>
+          <p class="form-note">反映前のJSONの控えを保存してください。旧クラス別の集計画面は追加せず、通常の集計は現在のクラスのままです。</p>
+          <button type="button" class="btn btn-ghost" id="reassignBackupBtn">③ 反映前のJSONの控えを保存</button>
+          <label class="roster-check"><input type="checkbox" id="reassignBackupConfirmed" disabled> 控えJSONが所定の場所に保存されたことを確認しました</label>
+          <div class="dialog-actions"><button type="button" class="btn btn-primary" id="reassignApplyBtn" disabled>④ 確認した変更を反映</button></div>
+        </div>
+        <p class="form-note" id="reassignUndoNote">直前の一括変更は、この画面を閉じた後も同じ利用中なら取り消せます。その後に名簿を編集した場合やJSONを開き直した場合は、控えJSONから戻してください。</p>
+        <button type="button" class="btn btn-ghost" id="reassignUndoBtn" disabled>直前の一括変更を取り消す</button>
       </div>
 
       <div class="dialog-actions roster-close-row">
@@ -725,12 +785,16 @@
   <input type="file" id="fileInput" accept=".json,application/json" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
   <input type="file" id="testXlsxInput" accept=".xlsx,.xls" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
   <input type="file" id="metricXlsxInput" accept=".xlsx,.xls" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
+  <input type="file" id="reassignXlsxInput" accept=".xlsx,.xls" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
 
   <script src="files/import-core.js"></script>
+  <script src="files/roster-reassign.js"></script>
+  <script src="files/teaching-notes.js"></script>
   <script src="files/vendor/exceljs.min.js"></script>
   <script src="files/excel-templates.js"></script>
   <script src="files/initial-import.js"></script>
   <script src="files/script.js"></script>
+  <script src="files/teaching-notes-ui.js"></script>
   <script src="files/accessibility.js"></script>
   <script src="files/onboarding.js"></script>
 </body>
