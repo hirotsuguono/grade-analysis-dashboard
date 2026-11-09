@@ -1912,6 +1912,68 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
 @media(max-width:900px) { .start-grid { grid-template-columns:1fr; } .start-card { padding:22px; } .start-card .btn-lg { width:auto; align-self:flex-start; min-width:210px; } }
 @media(max-width:560px) { .empty-state { padding:28px 16px; } .start-intro .welcome-intro br { display:none; } .prepare-panel { padding:14px; } .prepare-actions .btn { width:100%; } .setup-actions .btn { width:100%; } }
 
+/* Keep the compared tests and their shared population visible together. */
+.overview-context { margin: 0 0 12px; color: var(--text-sub); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.overview-comparison h3 { margin-bottom: 8px; }
+.comparison-scope { margin: 0 0 16px; color: var(--text-sub); font-size: 13px; overflow-wrap: anywhere; }
+.comparison-tests { display: grid; grid-template-columns: minmax(0,1fr) 28px minmax(0,1fr); align-items: stretch; gap: 12px; }
+.comparison-test { min-width: 0; padding: 14px 16px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-2); overflow-wrap: anywhere; }
+.comparison-test[data-position="after"] { background: var(--primary-light); border-color: #a8c2e8; }
+.comparison-test-label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700; color: var(--text-sub); }
+.comparison-test-title { display: block; font-size: 16px; }
+.comparison-test-detail { display: block; margin-top: 6px; font-size: 12px; color: var(--text-sub); }
+.comparison-arrow { align-self: center; text-align: center; font-size: 24px; color: var(--text-sub); }
+.comparison-population, .comparison-caution { margin: 12px 0 0; color: var(--text-sub); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.comparison-caution { margin-top: 4px; }
+.group-comparison { margin-top: 24px; border-top: 1px solid var(--border-strong); padding-top: 20px; }
+.group-comparison h4 { margin: 0 0 8px; font-size: 16px; }
+.group-test-method { margin: 0 0 10px; color: var(--primary-dark); font-size: 13px; font-weight: 600; }
+.group-test-criteria { margin-bottom: 16px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; line-height: 1.8; color: var(--text-sub); overflow-wrap: anywhere; }
+.group-test-criteria strong { color: var(--text); }
+.group-test-criteria p { margin: 4px 0 0; }
+.group-summary-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.group-summary-card { min-width: 0; padding: 16px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-2); }
+.group-summary-card[data-group="all"] { background: var(--primary-light); border-color: #a8c2e8; }
+.group-summary-card h5 { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 14px; font-size: 15px; }
+.group-summary-card h5 span { font-size: 12px; font-weight: 400; color: var(--text-sub); }
+.group-reading { min-height: 3.6em; margin: 0 0 14px; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.group-summary-values { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin: 0; }
+.group-summary-values > div { min-width: 0; }
+.group-summary-values dt { font-size: 13px; color: var(--text-sub); }
+.group-summary-values small { display: block; font-size: 11px; line-height: 1.7; }
+.group-summary-values dd { margin: 8px 0 0; font-size: 22px; font-weight: 700; line-height: 1.4; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.group-reading-help, .group-interval-help, .group-p-help, .group-calculation-details { margin-top: 14px; font-size: 13px; line-height: 1.8; }
+.group-reading-help > summary, .group-interval-help > summary, .group-p-help > summary, .group-calculation-details > summary { cursor: pointer; color: var(--primary-dark); font-weight: 600; }
+.group-reading-help p, .group-interval-help p, .group-p-help p, .group-calculation-details p { margin: 10px 0; }
+.group-comparison-intro, .group-comparison-note, .group-comparison-caution { font-size: 13px; line-height: 1.8; color: var(--text-sub); overflow-wrap: anywhere; }
+.group-comparison-intro { margin: 0 0 16px; }
+.group-comparison-chart { height: 260px; margin-bottom: 12px; }
+.group-table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); }
+.group-table-scroll:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+.group-comparison-table { width: 100%; min-width: 850px; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.group-comparison-table caption { padding: 12px; text-align: left; font-weight: 600; color: var(--text-sub); }
+.group-comparison-table th, .group-comparison-table td { padding: 12px 10px; border-top: 1px solid var(--border); text-align: right; vertical-align: top; }
+.group-comparison-table thead th { background: var(--surface-2); font-weight: 600; font-size: 12px; }
+.group-comparison-table th:first-child { text-align: left; }
+.group-comparison-table tbody th { min-width: 130px; }
+.group-comparison-table tbody tr:first-child { background: var(--primary-light); }
+.group-comparison-table small { display: block; color: var(--text-sub); font-size: 11px; font-weight: 400; line-height: 1.7; }
+.group-comparison-note { margin: 10px 0 0; font-size: 12px; }
+.group-comparison-caution { margin: 14px 0 0; padding: 12px; border-left: 3px solid #b58732; background: var(--warn-light); }
+.group-comparison-details { margin-top: 14px; font-size: 13px; line-height: 1.8; }
+.group-comparison-details > summary { cursor: pointer; color: var(--primary-dark); font-weight: 600; }
+.group-comparison-details > p { margin: 10px 0; }
+.group-detail-table { min-width: 550px; }
+.group-scroll-hint { display: none; font-size: 12px; color: var(--text-sub); margin: 8px 0; }
+@media (max-width: 1000px) { .group-scroll-hint { display: block; } }
+@media (max-width: 600px) {
+  .comparison-tests { grid-template-columns: 1fr; gap: 8px; }
+  .comparison-arrow { transform: rotate(90deg); }
+  .comparison-test { padding: 12px; }
+  .group-summary-grid { grid-template-columns: 1fr; }
+  .group-summary-card { padding: 14px 12px; }
+}
+
 /* Teaching notes remain ordinary text, including long words and line breaks. */
 .teaching-notes { margin: 16px 0; }
 .teaching-notes > summary { cursor: pointer; font-size: 17px; font-weight: 700; padding: 4px 0; }

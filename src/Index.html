@@ -141,7 +141,9 @@
         <button type="button" class="btn btn-ghost" id="ovComparisonBtn">テストの種類・比較対象</button>
       </div>
 
+      <p id="ovSummaryContext" class="overview-context"></p>
       <div class="kpi-grid" id="kpiGrid"></div>
+      <section id="ovComparison" class="card overview-comparison" aria-labelledby="ovComparisonTitle" hidden></section>
 
       <details class="card teaching-notes" id="teachingNotesCard">
         <summary>指導メモ <span id="teachingCount"></span></summary>
@@ -788,6 +790,7 @@
   <script src="files/import-core.js"></script>
   <script src="files/roster-reassign.js"></script>
   <script src="files/teaching-notes.js"></script>
+  <script src="files/paired-comparison.js"></script>
   <script src="files/vendor/exceljs.min.js"></script>
   <script src="files/excel-templates.js"></script>
   <script src="files/initial-import.js"></script>

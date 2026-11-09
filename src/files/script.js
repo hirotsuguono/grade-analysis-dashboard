@@ -388,7 +388,7 @@ function testDomains(test) {
 }
 
 /* ========== ECharts ========== */
-const chartIds = ['rtiProgressChart', 'histChart', 'ovDomainChart', 'ovTrendChart', 'trendChart', 'trendDomainChart',
+const chartIds = ['rtiProgressChart', 'histChart', 'ovDomainChart', 'ovTrendChart', 'ovGroupComparisonChart', 'trendChart', 'trendDomainChart',
   'anDomainChart', 'anQuestionChart', 'anBoxChart', 'corrChart'];
 
 let chartLibWarned = false;
@@ -968,12 +968,141 @@ function renderCurrentTab() {
   resizeCharts();
 }
 
+function comparisonNumber(value, signed = false) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const magnitude = Math.abs(value);
+  const rounded = Math.round(magnitude * 100) / 100;
+  const text = magnitude > 0 && magnitude < 0.01 ? value.toExponential(2) : String(value < 0 ? -rounded : rounded);
+  return signed && value > 0 ? '+' + text : text;
+}
+
+const COMPARISON_ALPHA = 0.05;
+
+function comparisonDecision(value) {
+  if (!Number.isFinite(value) || value < 0 || value > 1) return '判定不可';
+  return value < COMPARISON_ALPHA ? '帰無仮説を棄却' : '棄却できず';
+}
+
+function comparisonReading(row) {
+  if (row.n === 0 || !Number.isFinite(row.meanChange)) return '比較できる点数がありません。';
+  const trend = row.meanChange > 0 ? '平均得点率は上がっています。'
+    : row.meanChange < 0 ? '平均得点率は下がっています。' : '平均得点率は変わっていません。';
+  if (row.n < 2) return trend + '比較が1名のため、差を検定できません。';
+  const decision = comparisonDecision(row.pAdjusted);
+  if (decision === '判定不可') return trend + (row.status === 'constant'
+    ? '全員の変化量が同じか、ばらつきがごく小さいため、差を検定できません。' : '検定に必要な数値を計算できません。');
+  return trend + (decision === '帰無仮説を棄却' ? '統計上も前後差が認められました。' : '前後差は確認しきれていません。');
+}
+
+function comparisonP(value) {
+  if (value == null) return '—';
+  if (value < 0.001) return '<0.001';
+  for (let digits = 3; digits <= 6; digits++) {
+    const text = value.toFixed(digits), rounded = Number(text);
+    if ((value < COMPARISON_ALPHA) === (rounded < COMPARISON_ALPHA) && (value > COMPARISON_ALPHA) === (rounded > COMPARISON_ALPHA)) return text;
+  }
+  return String(value);
+}
+
+function groupComparisonHtml(groups, context) {
+  if (!groups) return '<p class="form-note">統計計算用ファイルを読み込めません。アプリをすべて展開し直してください。</p>';
+  const {beforeCounts,missingBefore,missingAfter,scopeCount,currentCount,beforeMax,afterMax} = context;
+  const { tier2, tier3 } = data.settings.rti;
+  const labels = {all:'全体',tier1:'Tier 1',tier2:'Tier 2',tier3:'Tier 3'};
+  const ranges = {all:'選択中のクラス',tier1:`${tier2}%以上`,tier2:`${tier3}%以上${tier2}%未満`,tier3:`${tier3}%未満`};
+  const statusText = row => row.status === 'empty' ? '両方受験0名'
+    : row.status === 'insufficient' ? '比較1名のため算出不可'
+    : row.status === 'constant' ? (row.sdChange > 0 ? 'ばらつきが計算精度以下' : 'ばらつきなし／計算精度以下') : '';
+  const rate = value => value == null ? '—' : comparisonNumber(value) + '%';
+  const rows = groups.map(row => {
+    const eligible = row.key === 'all' ? scopeCount : beforeCounts[row.key];
+    const ci = row.ciLow == null ? '—' : `${comparisonNumber(row.ciLow,true)} ～ ${comparisonNumber(row.ciHigh,true)}`;
+    return `<tr data-group-detail="${row.key}"><th scope="row">${labels[row.key]}<small>${esc(ranges[row.key])}</small></th>
+      <td data-stat="n">${row.n}名<small>対象${eligible}名中</small></td>
+      <td data-stat="before">${esc(rate(row.beforeMean))}</td><td data-stat="after">${esc(rate(row.afterMean))}</td>
+      <td data-stat="change">${esc(row.meanChange == null ? '—' : comparisonNumber(row.meanChange,true))}</td>
+      <td data-stat="ci">${esc(ci)}</td><td data-stat="p">${esc(comparisonP(row.pAdjusted))}${statusText(row) ? `<small>${statusText(row)}</small>` : ''}</td></tr>`;
+  }).join('');
+  const cards = groups.map(row => `<article class="group-summary-card" data-group="${row.key}" aria-labelledby="group-summary-${row.key}">
+    <h5 id="group-summary-${row.key}">${labels[row.key]}<span data-stat="n">${row.n}名</span></h5>
+    <p class="group-reading" data-stat="reading">${comparisonReading(row)}</p>
+    <dl class="group-summary-values">
+      <div><dt>平均変化量<small>ポイント</small></dt><dd data-stat="change">${esc(comparisonNumber(row.meanChange,true))}</dd></div>
+      <div><dt>p値<small>前後差の判定用</small></dt><dd data-stat="p">${esc(comparisonP(row.pAdjusted))}</dd></div>
+      <div><dt>効果量<small>変化の大きさ</small></dt><dd data-stat="dz">${esc(comparisonNumber(row.dz,true))}</dd></div>
+    </dl></article>`).join('');
+  const details = groups.map(row => `<tr data-group-calculation="${row.key}"><th scope="row">${labels[row.key]}</th><td>${esc(comparisonNumber(row.t))}</td><td>${row.df ?? '—'}</td><td>${esc(comparisonP(row.p))}</td><td>${esc(comparisonNumber(row.dz))}</td><td data-stat="decision">${comparisonDecision(row.pAdjusted)}</td></tr>`).join('');
+  return `<section class="group-comparison" aria-labelledby="groupComparisonTitle">
+    <h4 id="groupComparisonTitle">全体・事前のTier別の変化</h4><p class="group-test-method">同じ生徒の前後を比較</p>
+    <p class="group-comparison-intro">前のテストの得点率でグループを分けています。今回の点数ではグループを入れ替えていません。</p>
+    <div class="group-summary-grid">${cards}</div>
+    <details class="group-reading-help"><summary>数値の見方</summary>
+      <p>平均変化量は「今回 − 比較元」です。＋なら上昇、−なら低下を表します。50%から55%になった場合は＋5ポイントです。</p>
+      <p>p値は、前後差を調べるt検定の結果です。0.05未満を「統計上も前後差が認められる」目安にしています。全体と3グループを調べる分の調整は計算済みです。「&lt;0.001」は「0.001より小さい」という意味です。</p>
+      <p>効果量は、変化量のばらつきを基準にした変化の大きさです。＋なら上昇、−なら低下を表します。p値と合わせて確認し、指導の成果をこの値だけで判断しないでください。</p>
+      <p>「前後差を確認しきれない」は「差がない」という証明ではありません。人数や点数のばらつきによっても結果は変わります。</p>
+    </details>
+    <p class="group-comparison-caution">得点の変化を示す参考情報です。指導による変化かどうかは、この比較だけでは判断できません。</p>
+    <details class="group-comparison-details"><summary>詳細を表示</summary>
+    <p>グループの区切りは、現在の設定では${esc(tier3)}%・${esc(tier2)}%です。前のテストの得点率で分けます。</p>
+    <p>比較元は${esc(beforeMax)}点満点、今回は${esc(afterMax)}点満点です。得点率に直して比較します。</p>
+    <p class="comparison-population">概要の平均点は今回の受験者${currentCount}名、ここでの比較は両方を受験した${groups[0].n}名が対象です。</p>
+    <div id="ovGroupComparisonChart" class="chart group-comparison-chart"></div>
+    <p class="group-scroll-hint">表は横にスクロールできます。</p>
+    <div class="group-table-scroll" role="region" aria-label="全体・Tier別の前後比較表" tabindex="0">
+      <table class="group-comparison-table"><caption>両方受験した同じ生徒の得点率で比較（差＝今回 − 比較元）</caption>
+      <thead><tr><th scope="col">グループ</th><th scope="col">比較人数</th><th scope="col">比較元の平均</th><th scope="col">今回の平均</th><th scope="col">平均変化<br>ポイント</th><th scope="col">平均変化の推定範囲<br>ポイント</th><th scope="col">判定に使うp値</th></tr></thead><tbody>${rows}</tbody></table>
+    </div>
+    <p class="group-comparison-note">比較元の点数なし${missingBefore}名はグループ分け対象外、比較元のみ点数あり${missingAfter}名は前後比較対象外です。欠席・未入力を除き、0点は含みます。</p>
+    <details class="group-interval-help"><summary>平均変化の推定範囲の説明を見る</summary>
+      <p>平均変化の推定に、どのくらい幅があるかを表します。狭いほど推定の不確かさが小さくなります。例えば＋2～＋8なら上昇する範囲、−1～＋8なら低下・変化なし・上昇を含む範囲です。生徒一人ひとりの変化の範囲ではありません。</p>
+      <p>この範囲は各グループで個別に計算しています。p値は複数の検定をまとめて調整しているため、範囲が0を含まなくても前後差を確認しきれない場合があります。この画面の判定には、右端のp値を使います。</p>
+    </details>
+    <details class="group-p-help"><summary>判定に使うp値の説明を見る</summary>
+      <p>同じ生徒の前後差を調べた結果で、0.05未満を「統計上も前後差が認められる」目安にしています。全体と3グループの計4回を調べると、どこかで誤って差があると判断する機会が増えるため、その分を調整しています。表示したp値は調整済みです。</p>
+      <p>p値は変化の大きさや、指導が効いた確率ではありません。上がったか下がったかは平均変化量で確認します。グループ同士の差を検定したものでもありません。</p>
+    </details>
+    <details class="group-calculation-details"><summary>詳しい計算方法・統計用語を確認</summary>
+    <div class="group-test-criteria"><strong>判定基準：5％水準</strong><p>帰無仮説は「前後の得点率の平均変化は0」です。丸める前の補正済みp値が0.05未満なら棄却、0.05以上なら棄却できません。算出できない場合は判定不可です。</p></div>
+    <p class="group-comparison-note">p値は全体と3層の計4比較でHolm補正しています。95%信頼区間は各行ごとの未補正区間のため、0を含まなくても補正p値が0.05以上になることがあります。</p>
+      <p>得点率の変化を確認する探索的な比較です。テストの範囲・難しさや平均への回帰の影響があり、この結果だけで指導の効果やTier間の効果差は判断できません。</p>
+      <p>対応のある両側t検定で、同じ生徒の「今回 − 比較元」の平均変化が0という仮説を検討します。変化が生徒間で独立であること、特に少人数では変化量の分布が極端に偏らず外れ値の影響が大きくないことが前提です。学級全体に共通する影響や欠測による偏りも考慮してください。</p>
+      <p>有意差がないことは「指導の効果がない」ことを意味しません。また、各層のp値を比べるだけでは層間の変化の違いは検証できません。事前得点で層分けすると、初回に低かった層の上昇や高かった層の低下に、平均への回帰が混ざることがあります。</p>
+      <p>0名では記述値も表示せず、1名では平均と差だけを表示します。変化量が全員同じ、またはばらつきが計算精度以下の場合は、信頼区間・p値・効果量を算出しません。極めて小さい数値は指数表記で示します。</p>
+      <p>下表のp値は補正前で、判定欄は補正済みp値に基づきます。上表のHolm補正は、この画面の4比較に対するものです。テスト・クラス・しきい値を変更して繰り返す探索全体は補正しません。信頼区間は平均変化の推定の不確かさを示すもので、個々の生徒の変化の範囲や、4比較を同時に保証する区間ではありません。しきい値を変更すると、比較元の得点率から層を分け直します。</p>
+      <div class="group-table-scroll"><table class="group-comparison-table group-detail-table"><caption>計算の詳細</caption><thead><tr><th scope="col">グループ</th><th scope="col">t値</th><th scope="col">自由度</th><th scope="col">p値・両側・未補正</th><th scope="col">効果量 dz</th><th scope="col">判定<br>補正済みp値・5％水準</th></tr></thead><tbody>${details}</tbody></table></div>
+    </details>
+      <p><a href="files/manual.html#group-comparison" target="_blank" rel="noopener">使い方ガイド：グループの前後比較</a></p>
+    </details></section>`;
+}
+
+function renderGroupComparisonChart(groups) {
+  if (!groups || typeof echarts === 'undefined') return;
+  chart('ovGroupComparisonChart').setOption({
+    grid:{left:52,right:16,top:48,bottom:32},
+    legend:{data:['比較元','今回'],top:0},
+    tooltip:{trigger:'axis',valueFormatter:value => value == null ? 'データなし' : comparisonNumber(value) + '%'},
+    xAxis:{type:'category',data:['全体','Tier 1','Tier 2','Tier 3']},
+    yAxis:{type:'value',name:'平均得点率（%）',min:0,max:100},
+    series:[{name:'比較元',type:'bar',data:groups.map(row=>row.beforeMean),itemStyle:{color:'#7b8ba4'},barMaxWidth:36},
+      {name:'今回',type:'bar',data:groups.map(row=>row.afterMean),itemStyle:{color:'#2458a6'},barMaxWidth:36}]
+  },true);
+}
+
 /* ========== 概要タブ ========== */
 function renderOverview() {
   window.GD_TEACHING_UI?.render();
   const test = testById(ui.ovTest);
   const students = studentsOf(ui.ovClass);
   const kpiEl = $('kpiGrid');
+  const comparisonEl = $('ovComparison');
+  const comparisonDetailsOpen = !!comparisonEl.querySelector('.group-comparison-details')?.open;
+  const previousGroupChart = $('ovGroupComparisonChart');
+  if (previousGroupChart && typeof echarts !== 'undefined') echarts.getInstanceByDom(previousGroupChart)?.dispose();
+  comparisonEl.hidden = true;
+  comparisonEl.innerHTML = '';
+  $('ovSummaryContext').textContent = test
+    ? `表示中：${test.subject} ／ ${ui.ovClass === 'all' ? '全クラス' : ui.ovClass} ／ ${termKeyOf(test)}${test.date ? ' ／ ' + test.date : ''}` : '';
 
   if (!test) {
     kpiEl.innerHTML = '<div class="kpi"><div class="kpi-label">テストがまだ登録されていません</div></div>';
@@ -986,20 +1115,40 @@ function renderOverview() {
     .map((r) => r.total);
 
   const prev = comparisonTarget(test);
-  let deltaHtml = '';
+  let groups = null;
   if (prev) {
+    const beforeCounts = {tier1:0,tier2:0,tier3:0};
+    let missingBefore = 0, missingAfter = 0;
     const pairs = students.flatMap(student => {
       const a = getAttendedScore(student.id, prev.id), b = getAttendedScore(student.id, test.id);
-      return a?.total != null && b?.total != null ? [[a.total / prev.maxScore * 100, b.total / test.maxScore * 100]] : [];
+      if (a?.total == null) { missingBefore++; return []; }
+      const before = a.total / prev.maxScore * 100;
+      beforeCounts['tier' + rtiTierOf(before)]++;
+      if (b?.total == null) { missingAfter++; return []; }
+      return [[before,b.total / test.maxScore * 100]];
     });
-    deltaHtml = `<div class="card-note">比較：${esc(termKeyOf(prev))}（両方受験 ${pairs.length}名）</div>`;
-    if (pairs.length >= 2) {
-      const diff = round1(mean(pairs.map(p => p[1] - p[0])));
-      deltaHtml += `<div class="kpi-delta ${diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat'}">得点率差 ${diff > 0 ? '+' : ''}${diff}ポイント</div>`;
-      const dz = pairedCohensDz(pairs);
-      if (dz != null) deltaHtml += `<div class="kpi-es es-link">効果量 dz = ${esFmt(dz)}（得点率の差・参考値）</div>`;
-    } else deltaHtml += '<div class="card-note">比較人数が不足しています。</div>';
-    deltaHtml += '<div class="card-note">範囲・難しさが異なるため、学力の変化や支援の因果効果を示すものではありません。</div>';
+    if (typeof window.GD_PAIRED?.groupedSummary === 'function') groups = window.GD_PAIRED.groupedSummary(pairs,data.settings.rti);
+    const testSummary = (item, label, index) => {
+      return `<div class="comparison-test" data-position="${index === 0 ? 'before' : 'after'}">
+        <span class="comparison-test-label">${label}</span>
+        <strong class="comparison-test-title">${esc(termKeyOf(item))}</strong>
+        <span class="comparison-test-detail">${esc(item.date || '実施日未設定')}</span>
+      </div>`;
+    };
+    comparisonEl.innerHTML = `<h3 id="ovComparisonTitle">テストの比較</h3>
+      <p class="comparison-scope">${esc(test.subject)} ／ ${esc(ui.ovClass === 'all' ? '全クラス' : ui.ovClass)} ／ 両方受験 ${pairs.length}名</p>
+      <div class="comparison-tests">${testSummary(prev, '比較元', 0)}<span class="comparison-arrow" aria-hidden="true">→</span>${testSummary(test, '今回（比較先）', 1)}</div>
+      ${groupComparisonHtml(groups,{beforeCounts,missingBefore,missingAfter,scopeCount:students.length,currentCount:totals.length,beforeMax:prev.maxScore,afterMax:test.maxScore})}`;
+    comparisonEl.hidden = false;
+    const details = comparisonEl.querySelector('.group-comparison-details');
+    if (details && typeof details.addEventListener === 'function') {
+      details.open = comparisonDetailsOpen;
+      details.addEventListener('toggle',() => {
+        if (!details.isConnected || !details.open) return;
+        renderGroupComparisonChart(groups); resizeCharts();
+      });
+      if (details.open) renderGroupComparisonChart(groups);
+    }
   }
 
   // クラス間の差（全クラス表示時）：最高クラスと最低クラスの平均差を効果量つきで
@@ -1025,7 +1174,7 @@ function renderOverview() {
 
   const kpis = [
     { label: '受験者数', value: totals.length, unit: `名 / ${students.length}名` },
-    { label: '平均点', value: totals.length ? round1(mean(totals)) : '—', unit: `/ ${test.maxScore}`, extra: deltaHtml },
+    { label: '平均点', value: totals.length ? round1(mean(totals)) : '—', unit: `/ ${test.maxScore}` },
     { label: '中央値', value: totals.length ? round1(median(totals)) : '—', unit: `/ ${test.maxScore}` },
     { label: '最高点', value: totals.length ? Math.max(...totals) : '—', unit: '' },
     { label: '最低点', value: totals.length ? Math.min(...totals) : '—', unit: '' },
@@ -2535,6 +2684,7 @@ async function submitSettingsDialog(e) {
   markDirty();
   $('settingsDialog').close();
   if (ui.tab === 'rti') renderRti();
+  else if (ui.tab === 'overview') renderOverview();
 }
 
 /* ========== 支援（RTI）タブ ========== */
