@@ -20,7 +20,7 @@ module.exports = async (page, original) => {
     await page.locator('#cfCompare').selectOption(ids['2026-05-01']);
     await page.locator('#comparisonForm button[type="submit"]').click();
     await page.locator('#ovTest').selectOption(ids['2026-07-01']);
-    assert.match(await page.locator('#kpiGrid').textContent(), /両方受験 2名/);
+    assert.match(await page.locator('#ovComparison').textContent(), /両方受験 2名/);
     const saved = await download(page);
     await upload(page, saved, 'fictional-25-reopened.json');
     assert.equal(await page.evaluate(() => validateDataset(data).length), 0);

@@ -44,6 +44,7 @@ for (const subject of ['英語', 'all']) {
       const { note, option } = render(dataset);
       assert.equal(note.hidden, false);
       assert.match(note.innerHTML, /直近 80%.*<strong>\+0\.67<\/strong>/);
+      assert.doesNotMatch(note.innerHTML, /（(?:ごく小さい|小|中|大)(?:伸び|低下|変化)/);
       assert.deepEqual(option.series[0].data, [60, 80]);
       assert.deepEqual(option.series[1].data, [50, 50]);
       assert.deepEqual(option.xAxis.data, dataset.tests.filter((_, i) => i !== emptyIndex).map(t => t.name));

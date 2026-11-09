@@ -141,7 +141,9 @@
         <button type="button" class="btn btn-ghost" id="ovComparisonBtn">テストの種類・比較対象</button>
       </div>
 
+      <p id="ovSummaryContext" class="overview-context"></p>
       <div class="kpi-grid" id="kpiGrid"></div>
+      <section id="ovComparison" class="card overview-comparison" aria-labelledby="ovComparisonTitle" hidden></section>
 
       <details class="card teaching-notes" id="teachingNotesCard">
         <summary>指導メモ <span id="teachingCount"></span></summary>
@@ -548,18 +550,27 @@
   <!-- 効果量の説明ダイアログ -->
   <dialog id="esHelpDialog">
     <div class="dialog-form">
-      <h2>効果量（Cohen's d / dz）とは</h2>
-      <p><strong>効果量は、差や変化の大きさを、点数のばらつき（標準偏差）を物差しにして表す値</strong>です。同じ5点の差でも、点数が近い集団と大きくばらつく集団では、標準化した差の大きさが異なります。</p>
-      <p>別集団の比較には集団内のばらつきを使う d、同じ生徒の前後比較には一人ずつの差のばらつきを使う dz を表示します。支援画面の個人の標準化変化量は、その時点のクラスのばらつきを使う参考値です。<strong>計算の物差しが異なるため、これらの値をそのまま横並びには比較できません。</strong></p>
-      <table class="es-table">
-        <caption>独立した2群の d の絶対値：Cohen（1992）の目安をもとにした本アプリの便宜的な区分</caption>
-        <tr><th>0.2 未満</th><td>ごく小さい差</td></tr>
-        <tr><th>0.2 以上 0.5 未満</th><td>小さい差</td></tr>
-        <tr><th>0.5 以上 0.8 未満</th><td>中くらいの差</td></tr>
-        <tr><th>0.8 以上</th><td>大きい差</td></tr>
-      </table>
-      <p class="form-note">Cohenの目安は小＝0.2・中＝0.5・大＝0.8です。上の4段階は、その値を境として本アプリが表示する区分であり、普遍的な判定基準ではありません。<strong>効果量だけでは、誤差かどうか・統計的に有意かどうか・授業や支援が原因かどうかは判断できません。</strong>人数・欠席や未入力・テストの範囲や難しさも確認してください。この版の前後比較には、t検定や信頼区間の表示はありません。</p>
-      <p class="form-note">本アプリの値を「何年分の学習効果」に換算する計算はありません。dの目安はCohen（1992, Table 1）、dzの定義はLakens（2013）を参照しています。<a href="files/manual.html#effect-size-guide" target="_blank" rel="noopener">出典と詳しい説明（使い方ガイド）</a></p>
+      <h2>効果量の見方</h2>
+      <div class="es-help-intro">
+        <p><strong>効果量は、点数のばらつきを物差しにした、差や変化の大きさです。</strong>平均が何点変わったかと合わせて確認します。</p>
+        <p>同じ生徒の前後比較では、＋は上昇、−は低下を表します。別のグループを比べる場合や、支援画面で個人の変化を見る場合は、計算の物差しが異なります。</p>
+        <p><strong>この値だけで、はっきりした差があるか、指導による変化かは判断できません。</strong>人数や点数のばらつき、表示されている検定結果も合わせて確認してください。</p>
+      </div>
+      <details class="es-help-details">
+        <summary>計算方法と目安を見る</summary>
+        <p>別グループの比較には、両グループ内の点数のばらつきを使う d を表示します。同じ生徒の前後比較には、一人ずつの得点率の差のばらつきを使う dz を表示します。</p>
+        <p>支援画面の個人の標準化変化量は、直近クラスのばらつきを使うアプリ独自の参考値です。d や dz と同じ値ではありません。異なる計算方法の値を、そのまま横並びには比較できません。</p>
+        <table class="es-table">
+          <caption>別グループの比較で使う d の絶対値の目安</caption>
+          <tr><th>0.2 未満</th><td>ごく小さい差</td></tr>
+          <tr><th>0.2 以上 0.5 未満</th><td>小さい差</td></tr>
+          <tr><th>0.5 以上 0.8 未満</th><td>中くらいの差</td></tr>
+          <tr><th>0.8 以上</th><td>大きい差</td></tr>
+        </table>
+        <p class="form-note">Cohen（1992）の小＝0.2・中＝0.5・大＝0.8を境にした本アプリの便宜的な区分です。原典の表をそのまま転載したものではなく、普遍的な判定基準でもありません。前後比較の dz や個人の参考値に一律には当てはめません。</p>
+        <p class="form-note">小さい値でも誤差とは限らず、大きい値でも指導の効果の証明にはなりません。本アプリの値を「何年分の学習効果」に換算する計算はありません。</p>
+      </details>
+      <p class="form-note"><a href="files/manual.html#effect-size-guide" target="_blank" rel="noopener">出典と詳しい説明（使い方ガイド）</a></p>
       <div class="dialog-actions">
         <button type="button" class="btn btn-primary" id="esHelpClose">閉じる</button>
       </div>
@@ -790,6 +801,7 @@
   <script src="files/import-core.js"></script>
   <script src="files/roster-reassign.js"></script>
   <script src="files/teaching-notes.js"></script>
+  <script src="files/paired-comparison.js"></script>
   <script src="files/vendor/exceljs.min.js"></script>
   <script src="files/excel-templates.js"></script>
   <script src="files/initial-import.js"></script>

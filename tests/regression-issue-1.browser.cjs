@@ -37,6 +37,13 @@ module.exports = async function checkStartupRecovery(page) {
     assert.equal(await healthy.locator('[data-tab="input"]').getAttribute('aria-selected'), 'true');
     assert.ok(await healthy.locator('.chart-data').count() > 0);
 
+    const statistics = path.join(moved, 'files', 'paired-comparison.js');
+    const savedStatistics = fs.readFileSync(statistics);
+    fs.unlinkSync(statistics);
+    const missingStatistics = await open(moved);
+    assert.ok(await missingStatistics.locator('#startupHelp').isVisible());
+    fs.writeFileSync(statistics, savedStatistics);
+
     const detached = path.join(root, 'index-only');
     fs.mkdirSync(detached);
     fs.copyFileSync(path.join(moved, 'Index.html'), path.join(detached, 'Index.html'));
