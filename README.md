@@ -4,7 +4,7 @@
 
 ## ダウンロードして使う
 
-**[最新版のZIPをダウンロード](https://github.com/hirotsuguono/grade-analysis-dashboard/raw/refs/heads/main/downloads/grade-analysis-dashboard.zip)**
+**[正式リリース版のZIPをダウンロード](https://github.com/hirotsuguono/grade-analysis-dashboard/releases/latest/download/grade-analysis-dashboard.zip)**
 
 > **Windowsでは、ZIPをダブルクリックして中身が見えても、まだ展開されていません。** ZIPの中からHTMLを開くと、画面の色や配置が崩れたり、別のページを開けなかったりすることがあります。次の手順で「すべて展開」してから使ってください。
 
@@ -17,7 +17,7 @@
 
 **色や配置が崩れる・ボタンが反応しない場合：** ZIPの中からHTMLだけを開くと、CSSやJavaScriptを読み込めないことがあります。ダウンロードしたZIPへ戻り、手順1から「すべて展開」を行って、指定した展開先の `Index.html` を開き直してください。`Index.html` だけを取り出さず、`files` フォルダーと一緒に保管します。
 
-[正式公開済みのRelease版ZIP](https://github.com/hirotsuguono/grade-analysis-dashboard/releases/latest/download/grade-analysis-dashboard.zip)も利用できます。上の最新版ZIPには、Release公開前の修正が含まれることがあります。
+開発中の変更を確認したい方は、[開発中の最新版ZIP](https://github.com/hirotsuguono/grade-analysis-dashboard/raw/refs/heads/main/downloads/grade-analysis-dashboard.zip)も利用できます。正式リリース前の修正が含まれることがあります。
 
 インストール・アカウント登録・サーバーの操作は不要で、オフラインでも使えます。**移動・コピーは展開したフォルダごと**行い、`Index.html` だけを取り出さないでください。デスクトップに入口を置く場合は、`Index.html` のショートカット（Macはエイリアス）を作ります。コードが表示された場合は、右クリックしてブラウザで開いてください。
 
