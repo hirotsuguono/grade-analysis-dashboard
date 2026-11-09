@@ -974,6 +974,11 @@ function renderOverview() {
   const test = testById(ui.ovTest);
   const students = studentsOf(ui.ovClass);
   const kpiEl = $('kpiGrid');
+  const comparisonEl = $('ovComparison');
+  comparisonEl.hidden = true;
+  comparisonEl.innerHTML = '';
+  $('ovSummaryContext').textContent = test
+    ? `表示中：${test.subject} ／ ${ui.ovClass === 'all' ? '全クラス' : ui.ovClass} ／ ${termKeyOf(test)}${test.date ? ' ／ ' + test.date : ''}` : '';
 
   if (!test) {
     kpiEl.innerHTML = '<div class="kpi"><div class="kpi-label">テストがまだ登録されていません</div></div>';
@@ -986,20 +991,35 @@ function renderOverview() {
     .map((r) => r.total);
 
   const prev = comparisonTarget(test);
-  let deltaHtml = '';
   if (prev) {
     const pairs = students.flatMap(student => {
       const a = getAttendedScore(student.id, prev.id), b = getAttendedScore(student.id, test.id);
       return a?.total != null && b?.total != null ? [[a.total / prev.maxScore * 100, b.total / test.maxScore * 100]] : [];
     });
-    deltaHtml = `<div class="card-note">比較：${esc(termKeyOf(prev))}（両方受験 ${pairs.length}名）</div>`;
+    const testSummary = (item, label, index) => {
+      const rate = pairs.length ? round1(mean(pairs.map(pair => pair[index]))) + '%' : '—';
+      return `<div class="comparison-test" data-position="${index === 0 ? 'before' : 'after'}">
+        <span class="comparison-test-label">${label}</span>
+        <strong class="comparison-test-title">${esc(termKeyOf(item))}</strong>
+        <span class="comparison-test-detail">${esc(item.date || '実施日未設定')} ／ ${esc(item.maxScore)}点満点</span>
+        <div class="comparison-test-rate">平均得点率 <strong>${esc(rate)}</strong></div>
+      </div>`;
+    };
+    let resultHtml = '';
     if (pairs.length >= 2) {
       const diff = round1(mean(pairs.map(p => p[1] - p[0])));
-      deltaHtml += `<div class="kpi-delta ${diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat'}">得点率差 ${diff > 0 ? '+' : ''}${diff}ポイント</div>`;
+      resultHtml = `<div><div class="kpi-delta ${diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat'}">得点率差 ${diff > 0 ? '+' : ''}${diff}ポイント</div>
+        <span class="comparison-direction">差の向き：今回 − 比較元</span></div>`;
       const dz = pairedCohensDz(pairs);
-      if (dz != null) deltaHtml += `<div class="kpi-es es-link">効果量 dz = ${esFmt(dz)}（得点率の差・参考値）</div>`;
-    } else deltaHtml += '<div class="card-note">比較人数が不足しています。</div>';
-    deltaHtml += '<div class="card-note">範囲・難しさが異なるため、学力の変化や支援の因果効果を示すものではありません。</div>';
+      if (dz != null) resultHtml += `<button type="button" class="btn btn-ghost es-link comparison-effect">効果量 dz = ${esFmt(dz)}（参考値・説明を見る）</button>`;
+    } else resultHtml = '<p>比較人数が不足しています。両方に点数がある生徒が2名以上いると、差を表示します。</p>';
+    comparisonEl.innerHTML = `<h3 id="ovComparisonTitle">テストの比較</h3>
+      <p class="comparison-scope">${esc(test.subject)} ／ ${esc(ui.ovClass === 'all' ? '全クラス' : ui.ovClass)} ／ 両方受験 ${pairs.length}名</p>
+      <div class="comparison-tests">${testSummary(prev, '比較元', 0)}<span class="comparison-arrow" aria-hidden="true">→</span>${testSummary(test, '今回（比較先）', 1)}</div>
+      <div class="comparison-result">${resultHtml}</div>
+      <p class="comparison-population">上の平均点は今回の受験者${totals.length}名、ここでの比較は両方を受験した${pairs.length}名が対象です。</p>
+      <p class="comparison-caution">範囲・難しさが異なるため、学力の変化や支援の因果効果を示すものではありません。</p>`;
+    comparisonEl.hidden = false;
   }
 
   // クラス間の差（全クラス表示時）：最高クラスと最低クラスの平均差を効果量つきで
@@ -1025,7 +1045,7 @@ function renderOverview() {
 
   const kpis = [
     { label: '受験者数', value: totals.length, unit: `名 / ${students.length}名` },
-    { label: '平均点', value: totals.length ? round1(mean(totals)) : '—', unit: `/ ${test.maxScore}`, extra: deltaHtml },
+    { label: '平均点', value: totals.length ? round1(mean(totals)) : '—', unit: `/ ${test.maxScore}` },
     { label: '中央値', value: totals.length ? round1(median(totals)) : '—', unit: `/ ${test.maxScore}` },
     { label: '最高点', value: totals.length ? Math.max(...totals) : '—', unit: '' },
     { label: '最低点', value: totals.length ? Math.min(...totals) : '—', unit: '' },

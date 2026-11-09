@@ -46,10 +46,37 @@ test('満点が違う比較は得点率差と両方受験した人数を示し�
   d.scores.find(r=>r.testId==='a'&&r.studentId==='s2').absent=true;
   d.scores.find(r=>r.testId==='c'&&r.studentId==='s3').total=null;
   h.api.renderOverview();
-  assert.match(h.element('kpiGrid').innerHTML,/両方受験 2名/);
-  assert.match(h.element('kpiGrid').innerHTML,/得点率差 0ポイント/);
+  assert.match(h.element('ovComparison').innerHTML,/両方受験 2名/);
+  assert.match(h.element('ovComparison').innerHTML,/得点率差 0ポイント/);
+  assert.match(h.element('ovComparison').innerHTML,/今回の受験者3名/);
+  assert.equal((h.element('ovComparison').innerHTML.match(/<strong>25%<\/strong>/g)||[]).length,2);
+  assert.match(h.element('kpiGrid').innerHTML,/平均点[\s\S]*?43\.3/);
   d.tests[2].compareTo=null; h.api.renderOverview();
-  assert.doesNotMatch(h.element('kpiGrid').innerHTML,/得点率差|比較：|効果量 dz/);
+  assert.equal(h.element('ovComparison').hidden,true);
+  assert.equal(h.element('ovComparison').innerHTML,'');
+});
+test('比較する両テストの学年・名前・日付と対象クラスを安全に表示し、データを書き換えない',()=>{
+  const d=fixture();d.tests[0].name='同名テスト<img src=x>';d.tests[2].name='同名テスト<img src=x>';
+  d.tests[0].gradeYear=1;d.tests[2].gradeYear=2;
+  const h=harness(d);h.api.ui.ovTest='c';h.api.ui.ovClass='1年1組';const before=JSON.stringify(d);
+  h.api.renderOverview();const html=h.element('ovComparison').innerHTML;
+  for(const text of ['比較元','今回（比較先）','1年・同名テスト&lt;img src=x&gt;','2年・同名テスト&lt;img src=x&gt;','2026-05-01','2026-07-01','1年1組','今回 − 比較元'])assert.ok(html.includes(text),text);
+  assert.doesNotMatch(html,/<img/);
+  assert.match(h.element('ovSummaryContext').textContent,/2年・同名テスト<img src=x>/);
+  assert.equal(JSON.stringify(d),before);
+});
+test('比較人数が1人・0人のときも0点と未入力を区別し、対象なしへの切替で比較表示を消す',()=>{
+  const h=harness(),d=h.api.getData();h.api.ui.ovTest='c';
+  for(const score of d.scores)if(score.studentId!=='s0')score.absent=true;
+  h.api.renderOverview();let html=h.element('ovComparison').innerHTML;
+  assert.match(html,/両方受験 1名/);assert.equal((html.match(/<strong>0%<\/strong>/g)||[]).length,2);
+  assert.match(html,/比較人数が不足/);assert.doesNotMatch(html,/得点率差|効果量 dz/);
+  d.scores.find(r=>r.testId==='a'&&r.studentId==='s0').total=null;
+  h.api.renderOverview();html=h.element('ovComparison').innerHTML;
+  assert.match(html,/両方受験 0名/);assert.equal((html.match(/<strong>—<\/strong>/g)||[]).length,2);
+  h.api.ui.ovTest='missing';h.api.renderOverview();
+  assert.equal(h.element('ovComparison').hidden,true);assert.equal(h.element('ovComparison').innerHTML,'');
+  assert.equal(h.element('ovSummaryContext').textContent,'');
 });
 test('保存JSONの種類・系列・比較相手を検証し、旧JSONを推測で分類しない',()=>{
   for(const version of [1,2,3]) {

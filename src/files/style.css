@@ -1912,6 +1912,32 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
 @media(max-width:900px) { .start-grid { grid-template-columns:1fr; } .start-card { padding:22px; } .start-card .btn-lg { width:auto; align-self:flex-start; min-width:210px; } }
 @media(max-width:560px) { .empty-state { padding:28px 16px; } .start-intro .welcome-intro br { display:none; } .prepare-panel { padding:14px; } .prepare-actions .btn { width:100%; } .setup-actions .btn { width:100%; } }
 
+/* Keep the compared tests and their shared population visible together. */
+.overview-context { margin: 0 0 12px; color: var(--text-sub); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.overview-comparison h3 { margin-bottom: 8px; }
+.comparison-scope { margin: 0 0 16px; color: var(--text-sub); font-size: 13px; overflow-wrap: anywhere; }
+.comparison-tests { display: grid; grid-template-columns: minmax(0,1fr) 28px minmax(0,1fr); align-items: stretch; gap: 12px; }
+.comparison-test { min-width: 0; padding: 14px 16px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-2); overflow-wrap: anywhere; }
+.comparison-test[data-position="after"] { background: var(--primary-light); border-color: #a8c2e8; }
+.comparison-test-label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700; color: var(--text-sub); }
+.comparison-test-title { display: block; font-size: 16px; }
+.comparison-test-detail { display: block; margin-top: 6px; font-size: 12px; color: var(--text-sub); }
+.comparison-test-rate { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-sub); }
+.comparison-test-rate strong { margin-left: 8px; color: var(--text); font-size: 23px; font-variant-numeric: tabular-nums; }
+.comparison-arrow { align-self: center; text-align: center; font-size: 24px; color: var(--text-sub); }
+.comparison-result { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 16px; }
+.comparison-result .kpi-delta { margin: 0; font-size: 19px; }
+.comparison-direction { font-size: 12px; color: var(--text-sub); }
+.comparison-effect { white-space: normal; text-align: left; }
+.comparison-population, .comparison-caution { margin: 12px 0 0; color: var(--text-sub); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.comparison-caution { margin-top: 4px; }
+@media (max-width: 600px) {
+  .comparison-tests { grid-template-columns: 1fr; gap: 8px; }
+  .comparison-arrow { transform: rotate(90deg); }
+  .comparison-result { align-items: flex-start; flex-direction: column; }
+  .comparison-test { padding: 12px; }
+}
+
 /* Teaching notes remain ordinary text, including long words and line breaks. */
 .teaching-notes { margin: 16px 0; }
 .teaching-notes > summary { cursor: pointer; font-size: 17px; font-weight: 700; padding: 4px 0; }
