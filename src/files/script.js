@@ -30,6 +30,7 @@ const ui = {
   anClass: 'all', anTest: '', anSubject: 'all',
   trendClass: 'all', trendSearch: '', trendSubject: '', trendKind: 'all',
   trendSelected: new Set(),
+  trendCompareTest: '', trendCompareFrom: null, trendComparisonStarted: false,
   metClass: 'all', metricId: '',
   corrX: '', corrY: '',
   listSubject: 'all', listClass: 'all', listMode: 'total', listHeat: true, listPivot: 60, listSort: null,
@@ -715,6 +716,7 @@ function applyJsonText(text, name, handle) {
     const lastTest = data.tests.length ? data.tests[data.tests.length - 1].id : '';
     ui.ovTest = ui.inTest = ui.anTest = lastTest;
     ui.trendSelected = new Set();
+    ui.trendCompareTest = ''; ui.trendCompareFrom = null; ui.trendComparisonStarted = false;
     ui.trendSearch = '';
     ui.metricId = data.metrics.length ? data.metrics[0].id : '';
     ui.corrX = data.metrics.length ? 'm:' + data.metrics[0].id : (lastTest ? 't:' + lastTest : '');
@@ -1004,6 +1006,24 @@ function comparisonP(value) {
   return String(value);
 }
 
+// 概要と個人の参考欄は、同じ得点・対象者・固定4比較の補正を使う。
+function groupComparisonData(students, beforeTest, afterTest) {
+  const beforeCounts = { tier1: 0, tier2: 0, tier3: 0 };
+  let missingBefore = 0, missingAfter = 0;
+  const pairs = [];
+  for (const student of students) {
+    const before = individualTestScore(student.id, beforeTest).rate;
+    const after = individualTestScore(student.id, afterTest).rate;
+    if (before == null) { missingBefore++; continue; }
+    beforeCounts['tier' + rtiTierOf(before)]++;
+    if (after == null) { missingAfter++; continue; }
+    pairs.push([before, after]);
+  }
+  const groups = typeof window.GD_PAIRED?.groupedSummary === 'function'
+    ? window.GD_PAIRED.groupedSummary(pairs, data.settings.rti) : null;
+  return { pairs, groups, beforeCounts, missingBefore, missingAfter };
+}
+
 function groupComparisonHtml(groups, context) {
   if (!groups) return '<p class="form-note">統計計算用ファイルを読み込めません。アプリをすべて展開し直してください。</p>';
   const {beforeCounts,missingBefore,missingAfter,scopeCount,currentCount,beforeMax,afterMax} = context;
@@ -1117,17 +1137,9 @@ function renderOverview() {
   const prev = comparisonTarget(test);
   let groups = null;
   if (prev) {
-    const beforeCounts = {tier1:0,tier2:0,tier3:0};
-    let missingBefore = 0, missingAfter = 0;
-    const pairs = students.flatMap(student => {
-      const a = getAttendedScore(student.id, prev.id), b = getAttendedScore(student.id, test.id);
-      if (a?.total == null) { missingBefore++; return []; }
-      const before = a.total / prev.maxScore * 100;
-      beforeCounts['tier' + rtiTierOf(before)]++;
-      if (b?.total == null) { missingAfter++; return []; }
-      return [[before,b.total / test.maxScore * 100]];
-    });
-    if (typeof window.GD_PAIRED?.groupedSummary === 'function') groups = window.GD_PAIRED.groupedSummary(pairs,data.settings.rti);
+    const comparison = groupComparisonData(students, prev, test);
+    const { pairs, beforeCounts, missingBefore, missingAfter } = comparison;
+    groups = comparison.groups;
     const testSummary = (item, label, index) => {
       return `<div class="comparison-test" data-position="${index === 0 ? 'before' : 'after'}">
         <span class="comparison-test-label">${label}</span>
@@ -1672,13 +1684,181 @@ function deleteCurrentTest() {
 
 /* ========== 個人推移タブ ========== */
 function renderTrend() {
+  if (!ui.trendComparisonStarted) useOverviewComparison();
   const ids = new Set(data.students.map(s => s.id));
   for (const sid of ui.trendSelected) if (!ids.has(sid)) ui.trendSelected.delete(sid);
   renderStudentList();
+  renderTrendSupport();
+  renderTrendComparison();
   renderTrendChart();
   renderTrendDomainChart();
   // カルテ印刷は生徒1名選択時のみ
   $('printKarteBtn').disabled = ui.trendSelected.size !== 1;
+}
+
+// 個人の1組は記述値だけを表示する。グループの検定や効果量を転用しない。
+function individualTestScore(sid, test) {
+  const stored = getScore(sid, test.id);
+  if (stored?.absent) return { rate: null, total: null, reason: '欠席' };
+  const rec = getAttendedScore(sid, test.id);
+  if (!rec || rec.total == null) return { rate: null, total: null, reason: '未入力・入力途中' };
+  const max = test.maxScore;
+  if (!Number.isFinite(rec.total) || !Number.isFinite(max) || max <= 0 || rec.total < 0 || rec.total > max) {
+    return { rate: null, total: null, reason: '得点を確認してください' };
+  }
+  return { rate: rec.total / max * 100, total: rec.total, reason: '' };
+}
+
+function individualTestDetail(test) {
+  return [test.subject, test.date || '日付未設定', TEST_KINDS[test.kind] || '未分類', test.series || ''].filter(Boolean).join('・');
+}
+
+function useOverviewComparison() {
+  ui.trendComparisonStarted = true;
+  const test = testById(ui.ovTest);
+  if (!test) return;
+  ui.trendSubject = test.subject;
+  ui.trendKind = 'all';
+  ui.trendClass = ui.ovClass;
+  ui.trendCompareTest = test.id;
+  ui.trendCompareFrom = comparisonTarget(test)?.id || '';
+  fillTrendSubjectSelect();
+  fillKindSelect('trendKind', ui.trendKind, true);
+  fillClassSelect($('trendClass'), ui.trendClass);
+}
+
+function individualComparisonContext(student, before, after, from, to) {
+  const context = { row: null, gap: null, position: null, reason: '', positionReason: '' };
+  const scope = studentsOf(ui.trendClass);
+  if (!scope.some(s => s.id === student.id)) {
+    context.reason = '選択中のクラスに本人が含まれていません。本人を含むクラス、または全クラスを選んでください。';
+    return context;
+  }
+  if (from.rate == null) {
+    context.reason = '比較元の得点率がないため、本人の所属グループを決められません。';
+    return context;
+  }
+  const tier = rtiTierOf(from.rate);
+  const groups = groupComparisonData(scope, before, after).groups;
+  if (!groups) {
+    context.reason = '統計計算用ファイルを読み込めません。アプリをすべて展開し直してください。';
+    return context;
+  }
+  const row = groups.find(g => g.tier === tier);
+  const { tier2, tier3 } = data.settings.rti;
+  Object.assign(context, { row, tier, range: tier === 1 ? `${tier2}%以上` : tier === 2 ? `${tier3}%以上${tier2}%未満` : `${tier3}%未満`,
+    className: ui.trendClass === 'all' ? '全クラス' : ui.trendClass });
+  if (to.rate == null) {
+    context.positionReason = '本人の今回の得点率がないため、平均との差と位置は表示できません。';
+  } else if (row.n < 2) {
+    context.positionReason = '比較できる生徒が本人だけのため、平均との差と位置は表示しません。';
+  } else {
+    context.gap = to.rate - from.rate - row.meanChange;
+    if (row.n < 3) {
+      context.positionReason = '比較人数が2名のため、変化の相対位置は表示しません。このアプリでは3名から表示します。';
+    } else if (row.status !== 'ok' || !(row.sdChange > 0)) {
+      context.positionReason = '変化量のばらつきがないか計算精度以下のため、変化の相対位置は表示できません。';
+    } else {
+      const position = context.gap / row.sdChange;
+      if (Number.isFinite(position)) context.position = position;
+      else context.positionReason = '計算に必要な数値を確認できないため、変化の相対位置は表示できません。';
+    }
+  }
+  return context;
+}
+
+function renderIndividualGroupReference(before, after, to, context) {
+  const reference = $('trendGroupReference');
+  reference.hidden = false;
+  const heading = '<h4 id="trendGroupReferenceTitle">所属グループの結果（参考）</h4>';
+  if (context.reason) { reference.innerHTML = heading + `<p>${esc(context.reason)}</p>`; return; }
+  const { row, tier, range, className } = context;
+  reference.innerHTML = `${heading}<p class="individual-reference-label">以下はグループの集計です。本人の検定結果ではありません。</p>
+    <p class="individual-reference-scope">${esc(className)} ／ 比較元の得点率で分けた Tier ${tier}（${esc(range)}） ／ 両方受験 ${row.n}名</p>
+    <p class="individual-reference-tests">${esc(termKeyOf(before))} → ${esc(termKeyOf(after))}</p>
+    ${to.rate == null ? '<p class="individual-reference-exclusion">本人は今回の得点率がないため、このグループの比較人数には含まれていません。</p>' : ''}
+    <p class="individual-reference-reading">${esc(comparisonReading(row))}</p>
+    <dl class="group-summary-values">
+      <div><dt>平均変化量<small>ポイント</small></dt><dd data-stat="group-change">${esc(comparisonNumber(row.meanChange, true))}</dd></div>
+      <div><dt>p値<small>グループの前後差の判定用</small></dt><dd data-stat="group-p">${esc(comparisonP(row.pAdjusted))}</dd></div>
+      <div><dt>効果量<small>グループの変化の大きさ</small></dt><dd data-stat="group-dz">${esc(comparisonNumber(row.dz, true))}</dd></div>
+    </dl>
+    <details class="individual-reference-help"><summary>グループの数値の見方</summary>
+      <p>本人と同じ2つのテストを使い、選択中のクラス範囲で、比較元の得点率が同じTierの生徒を集計します。今回の得点率でグループを入れ替えません。欠席・未入力・入力途中を除き、両方に得点がある同じ生徒だけを比較します。0点は含めます。</p>
+      <p>平均変化量はグループの「今回 − 比較元」です。p値はグループの前後差を調べるt検定の結果で、0.05未満を前後差が認められる目安にしています。「&lt;0.001」は0.001より小さいという意味です。概要と同じく、全体と3グループを調べる分の調整は計算済みです。</p>
+      <p>効果量は変化量のばらつきを基準にしたグループの変化の大きさです。比較人数が0・1名、または変化量のばらつきがないなどの場合、p値や効果量は「—」となります。</p>
+      <p>グループで差が認められても、本人に同じ変化があったとは判断できません。差を確認しきれないことも、差がないという証明ではありません。この比較だけで、指導による変化かどうかは判断できません。</p>
+    </details>`;
+}
+
+function renderTrendComparison() {
+  const scope = $('trendComparisonScope');
+  const controls = $('trendComparisonControls');
+  const result = $('trendComparisonResult');
+  const help = $('trendComparisonHelp');
+  const reference = $('trendGroupReference');
+  reference.hidden = true;
+  reference.innerHTML = '';
+  $('trendUseOverview').disabled = !testById(ui.ovTest);
+  controls.hidden = help.hidden = true;
+  result.innerHTML = '';
+  if (ui.trendSelected.size !== 1) {
+    scope.textContent = ui.trendSelected.size ? '本人の2回の変化を見るには、名簿の選択を1人にしてください。' : '名簿から生徒を1人選んでください。';
+    return;
+  }
+  const student = data.students.find(s => s.id === [...ui.trendSelected][0]);
+  if (!student) { scope.textContent = '名簿から生徒を選び直してください。'; return; }
+  scope.textContent = [student.name + 'さん', student.className || '', student.number == null || student.number === '' ? '' : student.number + '番', ui.trendSubject === SUM_KEY ? '全教科合計' : ui.trendSubject].filter(Boolean).join(' ／ ');
+  if (ui.trendSubject === SUM_KEY) {
+    result.textContent = '2回の比較は、教科を選ぶと表示できます。全教科合計の推移は下のグラフで確認できます。';
+    return;
+  }
+  const tests = sortTestsByTerm(data.tests.filter(t => t.subject === ui.trendSubject && testKindMatches(t, ui.trendKind)));
+  const after = tests.find(t => t.id === ui.trendCompareTest) || tests.at(-1);
+  if (!after) { result.textContent = '選択した教科・種類にテストがありません。'; return; }
+  if (after.id !== ui.trendCompareTest) { ui.trendCompareTest = after.id; ui.trendCompareFrom = null; }
+  const candidates = comparisonCandidates(after);
+  if (ui.trendCompareFrom === null) ui.trendCompareFrom = comparisonTarget(after)?.id || '';
+  const before = candidates.find(t => t.id === ui.trendCompareFrom);
+  const option = t => `<option value="${esc(t.id)}">${esc(termKeyOf(t))}（${esc(individualTestDetail(t))}）</option>`;
+  $('trendCompareTest').innerHTML = tests.map(option).join('');
+  $('trendCompareTest').value = after.id;
+  $('trendCompareFrom').innerHTML = '<option value="">比較元を選択してください</option>' + candidates.map(option).join('');
+  $('trendCompareFrom').value = before?.id || '';
+  controls.hidden = help.hidden = false;
+  if (!before) {
+    result.textContent = candidates.length ? '比較元のテストを選択してください。自動で比較元が決まらない場合も、同じ教科の過去のテストを選べます。' : '同じ教科の過去のテストがないため、この回は比較できません。';
+    return;
+  }
+  const from = individualTestScore(student.id, before);
+  const to = individualTestScore(student.id, after);
+  const context = individualComparisonContext(student, before, after, from, to);
+  const change = from.rate == null || to.rate == null ? null : to.rate - from.rate;
+  const reading = change == null
+    ? [from.reason ? '比較元は' + from.reason : '', to.reason ? '今回は' + to.reason : ''].filter(Boolean).join('、') + 'のため、2回を比較できません。'
+    : change > 0 ? 'この2回では、本人の得点率が上がっています。'
+    : change < 0 ? 'この2回では、本人の得点率が下がっています。' : 'この2回では、本人の得点率は同じです。';
+  const scoreCard = (test, score, position, label) => `<section class="individual-test" data-position="${position}"><h4>${label}</h4>
+    <p class="individual-test-title">${esc(termKeyOf(test))}</p><p class="individual-test-detail">${esc(individualTestDetail(test))}</p>
+    <p class="individual-value" data-stat="rate">${esc(comparisonNumber(score.rate))}${score.rate == null ? '' : '<small>%</small>'}</p>
+    <p class="individual-raw-score" data-stat="score">${score.rate == null ? esc(score.reason) : esc(comparisonNumber(score.total)) + ' / ' + esc(comparisonNumber(test.maxScore)) + '点'}</p></section>`;
+  const differentType = (before.kind || 'unclassified') !== (after.kind || 'unclassified') || (before.series || '').trim() !== (after.series || '').trim();
+  const relativeReading = context.gap == null ? '' : context.gap > 0 ? '変化量は、同じTierの平均を上回っています。'
+    : context.gap < 0 ? '変化量は、同じTierの平均を下回っています。' : '同じTierの平均と同じ変化量です。';
+  const scopeNote = context.row ? `${context.className} ／ 比較元の Tier ${context.tier} ／ 両方受験 ${context.row.n}名${to.rate == null ? '' : '（本人を含む）'}` : '';
+  result.innerHTML = `<div class="individual-test-context">${scoreCard(before, from, 'before', '比較元')}${scoreCard(after, to, 'after', '今回')}</div>
+    <p class="individual-reading">${esc(reading)}${esc(relativeReading)}</p>
+    ${scopeNote ? `<p class="individual-metrics-scope">比較の基準：${esc(scopeNote)}</p>` : ''}<div class="individual-values">
+    <section class="individual-change"><h4>本人の変化</h4><p class="individual-test-detail">得点率：今回 − 比較元</p>
+    <p class="individual-value" data-stat="change">${esc(comparisonNumber(change, true))}<small>ポイント</small></p></section>
+    <section><h4>同じTierの平均との差</h4><p class="individual-test-detail">本人の変化 − 平均変化</p>
+    <p class="individual-value" data-stat="gap">${esc(comparisonNumber(context.gap, true))}<small>ポイント</small></p></section>
+    <section><h4>変化の相対位置（参考）</h4><p class="individual-test-detail">0が平均、＋は平均より大きい変化</p>
+    <p class="individual-value" data-stat="position">${esc(comparisonNumber(context.position, true))}${context.position == null ? '' : '<small>SD</small>'}</p></section></div>
+    ${context.reason || context.positionReason ? `<p class="individual-metrics-note">${esc(context.reason || context.positionReason)}</p>` : ''}
+    ${differentType ? '<p class="individual-type-note">種類・シリーズが異なります。比較に適した2回か確認してください。</p>' : ''}
+    <p class="comparison-caution">相対位置はグループ内での比較用の参考値です。テストの範囲・難しさも変わるため、個人の有意差や指導効果を判定するものではありません。</p>`;
+  renderIndividualGroupReference(before, after, to, context);
 }
 
 function renderStudentList() {
@@ -1692,6 +1872,48 @@ function renderStudentList() {
       <span>${esc(s.name)}</span>
       <span class="sl-class">${esc(s.className || '')}</span>
     </li>`).join('');
+}
+
+function sortedInterventions(records = data.interventions) {
+  return [...records].sort((a, b) => {
+    if ((a.status === 'active') !== (b.status === 'active')) return a.status === 'active' ? -1 : 1;
+    return (b.startDate || '').localeCompare(a.startDate || '');
+  });
+}
+
+function renderTrendSupport() {
+  const summary = $('trendSupportSummary');
+  const records = $('trendSupportRecords');
+  const previousHistoryOpen = records.querySelector('details')?.open || false;
+  records.innerHTML = '';
+  $('trendSupportStatus').textContent = '';
+  $('trendSupportBody').hidden = true;
+  $('trendAddSupport').disabled = true;
+  const student = ui.trendSelected.size === 1 && data.students.find(s => s.id === [...ui.trendSelected][0]);
+  if (!student) {
+    summary.textContent = '生徒を1名選ぶと、支援の追加と記録の確認ができます。';
+    delete records.dataset.sid;
+    return;
+  }
+  const keepHistoryOpen = records.dataset.sid === student.id && previousHistoryOpen;
+  records.dataset.sid = student.id;
+  const ivs = sortedInterventions(data.interventions.filter(iv => iv.studentId === student.id));
+  const active = ivs.filter(iv => iv.status === 'active');
+  const done = ivs.filter(iv => iv.status !== 'active');
+  const number = student.number == null || student.number === '' ? '' : ' ／ ' + student.number + '番';
+  summary.textContent = `${student.name}さん ／ ${student.className || 'クラス未設定'}${number} ／ 実施中 ${active.length}件・完了 ${done.length}件`;
+  $('trendSupportBody').hidden = false;
+  $('trendAddSupport').disabled = false;
+  const recordHtml = iv => `<article class="individual-support-record" data-iv="${esc(iv.id)}">
+    <div class="individual-support-record-heading"><h4>${esc(iv.title)}</h4><span class="iv-status ${iv.status === 'active' ? 'active' : 'done'}">${iv.status === 'active' ? '実施中' : '完了'}</span></div>
+    <p class="individual-support-meta">${esc(iv.subject === 'all' ? '全教科' : iv.subject)} ／ ${esc(TEST_KINDS[iv.kind] || '全種類')} ／ 開始 ${esc(iv.startDate || '未設定')}${iv.endDate ? ' ／ 完了 ' + esc(iv.endDate) : ''}</p>
+    ${iv.note ? `<p class="individual-support-note">${esc(iv.note)}</p>` : ''}
+    <div class="individual-support-actions">
+      ${iv.status === 'active' ? `<button type="button" class="btn btn-ghost btn-sm iv-done-btn" data-iv="${esc(iv.id)}">完了にする</button>` : `<button type="button" class="btn btn-ghost btn-sm iv-reopen-btn" data-iv="${esc(iv.id)}">再開</button>`}
+      <button type="button" class="btn btn-ghost btn-sm iv-progress-btn" data-iv="${esc(iv.id)}">RTIで推移を見る</button>
+    </div></article>`;
+  records.innerHTML = `<h4 class="individual-support-list-title">実施中の支援</h4>${active.length ? active.map(recordHtml).join('') : '<p class="card-note">実施中の支援はありません。</p>'}
+    ${done.length ? `<details class="individual-support-history" ${keepHistoryOpen ? 'open' : ''}><summary>完了した支援（${done.length}件）</summary>${done.map(recordHtml).join('')}</details>` : ''}`;
 }
 
 // 回の合計は全教科が入力済みのときだけ有効。一覧と推移で同じ判定を使う。
@@ -2685,6 +2907,7 @@ async function submitSettingsDialog(e) {
   $('settingsDialog').close();
   if (ui.tab === 'rti') renderRti();
   else if (ui.tab === 'overview') renderOverview();
+  else if (ui.tab === 'trend') renderTrendComparison();
 }
 
 /* ========== 支援（RTI）タブ ========== */
@@ -2720,13 +2943,13 @@ function termSeriesFor(sid, subject, kind = ui.rtiKind) {
 }
 
 // 生徒の判定値（得点率%）と直近の前回比を返す（テスト回ベース）
-function rtiRateFor(sid, subject, basis) {
-  const vals = termSeriesFor(sid, subject).rates.filter((v) => v != null);
+function rtiRateFor(sid, subject, basis, kind = ui.rtiKind) {
+  const vals = termSeriesFor(sid, subject, kind).rates.filter((v) => v != null);
   if (!vals.length) return { rate: null, delta: null };
   const useBasis = basis !== undefined ? basis : ui.rtiBasis;
   const rate = useBasis === 'avg' ? mean(vals) : vals[vals.length - 1];
   const subj = subject !== undefined ? subject : ui.rtiSubject;
-  const latest = sortTestsByTerm(data.tests.filter(t => t.subject === subj && testKindMatches(t, ui.rtiKind)))
+  const latest = sortTestsByTerm(data.tests.filter(t => t.subject === subj && testKindMatches(t, kind)))
     .filter(t => getAttendedScore(sid, t.id)?.total != null).at(-1);
   const previous = comparisonTarget(latest);
   const previousScore = previous && getAttendedScore(sid, previous.id);
@@ -2794,37 +3017,71 @@ function renderRti() {
 }
 
 /* ---- 支援記録 ---- */
-function openIvDialog(sid) {
+function openIvDialog(sid, context = {}) {
   const s = data.students.find((x) => x.id === sid);
   if (!s) return;
-  const { rate } = rtiRateFor(sid);
-  const tier = rtiTierOf(rate);
   $('ivDialogTitle').textContent = `支援の記録：${s.name}`;
-  $('ivStudentSummary').innerHTML =
-    `<strong>${esc(s.name)}</strong>（${esc(s.className || '')}）　現在の判定値：${rate != null ? round1(rate) + '%' : 'データなし'}${tier ? `・Tier ${tier}` : ''}`;
   $('ivTitle').value = '';
   $('ivNote').value = '';
   $('ivStart').value = localDateString();
   const subjects = subjectList();
   $('ivSubject').innerHTML = `<option value="all">全教科</option>` +
     subjects.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
-  $('ivSubject').value = ui.rtiSubject;
+  const subject = context.subject ?? ui.rtiSubject;
+  $('ivSubject').value = subject === 'all' || subjects.includes(subject) ? subject : 'all';
+  fillKindSelect('ivKind', context.kind ?? ui.rtiKind ?? 'all', true);
   $('ivForm').dataset.sid = sid;
+  $('ivForm').dataset.dataToken = String(activeDataToken);
+  refreshIvSummary();
   $('ivDialog').showModal();
+}
+
+function refreshIvSummary() {
+  const student = data.students.find(s => s.id === $('ivForm').dataset.sid);
+  if (!student) return;
+  const { rate } = rtiRateFor(student.id, $('ivSubject').value, 'latest', $('ivKind').value);
+  const number = student.number == null || student.number === '' ? '' : '・' + student.number + '番';
+  $('ivStudentSummary').textContent = `${student.name}（${student.className || 'クラス未設定'}${number}） ／ 開始時の水準：${rate == null ? 'データなし' : round1(rate) + '%'} ／ ${TEST_KINDS[$('ivKind').value] || '全種類'}`;
+}
+
+function refreshInterventionViews(message = '') {
+  if (ui.tab === 'trend') {
+    renderTrendSupport();
+    $('trendSupportStatus').textContent = message;
+  } else if (ui.tab === 'rti') renderRti();
 }
 
 function submitIvDialog(e) {
   e.preventDefault();
   const sid = $('ivForm').dataset.sid;
+  if ($('ivForm').dataset.dataToken !== String(activeDataToken) || !data.students.some(s => s.id === sid)) {
+    alert('開いているデータが変わりました。記録先の生徒を選び直してください。');
+    $('ivDialog').close();
+    return;
+  }
   const subject = $('ivSubject').value;
-  const { rate } = rtiRateFor(sid, subject, 'latest');
+  const kind = $('ivKind').value;
+  const title = $('ivTitle').value.trim();
+  const startDate = $('ivStart').value;
+  if (!title || !startDate || normalizeDateValue(startDate) !== startDate) {
+    alert('支援の内容と、実在する開始日を入力してください。');
+    return;
+  }
+  if ((subject !== 'all' && !subjectList().includes(subject)) || (kind !== 'all' && !Object.hasOwn(TEST_KINDS, kind))) {
+    alert('対象教科・テスト種類を選び直してください。');
+    return;
+  }
+  const { rate } = rtiRateFor(sid, subject, 'latest', kind);
+  const idBase = 'iv' + Date.now();
+  let id = idBase, suffix = 1;
+  while (data.interventions.some(iv => iv.id === id)) id = idBase + '-' + suffix++;
   const iv = {
-    id: 'iv' + Date.now(),
+    id,
     studentId: sid,
-    title: $('ivTitle').value.trim(),
+    title,
     subject,
-    kind: ui.rtiKind || 'all',
-    startDate: $('ivStart').value,
+    kind,
+    startDate,
     note: $('ivNote').value.trim(),
     baseline: rate != null ? round1(rate) : null, // 開始時の水準（効果確認の基準線）
     status: 'active',
@@ -2834,15 +3091,44 @@ function submitIvDialog(e) {
   ui.rtiSelectedIv = iv.id;
   markDirty();
   $('ivDialog').close();
-  renderRti();
+  refreshInterventionViews('支援を記録しました。右上の「保存」でJSONへ保存してください。');
+  if (ui.tab === 'trend') $('trendAddSupport').focus({ preventScroll: true });
+}
+
+function handleInterventionClick(e) {
+  const done = e.target.closest('.iv-done-btn');
+  const reopen = e.target.closest('.iv-reopen-btn');
+  const del = e.target.closest('.iv-del-btn');
+  const progress = e.target.closest('.iv-progress-btn');
+  const action = done || reopen || del || progress;
+  if (action) {
+    const iv = data.interventions.find(x => x.id === action.dataset.iv);
+    if (!iv) return;
+    if (e.currentTarget.id === 'trendSupportRecords' && (ui.trendSelected.size !== 1 || !ui.trendSelected.has(iv.studentId))) return;
+    if (progress) {
+      ui.rtiSelectedIv = iv.id;
+      document.querySelector('.tab-btn[data-tab="rti"]').click();
+      $('rtiProgressTitle').focus();
+      return;
+    }
+    if (del) {
+      if (!requireAdmin() || !confirm(`支援記録「${iv.title}」を削除しますか？`)) return;
+      data.interventions = data.interventions.filter(x => x.id !== iv.id);
+      if (ui.rtiSelectedIv === iv.id) ui.rtiSelectedIv = null;
+    } else if (done) { iv.status = 'done'; iv.endDate = localDateString(); }
+    else { iv.status = 'active'; delete iv.endDate; }
+    markDirty();
+    refreshInterventionViews(del ? '支援記録を削除しました。' : done ? '支援を完了にしました。' : '支援を再開しました。');
+    if (ui.tab === 'trend') $('trendAddSupport').focus({ preventScroll: true });
+    return;
+  }
+  const row = e.target.closest('.iv-row');
+  if (row) { ui.rtiSelectedIv = row.dataset.iv; renderRti(); resizeCharts(); }
 }
 
 function renderRtiLog() {
   const wrap = $('rtiLogWrap');
-  const ivs = [...data.interventions].sort((a, b) => {
-    if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
-    return (b.startDate || '').localeCompare(a.startDate || '');
-  });
+  const ivs = sortedInterventions();
   if (!ivs.length) {
     wrap.innerHTML = '<div class="table-empty">支援の記録はまだありません。上の生徒カードをクリックして追加します。</div>';
     return;
@@ -3702,7 +3988,10 @@ function init() {
   $('anSubject').onchange = (e) => { ui.anSubject = e.target.value; fillScopedTestSelect('anTest', 'anSubject', 'anTest'); renderAnalysis(); resizeCharts(); };
   $('anTest').onchange = (e) => { ui.anTest = e.target.value; renderAnalysis(); resizeCharts(); };
   $('trendClass').onchange = (e) => { ui.trendClass = e.target.value; renderTrend(); resizeCharts(); };
-  $('trendSubject').onchange = (e) => { ui.trendSubject = e.target.value; renderTrend(); resizeCharts(); };
+  $('trendSubject').onchange = (e) => { ui.trendSubject = e.target.value; ui.trendCompareTest = ''; ui.trendCompareFrom = null; renderTrend(); resizeCharts(); };
+  $('trendCompareTest').onchange = e => { ui.trendCompareTest = e.target.value; ui.trendCompareFrom = null; renderTrendComparison(); };
+  $('trendCompareFrom').onchange = e => { ui.trendCompareFrom = e.target.value; renderTrendComparison(); };
+  $('trendUseOverview').onclick = () => { useOverviewComparison(); renderTrend(); resizeCharts(); };
 
   // データ一覧
   $('listSubject').onchange = (e) => { ui.listSubject = e.target.value; ui.listSort = null; renderList(); };
@@ -3798,37 +4087,14 @@ function init() {
   });
   $('ivForm').onsubmit = submitIvDialog;
   $('ivCancel').onclick = () => $('ivDialog').close();
-  $('rtiLogWrap').addEventListener('click', (e) => {
-    const done = e.target.closest('.iv-done-btn');
-    const reopen = e.target.closest('.iv-reopen-btn');
-    const del = e.target.closest('.iv-del-btn');
-    const row = e.target.closest('.iv-row');
-    if (done) {
-      const iv = data.interventions.find((x) => x.id === done.dataset.iv);
-      if (iv) { iv.status = 'done'; iv.endDate = localDateString(); markDirty(); renderRti(); }
-      return;
-    }
-    if (reopen) {
-      const iv = data.interventions.find((x) => x.id === reopen.dataset.iv);
-      if (iv) { iv.status = 'active'; delete iv.endDate; markDirty(); renderRti(); }
-      return;
-    }
-    if (del) {
-      if (!requireAdmin()) return;
-      const iv = data.interventions.find((x) => x.id === del.dataset.iv);
-      if (iv && confirm(`支援記録「${iv.title}」を削除しますか？`)) {
-        data.interventions = data.interventions.filter((x) => x.id !== iv.id);
-        if (ui.rtiSelectedIv === iv.id) ui.rtiSelectedIv = null;
-        markDirty(); renderRti();
-      }
-      return;
-    }
-    if (row) {
-      ui.rtiSelectedIv = row.dataset.iv;
-      renderRti();
-      resizeCharts();
-    }
-  });
+  $('ivSubject').onchange = refreshIvSummary;
+  $('ivKind').onchange = refreshIvSummary;
+  $('trendAddSupport').onclick = () => {
+    if (ui.trendSelected.size !== 1) return;
+    openIvDialog([...ui.trendSelected][0], { subject: ui.trendSubject === SUM_KEY ? 'all' : ui.trendSubject, kind: ui.trendKind || 'all' });
+  };
+  $('rtiLogWrap').addEventListener('click', handleInterventionClick);
+  $('trendSupportRecords').addEventListener('click', handleInterventionClick);
 
   // バックアップ・カルテ印刷
   $('backupBtn').onclick = backupJson;
@@ -3840,7 +4106,7 @@ function init() {
   $('cfCompare').onchange = refreshComparisonChoices;
   $('comparisonForm').onsubmit = submitComparisonForm;
   $('cfCloseBtn').onclick = () => $('comparisonDialog').close();
-  $('trendKind').onchange = event => { ui.trendKind = event.target.value; renderTrend(); };
+  $('trendKind').onchange = event => { ui.trendKind = event.target.value; ui.trendCompareTest = ''; ui.trendCompareFrom = null; renderTrend(); };
   $('rtiKind').onchange = event => { ui.rtiKind = event.target.value; renderRti(); };
   $('printKarteBtn').onclick = openKarteDialog;
   $('karteOptions').onchange = renderKartePreview;
