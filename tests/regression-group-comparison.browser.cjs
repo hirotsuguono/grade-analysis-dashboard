@@ -23,6 +23,10 @@ module.exports=async(page,original)=>{
     assert.equal(await page.evaluate(()=>!!echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart'))),false);
     assert.equal(await card('all').locator('dd').count(),3);
     for(const stat of ['change','p','dz'])assert.equal(await cell('all',stat).isVisible(),true);
+    assert.equal(await page.locator('.group-test-criteria').isVisible(),true);
+    assert.match(await page.locator('.group-test-criteria').textContent(),/5％水準.*前後の得点率の平均変化は0.*0\.05未満.*0\.05以上/s);
+    for(const key of ['all','tier1','tier2'])assert.equal(await cell(key,'decision').textContent(),'棄却できず');
+    assert.equal(await cell('tier3','decision').textContent(),'帰無仮説を棄却');
     await page.locator('.group-comparison-details > summary').click();
     await page.waitForFunction(()=>!!echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart')));
     assert.equal(await cell('all','ci').isVisible(),true);
@@ -40,13 +44,20 @@ module.exports=async(page,original)=>{
     await n('all',9);await n('tier1',3);await n('tier2',3);await n('tier3',3);
     assert.equal(await cell('tier1','before').textContent(),'70%');assert.equal(await cell('tier1','after').textContent(),'75%');
     assert.ok(!(await cell('tier2','p').textContent()).includes('—'));
+    // Tier 3 has raw p≈0.035 but Holm p≈0.141; the label must follow the adjusted value.
+    assert.ok(Number(await page.locator('.group-detail-table tbody tr').nth(3).locator('td').nth(2).textContent())<0.05);
+    assert.ok(Number(await cell('tier3','p').textContent())>0.05);
+    assert.equal(await cell('tier3','decision').textContent(),'棄却できず');
     await page.locator('#ovClass').selectOption('2年B組');await n('all',3);
     assert.equal(await cell('all','ci').textContent(),'—');assert.equal(await cell('all','p').textContent(),'—');assert.match(await card('all').locator('.group-stat-status').textContent(),/ばらつきなし/);
+    assert.equal(await cell('all','decision').textContent(),'判定不可');
+    assert.equal(await cell('tier3','decision').textContent(),'判定不可');
     const emptyBars=await page.evaluate(()=>echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart')).getOption().series.map(s=>s.data.slice(2)));
     assert.deepEqual(emptyBars,[[null,null],[null,null]]);
     await page.locator('#ovClass').selectOption('2年C組');await n('all',1);
     assert.equal(await cell('all','before').textContent(),'0%');assert.equal(await cell('all','change').textContent(),'+10');
     assert.equal(await cell('all','p').textContent(),'—');assert.match(await card('all').locator('.group-stat-status').textContent(),/比較1名/);
+    assert.equal(await cell('all','decision').textContent(),'判定不可');
     await page.locator('#ovClass').selectOption('all');
     await page.evaluate(()=>{ui.rtiBasis='avg';ui.rtiSubject='数学';renderOverview();});await n('tier1',6);
     await page.evaluate(()=>{data.settings.rti={tier3:40.5,tier2:60.5};renderOverview();});

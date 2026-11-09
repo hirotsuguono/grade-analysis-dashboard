@@ -976,12 +976,19 @@ function comparisonNumber(value, signed = false) {
   return signed && value > 0 ? '+' + text : text;
 }
 
+const COMPARISON_ALPHA = 0.05;
+
+function comparisonDecision(value) {
+  if (!Number.isFinite(value) || value < 0 || value > 1) return '判定不可';
+  return value < COMPARISON_ALPHA ? '帰無仮説を棄却' : '棄却できず';
+}
+
 function comparisonP(value) {
   if (value == null) return '—';
   if (value < 0.001) return '<0.001';
   for (let digits = 3; digits <= 6; digits++) {
     const text = value.toFixed(digits), rounded = Number(text);
-    if ((value < 0.05) === (rounded < 0.05) && (value > 0.05) === (rounded > 0.05)) return text;
+    if ((value < COMPARISON_ALPHA) === (rounded < COMPARISON_ALPHA) && (value > COMPARISON_ALPHA) === (rounded > COMPARISON_ALPHA)) return text;
   }
   return String(value);
 }
@@ -1009,16 +1016,17 @@ function groupComparisonHtml(groups, context) {
     <h5 id="group-summary-${row.key}">${labels[row.key]}<span data-stat="n">${row.n}名</span></h5>
     <dl class="group-summary-values">
       <div><dt>平均変化量<small>ポイント</small></dt><dd data-stat="change">${esc(comparisonNumber(row.meanChange,true))}</dd></div>
-      <div><dt>p値<small>補正済み</small></dt><dd data-stat="p">${esc(comparisonP(row.pAdjusted))}</dd></div>
+      <div><dt>p値<small>補正済み</small></dt><dd><span data-stat="p">${esc(comparisonP(row.pAdjusted))}</span><small class="group-test-decision" data-stat="decision">${comparisonDecision(row.pAdjusted)}</small></dd></div>
       <div><dt>効果量<small>dz</small></dt><dd data-stat="dz">${esc(comparisonNumber(row.dz,true))}</dd></div>
     </dl>${statusText(row) ? `<p class="group-stat-status">${statusText(row)}</p>` : ''}</article>`).join('');
   const details = groups.map(row => `<tr><th scope="row">${labels[row.key]}</th><td>${esc(comparisonNumber(row.t))}</td><td>${row.df ?? '—'}</td><td>${esc(comparisonP(row.p))}</td><td>${esc(comparisonNumber(row.dz))}</td></tr>`).join('');
   return `<section class="group-comparison" aria-labelledby="groupComparisonTitle">
     <h4 id="groupComparisonTitle">全体・事前のTier別の変化</h4><p class="group-test-method">対応のあるt検定（両側）</p>
     <p class="group-comparison-intro">まず平均変化量で、変化の向きと大きさを確認します。比較元の得点率で層を固定し、同じ生徒の前後を比べています。</p>
+    <div class="group-test-criteria"><strong>判定基準：5％水準</strong><p>帰無仮説は「前後の得点率の平均変化は0」です。補正済みp値が0.05未満なら棄却、0.05以上なら棄却できません。</p></div>
     <div class="group-summary-grid">${cards}</div>
     <p class="group-summary-guide">平均変化量は「今回 − 比較元」。p値はt検定の補正済み結果、効果量dzは変化量のばらつきを基準にした大きさです。</p>
-    <p class="group-comparison-caution">得点の変化を確認するための参考値です。この結果だけで指導の効果あり／なしは判断できません。</p>
+    <p class="group-comparison-caution">「棄却できず」は「差がない」という証明ではありません。この結果だけで指導の効果あり／なしは判断できません。</p>
     <details class="group-comparison-details"><summary>詳細を表示</summary>
     <p>丸める前の比較元の得点率と、現在のRTIしきい値（${esc(tier3)}%・${esc(tier2)}%）で層を固定しています。今回の点数では層を入れ替えません。</p>
     <p>比較元は${esc(beforeMax)}点満点、今回は${esc(afterMax)}点満点です。得点率に直して比較します。</p>

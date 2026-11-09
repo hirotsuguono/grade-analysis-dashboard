@@ -19,7 +19,7 @@ function harness(d=fixture()) {
   const elements={};const element=id=>elements[id]||={innerHTML:'',textContent:'',hidden:false,closest(){return this},querySelectorAll(){return []},querySelector(){return this}};
   const ctx=vm.createContext({input:d,window:{addEventListener(){},GD_PAIRED:require('../src/files/paired-comparison.js')},document:{addEventListener(){},getElementById:element},alert(){},confirm(){return true;}});
   vm.runInContext(source+`\ndata=input;rebuildIndex();chart=()=>({setOption(){},clear(){}});renderAll=()=>{};markDirty=()=>{};
-    globalThis.api={comparisonTarget,comparisonNumber,comparisonP,validateDataset,rtiRateFor,termSeriesFor,trendAxis,renderOverview,deleteCurrentTest,
+    globalThis.api={comparisonTarget,comparisonNumber,comparisonP,comparisonDecision,validateDataset,rtiRateFor,termSeriesFor,trendAxis,renderOverview,deleteCurrentTest,
       run(code){return eval(code)},getData(){return data},ui};`,ctx);
   return {api:ctx.api,elements,element};
 }
@@ -91,6 +91,18 @@ test('比較の表示丸めで小さい非ゼロ値やp値の0.05前後を消さ
     const positive=Number(api.comparisonNumber(value,true)),negative=Number(api.comparisonNumber(-value,true));
     assert.ok(positive>0);assert.equal(positive,-negative);
   }
+});
+test('5％水準の判定は0.05未満だけを棄却し、境界の表示丸めや算出不可と混同しない',()=>{
+  const {api}=harness();
+  for(const value of [0,0.0005,0.0496,0.049999999999]){
+    assert.equal(api.comparisonDecision(value),'帰無仮説を棄却');
+    assert.ok(value<0.001 ? api.comparisonP(value)==='<0.001' : Number(api.comparisonP(value))<0.05);
+  }
+  for(const value of [0.05,0.050000000001,0.0504,1]){
+    assert.equal(api.comparisonDecision(value),'棄却できず');
+    assert.ok(Number(api.comparisonP(value))>=0.05);
+  }
+  for(const value of [null,undefined,NaN,Infinity,-0.1,1.1,'0.01'])assert.equal(api.comparisonDecision(value),'判定不可');
 });
 test('保存JSONの種類・系列・比較相手を検証し、旧JSONを推測で分類しない',()=>{
   for(const version of [1,2,3]) {
