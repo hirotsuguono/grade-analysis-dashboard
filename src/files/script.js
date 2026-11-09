@@ -1688,6 +1688,7 @@ function renderTrend() {
   const ids = new Set(data.students.map(s => s.id));
   for (const sid of ui.trendSelected) if (!ids.has(sid)) ui.trendSelected.delete(sid);
   renderStudentList();
+  renderTrendSupport();
   renderTrendComparison();
   renderTrendChart();
   renderTrendDomainChart();
@@ -1871,6 +1872,48 @@ function renderStudentList() {
       <span>${esc(s.name)}</span>
       <span class="sl-class">${esc(s.className || '')}</span>
     </li>`).join('');
+}
+
+function sortedInterventions(records = data.interventions) {
+  return [...records].sort((a, b) => {
+    if ((a.status === 'active') !== (b.status === 'active')) return a.status === 'active' ? -1 : 1;
+    return (b.startDate || '').localeCompare(a.startDate || '');
+  });
+}
+
+function renderTrendSupport() {
+  const summary = $('trendSupportSummary');
+  const records = $('trendSupportRecords');
+  const previousHistoryOpen = records.querySelector('details')?.open || false;
+  records.innerHTML = '';
+  $('trendSupportStatus').textContent = '';
+  $('trendSupportBody').hidden = true;
+  $('trendAddSupport').disabled = true;
+  const student = ui.trendSelected.size === 1 && data.students.find(s => s.id === [...ui.trendSelected][0]);
+  if (!student) {
+    summary.textContent = '生徒を1名選ぶと、支援の追加と記録の確認ができます。';
+    delete records.dataset.sid;
+    return;
+  }
+  const keepHistoryOpen = records.dataset.sid === student.id && previousHistoryOpen;
+  records.dataset.sid = student.id;
+  const ivs = sortedInterventions(data.interventions.filter(iv => iv.studentId === student.id));
+  const active = ivs.filter(iv => iv.status === 'active');
+  const done = ivs.filter(iv => iv.status !== 'active');
+  const number = student.number == null || student.number === '' ? '' : ' ／ ' + student.number + '番';
+  summary.textContent = `${student.name}さん ／ ${student.className || 'クラス未設定'}${number} ／ 実施中 ${active.length}件・完了 ${done.length}件`;
+  $('trendSupportBody').hidden = false;
+  $('trendAddSupport').disabled = false;
+  const recordHtml = iv => `<article class="individual-support-record" data-iv="${esc(iv.id)}">
+    <div class="individual-support-record-heading"><h4>${esc(iv.title)}</h4><span class="iv-status ${iv.status === 'active' ? 'active' : 'done'}">${iv.status === 'active' ? '実施中' : '完了'}</span></div>
+    <p class="individual-support-meta">${esc(iv.subject === 'all' ? '全教科' : iv.subject)} ／ ${esc(TEST_KINDS[iv.kind] || '全種類')} ／ 開始 ${esc(iv.startDate || '未設定')}${iv.endDate ? ' ／ 完了 ' + esc(iv.endDate) : ''}</p>
+    ${iv.note ? `<p class="individual-support-note">${esc(iv.note)}</p>` : ''}
+    <div class="individual-support-actions">
+      ${iv.status === 'active' ? `<button type="button" class="btn btn-ghost btn-sm iv-done-btn" data-iv="${esc(iv.id)}">完了にする</button>` : `<button type="button" class="btn btn-ghost btn-sm iv-reopen-btn" data-iv="${esc(iv.id)}">再開</button>`}
+      <button type="button" class="btn btn-ghost btn-sm iv-progress-btn" data-iv="${esc(iv.id)}">RTIで推移を見る</button>
+    </div></article>`;
+  records.innerHTML = `<h4 class="individual-support-list-title">実施中の支援</h4>${active.length ? active.map(recordHtml).join('') : '<p class="card-note">実施中の支援はありません。</p>'}
+    ${done.length ? `<details class="individual-support-history" ${keepHistoryOpen ? 'open' : ''}><summary>完了した支援（${done.length}件）</summary>${done.map(recordHtml).join('')}</details>` : ''}`;
 }
 
 // 回の合計は全教科が入力済みのときだけ有効。一覧と推移で同じ判定を使う。
@@ -2900,13 +2943,13 @@ function termSeriesFor(sid, subject, kind = ui.rtiKind) {
 }
 
 // 生徒の判定値（得点率%）と直近の前回比を返す（テスト回ベース）
-function rtiRateFor(sid, subject, basis) {
-  const vals = termSeriesFor(sid, subject).rates.filter((v) => v != null);
+function rtiRateFor(sid, subject, basis, kind = ui.rtiKind) {
+  const vals = termSeriesFor(sid, subject, kind).rates.filter((v) => v != null);
   if (!vals.length) return { rate: null, delta: null };
   const useBasis = basis !== undefined ? basis : ui.rtiBasis;
   const rate = useBasis === 'avg' ? mean(vals) : vals[vals.length - 1];
   const subj = subject !== undefined ? subject : ui.rtiSubject;
-  const latest = sortTestsByTerm(data.tests.filter(t => t.subject === subj && testKindMatches(t, ui.rtiKind)))
+  const latest = sortTestsByTerm(data.tests.filter(t => t.subject === subj && testKindMatches(t, kind)))
     .filter(t => getAttendedScore(sid, t.id)?.total != null).at(-1);
   const previous = comparisonTarget(latest);
   const previousScore = previous && getAttendedScore(sid, previous.id);
@@ -2974,37 +3017,71 @@ function renderRti() {
 }
 
 /* ---- 支援記録 ---- */
-function openIvDialog(sid) {
+function openIvDialog(sid, context = {}) {
   const s = data.students.find((x) => x.id === sid);
   if (!s) return;
-  const { rate } = rtiRateFor(sid);
-  const tier = rtiTierOf(rate);
   $('ivDialogTitle').textContent = `支援の記録：${s.name}`;
-  $('ivStudentSummary').innerHTML =
-    `<strong>${esc(s.name)}</strong>（${esc(s.className || '')}）　現在の判定値：${rate != null ? round1(rate) + '%' : 'データなし'}${tier ? `・Tier ${tier}` : ''}`;
   $('ivTitle').value = '';
   $('ivNote').value = '';
   $('ivStart').value = localDateString();
   const subjects = subjectList();
   $('ivSubject').innerHTML = `<option value="all">全教科</option>` +
     subjects.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
-  $('ivSubject').value = ui.rtiSubject;
+  const subject = context.subject ?? ui.rtiSubject;
+  $('ivSubject').value = subject === 'all' || subjects.includes(subject) ? subject : 'all';
+  fillKindSelect('ivKind', context.kind ?? ui.rtiKind ?? 'all', true);
   $('ivForm').dataset.sid = sid;
+  $('ivForm').dataset.dataToken = String(activeDataToken);
+  refreshIvSummary();
   $('ivDialog').showModal();
+}
+
+function refreshIvSummary() {
+  const student = data.students.find(s => s.id === $('ivForm').dataset.sid);
+  if (!student) return;
+  const { rate } = rtiRateFor(student.id, $('ivSubject').value, 'latest', $('ivKind').value);
+  const number = student.number == null || student.number === '' ? '' : '・' + student.number + '番';
+  $('ivStudentSummary').textContent = `${student.name}（${student.className || 'クラス未設定'}${number}） ／ 開始時の水準：${rate == null ? 'データなし' : round1(rate) + '%'} ／ ${TEST_KINDS[$('ivKind').value] || '全種類'}`;
+}
+
+function refreshInterventionViews(message = '') {
+  if (ui.tab === 'trend') {
+    renderTrendSupport();
+    $('trendSupportStatus').textContent = message;
+  } else if (ui.tab === 'rti') renderRti();
 }
 
 function submitIvDialog(e) {
   e.preventDefault();
   const sid = $('ivForm').dataset.sid;
+  if ($('ivForm').dataset.dataToken !== String(activeDataToken) || !data.students.some(s => s.id === sid)) {
+    alert('開いているデータが変わりました。記録先の生徒を選び直してください。');
+    $('ivDialog').close();
+    return;
+  }
   const subject = $('ivSubject').value;
-  const { rate } = rtiRateFor(sid, subject, 'latest');
+  const kind = $('ivKind').value;
+  const title = $('ivTitle').value.trim();
+  const startDate = $('ivStart').value;
+  if (!title || !startDate || normalizeDateValue(startDate) !== startDate) {
+    alert('支援の内容と、実在する開始日を入力してください。');
+    return;
+  }
+  if ((subject !== 'all' && !subjectList().includes(subject)) || (kind !== 'all' && !Object.hasOwn(TEST_KINDS, kind))) {
+    alert('対象教科・テスト種類を選び直してください。');
+    return;
+  }
+  const { rate } = rtiRateFor(sid, subject, 'latest', kind);
+  const idBase = 'iv' + Date.now();
+  let id = idBase, suffix = 1;
+  while (data.interventions.some(iv => iv.id === id)) id = idBase + '-' + suffix++;
   const iv = {
-    id: 'iv' + Date.now(),
+    id,
     studentId: sid,
-    title: $('ivTitle').value.trim(),
+    title,
     subject,
-    kind: ui.rtiKind || 'all',
-    startDate: $('ivStart').value,
+    kind,
+    startDate,
     note: $('ivNote').value.trim(),
     baseline: rate != null ? round1(rate) : null, // 開始時の水準（効果確認の基準線）
     status: 'active',
@@ -3014,15 +3091,44 @@ function submitIvDialog(e) {
   ui.rtiSelectedIv = iv.id;
   markDirty();
   $('ivDialog').close();
-  renderRti();
+  refreshInterventionViews('支援を記録しました。右上の「保存」でJSONへ保存してください。');
+  if (ui.tab === 'trend') $('trendAddSupport').focus({ preventScroll: true });
+}
+
+function handleInterventionClick(e) {
+  const done = e.target.closest('.iv-done-btn');
+  const reopen = e.target.closest('.iv-reopen-btn');
+  const del = e.target.closest('.iv-del-btn');
+  const progress = e.target.closest('.iv-progress-btn');
+  const action = done || reopen || del || progress;
+  if (action) {
+    const iv = data.interventions.find(x => x.id === action.dataset.iv);
+    if (!iv) return;
+    if (e.currentTarget.id === 'trendSupportRecords' && (ui.trendSelected.size !== 1 || !ui.trendSelected.has(iv.studentId))) return;
+    if (progress) {
+      ui.rtiSelectedIv = iv.id;
+      document.querySelector('.tab-btn[data-tab="rti"]').click();
+      $('rtiProgressTitle').focus();
+      return;
+    }
+    if (del) {
+      if (!requireAdmin() || !confirm(`支援記録「${iv.title}」を削除しますか？`)) return;
+      data.interventions = data.interventions.filter(x => x.id !== iv.id);
+      if (ui.rtiSelectedIv === iv.id) ui.rtiSelectedIv = null;
+    } else if (done) { iv.status = 'done'; iv.endDate = localDateString(); }
+    else { iv.status = 'active'; delete iv.endDate; }
+    markDirty();
+    refreshInterventionViews(del ? '支援記録を削除しました。' : done ? '支援を完了にしました。' : '支援を再開しました。');
+    if (ui.tab === 'trend') $('trendAddSupport').focus({ preventScroll: true });
+    return;
+  }
+  const row = e.target.closest('.iv-row');
+  if (row) { ui.rtiSelectedIv = row.dataset.iv; renderRti(); resizeCharts(); }
 }
 
 function renderRtiLog() {
   const wrap = $('rtiLogWrap');
-  const ivs = [...data.interventions].sort((a, b) => {
-    if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
-    return (b.startDate || '').localeCompare(a.startDate || '');
-  });
+  const ivs = sortedInterventions();
   if (!ivs.length) {
     wrap.innerHTML = '<div class="table-empty">支援の記録はまだありません。上の生徒カードをクリックして追加します。</div>';
     return;
@@ -3981,37 +4087,14 @@ function init() {
   });
   $('ivForm').onsubmit = submitIvDialog;
   $('ivCancel').onclick = () => $('ivDialog').close();
-  $('rtiLogWrap').addEventListener('click', (e) => {
-    const done = e.target.closest('.iv-done-btn');
-    const reopen = e.target.closest('.iv-reopen-btn');
-    const del = e.target.closest('.iv-del-btn');
-    const row = e.target.closest('.iv-row');
-    if (done) {
-      const iv = data.interventions.find((x) => x.id === done.dataset.iv);
-      if (iv) { iv.status = 'done'; iv.endDate = localDateString(); markDirty(); renderRti(); }
-      return;
-    }
-    if (reopen) {
-      const iv = data.interventions.find((x) => x.id === reopen.dataset.iv);
-      if (iv) { iv.status = 'active'; delete iv.endDate; markDirty(); renderRti(); }
-      return;
-    }
-    if (del) {
-      if (!requireAdmin()) return;
-      const iv = data.interventions.find((x) => x.id === del.dataset.iv);
-      if (iv && confirm(`支援記録「${iv.title}」を削除しますか？`)) {
-        data.interventions = data.interventions.filter((x) => x.id !== iv.id);
-        if (ui.rtiSelectedIv === iv.id) ui.rtiSelectedIv = null;
-        markDirty(); renderRti();
-      }
-      return;
-    }
-    if (row) {
-      ui.rtiSelectedIv = row.dataset.iv;
-      renderRti();
-      resizeCharts();
-    }
-  });
+  $('ivSubject').onchange = refreshIvSummary;
+  $('ivKind').onchange = refreshIvSummary;
+  $('trendAddSupport').onclick = () => {
+    if (ui.trendSelected.size !== 1) return;
+    openIvDialog([...ui.trendSelected][0], { subject: ui.trendSubject === SUM_KEY ? 'all' : ui.trendSubject, kind: ui.trendKind || 'all' });
+  };
+  $('rtiLogWrap').addEventListener('click', handleInterventionClick);
+  $('trendSupportRecords').addEventListener('click', handleInterventionClick);
 
   // バックアップ・カルテ印刷
   $('backupBtn').onclick = backupJson;

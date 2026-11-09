@@ -1922,6 +1922,17 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
 .individual-comparison-heading { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px; }
 .individual-comparison-heading h3 { margin: 0; }
 .individual-comparison-heading .btn { white-space: normal; text-align: left; }
+.individual-support-record { padding: 12px; margin: 10px 0; border: 1px solid var(--border); border-radius: 7px; overflow-wrap: anywhere; }
+.individual-support-record-heading { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+.individual-support-record-heading h4 { margin: 0; font-size: 14px; }
+.individual-support-meta { color: var(--text-sub); font-size: 12px; line-height: 1.8; margin: 8px 0; }
+.individual-support-note { font-size: 13px; line-height: 1.8; white-space: pre-wrap; margin: 8px 0; }
+.individual-support-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.individual-support-actions .btn { white-space: normal; }
+.individual-support-list-title { margin: 12px 0 6px; font-size: 14px; }
+.individual-support-history { font-size: 13px; margin-top: 14px; }
+.individual-support-history > summary { cursor: pointer; font-weight: 600; color: var(--primary-dark); }
+#trendSupportStatus { font-size: 13px; line-height: 1.8; }
 .individual-group-reference { margin-top: 20px; padding: 16px; border-top: 1px solid var(--border-strong); background: var(--surface-2); border-radius: 7px; overflow-wrap: anywhere; }
 .individual-group-reference h4 { margin: 0 0 8px; font-size: 15px; }
 .individual-reference-label, .individual-reference-scope, .individual-reference-tests, .individual-reference-exclusion { font-size: 12px; line-height: 1.8; margin: 6px 0; color: var(--text-sub); }

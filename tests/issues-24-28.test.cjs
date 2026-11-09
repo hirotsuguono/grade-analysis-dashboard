@@ -23,7 +23,7 @@ function questions(d = fixture()) {
 function harness(d = fixture()) {
   const elements = {}, alerts = [];
   const element = id => elements[id] ||= {
-    innerHTML: '', textContent: '', hidden: false, classList: { toggle() {} },
+    innerHTML: '', textContent: '', hidden: false, dataset: {}, classList: { toggle() {} },
     closest() { return this; }, querySelector() { return this; }, querySelectorAll() { return []; },
   };
   const ctx = vm.createContext({ Blob, DecompressionStream, input: d, XLSX, console, CSS: { escape: s => s },

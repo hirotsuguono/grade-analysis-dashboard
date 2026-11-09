@@ -256,6 +256,18 @@
           <ul class="student-list" id="studentList"></ul>
         </aside>
         <div class="trend-main">
+          <div class="card individual-support" id="trendSupportCard">
+            <div class="individual-comparison-heading"><h3>個人への支援</h3>
+              <button type="button" class="btn btn-primary btn-sm" id="trendAddSupport" disabled>支援を追加</button>
+            </div>
+            <p id="trendSupportSummary" class="card-note"></p>
+            <div id="trendSupportBody" hidden>
+              <p class="card-note">教科・テストの選択にかかわらず、この生徒の支援記録をすべて表示します。RTIと同じ記録です。</p>
+              <div id="trendSupportRecords"></div>
+              <p class="card-note">追加・完了・再開した内容は、右上の「保存」でJSONへ保存してください。</p>
+              <p id="trendSupportStatus" role="status" aria-live="polite"></p>
+            </div>
+          </div>
           <div class="card individual-comparison" id="trendComparisonCard">
             <div class="individual-comparison-heading"><h3>本人の2回の変化</h3>
               <button type="button" class="btn btn-ghost btn-sm" id="trendUseOverview">概要と同じ比較にする</button>
@@ -430,7 +442,7 @@
       </div>
 
       <div class="card" id="rtiProgressCard" hidden>
-        <h3 id="rtiProgressTitle">支援対象の推移</h3>
+        <h3 id="rtiProgressTitle" tabindex="-1">支援対象の推移</h3>
         <p class="card-note">点線＝Tierしきい値と支援開始時の水準。開始後に伸びているかを確認します</p>
         <p class="rti-es-note" id="rtiEsNote"></p>
         <div class="chart chart-tall" id="rtiProgressChart"></div>
@@ -664,9 +676,12 @@
           <select id="ivSubject"></select>
         </label>
       </div>
+      <label>対象のテスト種類<select id="ivKind"></select></label>
+      <p class="form-note">開始時の水準は、選んだ教科・種類で点数がある直近回から計算する、記録時点の参考値です。開始日を過去にしても、当時の点数には戻りません。</p>
       <label>メモ（任意）
         <textarea id="ivNote" rows="3" placeholder="保護者連絡済み、家庭学習の様子など" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></textarea>
       </label>
+      <p class="form-note">記録後、右上の「保存」でJSONへ保存してください。</p>
       <div class="dialog-actions">
         <button type="button" class="btn btn-ghost" id="ivCancel">キャンセル</button>
         <button type="submit" class="btn btn-primary">記録する</button>
