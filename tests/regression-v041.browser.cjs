@@ -44,7 +44,8 @@ module.exports = async (parent, fixture) => {
       if (tab === 'trend') await page.locator('#studentList li').first().click();
     }
     const chartState = await page.evaluate(() => chartIds.flatMap(id => {
-      const inst = echarts.getInstanceByDom(document.getElementById(id));
+      const element = document.getElementById(id);
+      const inst = element && echarts.getInstanceByDom(element);
       if (!inst || !inst.getOption().series?.length) return [];
       const option = inst.getOption();
       const finite = value => typeof value === 'number' ? Number.isFinite(value) :

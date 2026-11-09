@@ -21,6 +21,7 @@ module.exports=async(page,original)=>{
     assert.match(await page.locator('.group-comparison').textContent(),/Holm補正/);
     const options=await page.evaluate(()=>echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart')).getOption());
     assert.equal(options.yAxis[0].min,0);assert.equal(options.yAxis[0].max,100);
+    assert.ok(options.tooltip.every(t=>t.renderMode==='richText'));
     assert.ok(Math.abs(options.series[0].data[3]-14.9975)<1e-9);assert.equal(options.series[1].data[3],28.75);
     assert.equal(await page.evaluate(()=>JSON.stringify(data)),before);
     await page.locator('#ovClass').selectOption('2年A組');
