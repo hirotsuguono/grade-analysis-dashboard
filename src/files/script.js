@@ -30,6 +30,7 @@ const ui = {
   anClass: 'all', anTest: '', anSubject: 'all',
   trendClass: 'all', trendSearch: '', trendSubject: '', trendKind: 'all',
   trendSelected: new Set(),
+  trendCompareTest: '', trendCompareFrom: null,
   metClass: 'all', metricId: '',
   corrX: '', corrY: '',
   listSubject: 'all', listClass: 'all', listMode: 'total', listHeat: true, listPivot: 60, listSort: null,
@@ -715,6 +716,7 @@ function applyJsonText(text, name, handle) {
     const lastTest = data.tests.length ? data.tests[data.tests.length - 1].id : '';
     ui.ovTest = ui.inTest = ui.anTest = lastTest;
     ui.trendSelected = new Set();
+    ui.trendCompareTest = ''; ui.trendCompareFrom = null;
     ui.trendSearch = '';
     ui.metricId = data.metrics.length ? data.metrics[0].id : '';
     ui.corrX = data.metrics.length ? 'm:' + data.metrics[0].id : (lastTest ? 't:' + lastTest : '');
@@ -1675,10 +1677,83 @@ function renderTrend() {
   const ids = new Set(data.students.map(s => s.id));
   for (const sid of ui.trendSelected) if (!ids.has(sid)) ui.trendSelected.delete(sid);
   renderStudentList();
+  renderTrendComparison();
   renderTrendChart();
   renderTrendDomainChart();
   // カルテ印刷は生徒1名選択時のみ
   $('printKarteBtn').disabled = ui.trendSelected.size !== 1;
+}
+
+// 個人の1組は記述値だけを表示する。グループの検定や効果量を転用しない。
+function individualTestScore(sid, test) {
+  const stored = getScore(sid, test.id);
+  if (stored?.absent) return { rate: null, total: null, reason: '欠席' };
+  const rec = getAttendedScore(sid, test.id);
+  if (!rec || rec.total == null) return { rate: null, total: null, reason: '未入力・入力途中' };
+  const max = test.maxScore;
+  if (!Number.isFinite(rec.total) || !Number.isFinite(max) || max <= 0 || rec.total < 0 || rec.total > max) {
+    return { rate: null, total: null, reason: '得点を確認してください' };
+  }
+  return { rate: rec.total / max * 100, total: rec.total, reason: '' };
+}
+
+function individualTestDetail(test) {
+  return [test.subject, test.date || '日付未設定', TEST_KINDS[test.kind] || '未分類', test.series || ''].filter(Boolean).join('・');
+}
+
+function renderTrendComparison() {
+  const scope = $('trendComparisonScope');
+  const controls = $('trendComparisonControls');
+  const result = $('trendComparisonResult');
+  const help = $('trendComparisonHelp');
+  controls.hidden = help.hidden = true;
+  result.innerHTML = '';
+  if (ui.trendSelected.size !== 1) {
+    scope.textContent = ui.trendSelected.size ? '本人の2回の変化を見るには、名簿の選択を1人にしてください。' : '名簿から生徒を1人選んでください。';
+    return;
+  }
+  const student = data.students.find(s => s.id === [...ui.trendSelected][0]);
+  if (!student) { scope.textContent = '名簿から生徒を選び直してください。'; return; }
+  scope.textContent = [student.name + 'さん', student.className || '', student.number == null || student.number === '' ? '' : student.number + '番', ui.trendSubject === SUM_KEY ? '全教科合計' : ui.trendSubject].filter(Boolean).join(' ／ ');
+  if (ui.trendSubject === SUM_KEY) {
+    result.textContent = '2回の比較は、左で教科を選ぶと表示できます。全教科合計の推移は下のグラフで確認できます。';
+    return;
+  }
+  const tests = sortTestsByTerm(data.tests.filter(t => t.subject === ui.trendSubject && testKindMatches(t, ui.trendKind)));
+  const after = tests.find(t => t.id === ui.trendCompareTest) || tests.at(-1);
+  if (!after) { result.textContent = '選択した教科・種類にテストがありません。'; return; }
+  if (after.id !== ui.trendCompareTest) { ui.trendCompareTest = after.id; ui.trendCompareFrom = null; }
+  const candidates = comparisonCandidates(after);
+  const beforeId = ui.trendCompareFrom === null ? comparisonTarget(after)?.id || '' : ui.trendCompareFrom;
+  const before = candidates.find(t => t.id === beforeId);
+  const option = t => `<option value="${esc(t.id)}">${esc(termKeyOf(t))}（${esc(individualTestDetail(t))}）</option>`;
+  $('trendCompareTest').innerHTML = tests.map(option).join('');
+  $('trendCompareTest').value = after.id;
+  $('trendCompareFrom').innerHTML = '<option value="">比較元を選択してください</option>' + candidates.map(option).join('');
+  $('trendCompareFrom').value = before?.id || '';
+  controls.hidden = help.hidden = false;
+  if (!before) {
+    result.textContent = candidates.length ? '比較元のテストを選択してください。自動で比較元が決まらない場合も、同じ教科の過去のテストを選べます。' : '同じ教科の過去のテストがないため、この回は比較できません。';
+    return;
+  }
+  const from = individualTestScore(student.id, before);
+  const to = individualTestScore(student.id, after);
+  const change = from.rate == null || to.rate == null ? null : to.rate - from.rate;
+  const reading = change == null
+    ? [from.reason ? '比較元は' + from.reason : '', to.reason ? '今回は' + to.reason : ''].filter(Boolean).join('、') + 'のため、2回を比較できません。'
+    : change > 0 ? 'この2回では、本人の得点率が上がっています。'
+    : change < 0 ? 'この2回では、本人の得点率が下がっています。' : 'この2回では、本人の得点率は同じです。';
+  const scoreCard = (test, score, position, label) => `<section class="individual-test" data-position="${position}"><h4>${label}</h4>
+    <p class="individual-test-title">${esc(termKeyOf(test))}</p><p class="individual-test-detail">${esc(individualTestDetail(test))}</p>
+    <p class="individual-value" data-stat="rate">${esc(comparisonNumber(score.rate))}${score.rate == null ? '' : '<small>%</small>'}</p>
+    <p class="individual-raw-score" data-stat="score">${score.rate == null ? esc(score.reason) : esc(comparisonNumber(score.total)) + ' / ' + esc(comparisonNumber(test.maxScore)) + '点'}</p></section>`;
+  const differentType = (before.kind || 'unclassified') !== (after.kind || 'unclassified') || (before.series || '').trim() !== (after.series || '').trim();
+  result.innerHTML = `<p class="individual-reading">${esc(reading)}</p><div class="individual-values">
+    ${scoreCard(before, from, 'before', '比較元')}${scoreCard(after, to, 'after', '今回')}
+    <section class="individual-change"><h4>得点率の変化</h4><p class="individual-test-detail">今回 − 比較元</p>
+    <p class="individual-value" data-stat="change">${esc(comparisonNumber(change, true))}<small>ポイント</small></p></section></div>
+    ${differentType ? '<p class="individual-type-note">種類・シリーズが異なります。比較に適した2回か確認してください。</p>' : ''}
+    <p class="comparison-caution">テストの範囲・難しさも変わるため、これだけで学力や指導の効果は判断できません。</p>`;
 }
 
 function renderStudentList() {
@@ -3702,7 +3777,9 @@ function init() {
   $('anSubject').onchange = (e) => { ui.anSubject = e.target.value; fillScopedTestSelect('anTest', 'anSubject', 'anTest'); renderAnalysis(); resizeCharts(); };
   $('anTest').onchange = (e) => { ui.anTest = e.target.value; renderAnalysis(); resizeCharts(); };
   $('trendClass').onchange = (e) => { ui.trendClass = e.target.value; renderTrend(); resizeCharts(); };
-  $('trendSubject').onchange = (e) => { ui.trendSubject = e.target.value; renderTrend(); resizeCharts(); };
+  $('trendSubject').onchange = (e) => { ui.trendSubject = e.target.value; ui.trendCompareTest = ''; ui.trendCompareFrom = null; renderTrend(); resizeCharts(); };
+  $('trendCompareTest').onchange = e => { ui.trendCompareTest = e.target.value; ui.trendCompareFrom = null; renderTrendComparison(); };
+  $('trendCompareFrom').onchange = e => { ui.trendCompareFrom = e.target.value; renderTrendComparison(); };
 
   // データ一覧
   $('listSubject').onchange = (e) => { ui.listSubject = e.target.value; ui.listSort = null; renderList(); };
@@ -3840,7 +3917,7 @@ function init() {
   $('cfCompare').onchange = refreshComparisonChoices;
   $('comparisonForm').onsubmit = submitComparisonForm;
   $('cfCloseBtn').onclick = () => $('comparisonDialog').close();
-  $('trendKind').onchange = event => { ui.trendKind = event.target.value; renderTrend(); };
+  $('trendKind').onchange = event => { ui.trendKind = event.target.value; ui.trendCompareTest = ''; ui.trendCompareFrom = null; renderTrend(); };
   $('rtiKind').onchange = event => { ui.rtiKind = event.target.value; renderRti(); };
   $('printKarteBtn').onclick = openKarteDialog;
   $('karteOptions').onchange = renderKartePreview;
