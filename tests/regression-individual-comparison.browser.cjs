@@ -20,8 +20,12 @@ module.exports = async (page, original) => {
   const change = card.locator('[data-stat="change"]');
   const selectStudent = async id => { await page.locator('#trendClearBtn').click(); await page.locator(`#studentList li[data-sid="${id}"]`).click(); };
   try {
+    await page.locator('[data-tab="overview"]').click();
     await page.evaluate(v => applyJsonText(JSON.stringify(v), 'fictional-individual.json', null), d);
     const saved = await page.evaluate(() => JSON.stringify(data));
+    await page.locator('[data-tab="overview"]').click();
+    await page.locator('#ovSubject').selectOption('数学');
+    await page.locator('#ovTest').selectOption('after');
     await page.locator('[data-tab="trend"]').click();
     assert.match(await card.textContent(), /生徒を1人選んで/);
     assert.equal(await page.locator('#trendComparisonControls').isVisible(), false);
@@ -80,13 +84,16 @@ module.exports = async (page, original) => {
     // Reopening JSON resets temporary pairs and does not keep stale student/test choices.
     await page.locator('#trendCompareFrom').selectOption('unit');
     await page.evaluate(v => applyJsonText(JSON.stringify(v), 'fictional-reopened.json', null), d);
+    await page.locator('#trendSubject').selectOption('数学');
     await selectStudent('one');
     assert.equal(await page.locator('#trendCompareFrom').inputValue(), 'before');
     // Explicit overview choices are respected, including an intentional lack of comparison.
-    await page.evaluate(() => { data.tests.find(t => t.id === 'after').compareTo = null; ui.trendCompareFrom = null; renderTrend(); });
+    await page.evaluate(() => { ui.ovTest = 'after'; ui.ovSubject = '数学'; data.tests.find(t => t.id === 'after').compareTo = null; ui.trendCompareFrom = null; renderTrend(); });
     assert.equal(await page.locator('#trendCompareFrom').inputValue(), '');
     assert.equal(await change.count(), 0);
     await page.evaluate(() => { data.tests.find(t => t.id === 'after').compareTo = 'unit'; renderTrend(); });
+    assert.equal(await page.locator('#trendCompareFrom').inputValue(), ''); // keep the local pair until explicitly synced
+    await page.locator('#trendUseOverview').click();
     assert.equal(await page.locator('#trendCompareFrom').inputValue(), 'unit');
     assert.match(await card.textContent(), /種類・シリーズが異なります/);
     await page.locator('#trendCompareFrom').selectOption('before');

@@ -1919,6 +1919,18 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
 /* Keep the compared tests and their shared population visible together. */
 .overview-context { margin: 0 0 12px; color: var(--text-sub); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
 .individual-comparison-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
+.individual-comparison-heading { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px; }
+.individual-comparison-heading h3 { margin: 0; }
+.individual-comparison-heading .btn { white-space: normal; text-align: left; }
+.individual-group-reference { margin-top: 20px; padding: 16px; border-top: 1px solid var(--border-strong); background: var(--surface-2); border-radius: 7px; overflow-wrap: anywhere; }
+.individual-group-reference h4 { margin: 0 0 8px; font-size: 15px; }
+.individual-reference-label, .individual-reference-scope, .individual-reference-tests, .individual-reference-exclusion { font-size: 12px; line-height: 1.8; margin: 6px 0; color: var(--text-sub); }
+.individual-reference-label { font-weight: 600; }
+.individual-reference-reading, .individual-reference-help { font-size: 13px; line-height: 1.8; margin-top: 12px; }
+.individual-reference-help summary { cursor: pointer; font-weight: 600; color: var(--primary-dark); }
+.individual-group-reference .group-summary-values > div { display: flex; flex-direction: column; }
+.individual-group-reference .group-summary-values dd { font-size: 22px; margin-top: auto; padding-top: 8px; }
+.individual-group-reference .group-summary-values dt { font-size: 13px; }
 .individual-comparison-controls label { min-width: 0; font-size: 13px; color: var(--text-sub); }
 .individual-comparison-controls select { display: block; width: 100%; margin-top: 6px; }
 .individual-reading { margin: 12px 0; line-height: 1.8; }

@@ -257,18 +257,21 @@
         </aside>
         <div class="trend-main">
           <div class="card individual-comparison" id="trendComparisonCard">
-            <h3>本人の2回の変化</h3>
+            <div class="individual-comparison-heading"><h3>本人の2回の変化</h3>
+              <button type="button" class="btn btn-ghost btn-sm" id="trendUseOverview">概要と同じ比較にする</button>
+            </div>
             <p id="trendComparisonScope" class="comparison-scope"></p>
             <div id="trendComparisonControls" class="individual-comparison-controls" hidden>
               <label>今回のテスト<select id="trendCompareTest"></select></label>
               <label>比較元のテスト<select id="trendCompareFrom"></select></label>
             </div>
             <div id="trendComparisonResult" aria-live="polite"></div>
+            <section id="trendGroupReference" class="individual-group-reference" aria-labelledby="trendGroupReferenceTitle" hidden></section>
             <details id="trendComparisonHelp" class="individual-comparison-help" hidden>
               <summary>数値の見方</summary>
               <p>得点率は「得点 ÷ 満点 × 100」です。変化は「今回 − 比較元」で、50%から60%なら＋10ポイントです。欠席・未入力は比較せず、0点は含めます。</p>
-              <p>1人の前後1組だけではt検定はできないため、ここにはp値や効果量を表示しません。グループの検定結果も、本人の変化の判定には使えません。</p>
-              <p>比較元の初期選択は、概要の比較設定と共通です。この画面で選び直しても、概要の設定や保存データは変わりません。今回のテストは左の教科・種類で絞り込み、比較元は同じ教科の過去のテストから選べます。</p>
+              <p>1人の前後1組だけではt検定はできないため、本人のp値や効果量は表示しません。参考欄のp値・効果量はグループの結果で、本人の変化の判定には使えません。</p>
+              <p>初めて個人推移を開くと、概要のテスト・比較元・クラスを引き継ぎます。「概要と同じ比較にする」で選び直すこともできます。この画面での変更は、概要の設定や保存データを変えません。今回のテストは教科・種類で絞り込み、比較元は同じ教科の過去のテストから選べます。</p>
               <p><a href="files/manual.html#individual-comparison" target="_blank" rel="noopener">使い方ガイド：本人の2回の変化</a></p>
             </details>
           </div>

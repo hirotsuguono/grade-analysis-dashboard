@@ -37,3 +37,26 @@ test('無効な得点・満点を率に変換しない', () => {
   for (const total of [-1, 51, '37', Infinity, NaN]) assert.equal(readScore({ total }).rate, null);
   for (const maxScore of [0, -1, null, '50', Infinity]) assert.equal(readScore({ total: 37 }, { id: 'exam', maxScore }).rate, null);
 });
+
+test('グループの共通読出しは未丸めの境界・欠測・0点を個人と同じ規則で扱う', () => {
+  const rates = [[60, 80], [59.999, 61], [40, 50], [39.999, 45], [0, 0], [55, null], [null, 60], [70, 90]];
+  const dataset = {
+    tests: [{ id: 'before', maxScore: 100 }, { id: 'after', maxScore: 100 }],
+    students: rates.map((_, i) => ({ id: 's' + i })),
+    scores: rates.flatMap(([before, after], i) => [
+      { studentId: 's' + i, testId: 'before', total: before },
+      { studentId: 's' + i, testId: 'after', total: after, absent: i === 7 }
+    ]), settings: { rti: { tier2: 60, tier3: 40 } }
+  };
+  const context = vm.createContext({ window: { addEventListener() {}, GD_PAIRED: require('../src/files/paired-comparison.js') }, document: { addEventListener() {} }, dataset });
+  const saved = JSON.stringify(dataset);
+  vm.runInContext(source + '\ndata=dataset;rebuildIndex();globalThis.result=groupComparisonData(data.students, data.tests[0], data.tests[1]);', context);
+  const r = JSON.parse(JSON.stringify(context.result));
+  assert.equal(r.pairs.length, 5);
+  assert.deepEqual(r.groups.map(g => g.n), [5, 1, 2, 2]);
+  assert.deepEqual(r.beforeCounts, { tier1: 2, tier2: 3, tier3: 2 });
+  assert.equal(r.missingBefore, 1); assert.equal(r.missingAfter, 2);
+  assert.deepEqual(r.pairs.at(-1), [0, 0]);
+  assert.equal(r.groups[1].pAdjusted, null);
+  assert.equal(JSON.stringify(dataset), saved);
+});

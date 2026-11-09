@@ -30,7 +30,7 @@ const ui = {
   anClass: 'all', anTest: '', anSubject: 'all',
   trendClass: 'all', trendSearch: '', trendSubject: '', trendKind: 'all',
   trendSelected: new Set(),
-  trendCompareTest: '', trendCompareFrom: null,
+  trendCompareTest: '', trendCompareFrom: null, trendComparisonStarted: false,
   metClass: 'all', metricId: '',
   corrX: '', corrY: '',
   listSubject: 'all', listClass: 'all', listMode: 'total', listHeat: true, listPivot: 60, listSort: null,
@@ -716,7 +716,7 @@ function applyJsonText(text, name, handle) {
     const lastTest = data.tests.length ? data.tests[data.tests.length - 1].id : '';
     ui.ovTest = ui.inTest = ui.anTest = lastTest;
     ui.trendSelected = new Set();
-    ui.trendCompareTest = ''; ui.trendCompareFrom = null;
+    ui.trendCompareTest = ''; ui.trendCompareFrom = null; ui.trendComparisonStarted = false;
     ui.trendSearch = '';
     ui.metricId = data.metrics.length ? data.metrics[0].id : '';
     ui.corrX = data.metrics.length ? 'm:' + data.metrics[0].id : (lastTest ? 't:' + lastTest : '');
@@ -1006,6 +1006,24 @@ function comparisonP(value) {
   return String(value);
 }
 
+// 概要と個人の参考欄は、同じ得点・対象者・固定4比較の補正を使う。
+function groupComparisonData(students, beforeTest, afterTest) {
+  const beforeCounts = { tier1: 0, tier2: 0, tier3: 0 };
+  let missingBefore = 0, missingAfter = 0;
+  const pairs = [];
+  for (const student of students) {
+    const before = individualTestScore(student.id, beforeTest).rate;
+    const after = individualTestScore(student.id, afterTest).rate;
+    if (before == null) { missingBefore++; continue; }
+    beforeCounts['tier' + rtiTierOf(before)]++;
+    if (after == null) { missingAfter++; continue; }
+    pairs.push([before, after]);
+  }
+  const groups = typeof window.GD_PAIRED?.groupedSummary === 'function'
+    ? window.GD_PAIRED.groupedSummary(pairs, data.settings.rti) : null;
+  return { pairs, groups, beforeCounts, missingBefore, missingAfter };
+}
+
 function groupComparisonHtml(groups, context) {
   if (!groups) return '<p class="form-note">統計計算用ファイルを読み込めません。アプリをすべて展開し直してください。</p>';
   const {beforeCounts,missingBefore,missingAfter,scopeCount,currentCount,beforeMax,afterMax} = context;
@@ -1119,17 +1137,9 @@ function renderOverview() {
   const prev = comparisonTarget(test);
   let groups = null;
   if (prev) {
-    const beforeCounts = {tier1:0,tier2:0,tier3:0};
-    let missingBefore = 0, missingAfter = 0;
-    const pairs = students.flatMap(student => {
-      const a = getAttendedScore(student.id, prev.id), b = getAttendedScore(student.id, test.id);
-      if (a?.total == null) { missingBefore++; return []; }
-      const before = a.total / prev.maxScore * 100;
-      beforeCounts['tier' + rtiTierOf(before)]++;
-      if (b?.total == null) { missingAfter++; return []; }
-      return [[before,b.total / test.maxScore * 100]];
-    });
-    if (typeof window.GD_PAIRED?.groupedSummary === 'function') groups = window.GD_PAIRED.groupedSummary(pairs,data.settings.rti);
+    const comparison = groupComparisonData(students, prev, test);
+    const { pairs, beforeCounts, missingBefore, missingAfter } = comparison;
+    groups = comparison.groups;
     const testSummary = (item, label, index) => {
       return `<div class="comparison-test" data-position="${index === 0 ? 'before' : 'after'}">
         <span class="comparison-test-label">${label}</span>
@@ -1674,6 +1684,7 @@ function deleteCurrentTest() {
 
 /* ========== 個人推移タブ ========== */
 function renderTrend() {
+  if (!ui.trendComparisonStarted) useOverviewComparison();
   const ids = new Set(data.students.map(s => s.id));
   for (const sid of ui.trendSelected) if (!ids.has(sid)) ui.trendSelected.delete(sid);
   renderStudentList();
@@ -1701,11 +1712,70 @@ function individualTestDetail(test) {
   return [test.subject, test.date || '日付未設定', TEST_KINDS[test.kind] || '未分類', test.series || ''].filter(Boolean).join('・');
 }
 
+function useOverviewComparison() {
+  ui.trendComparisonStarted = true;
+  const test = testById(ui.ovTest);
+  if (!test) return;
+  ui.trendSubject = test.subject;
+  ui.trendKind = 'all';
+  ui.trendClass = ui.ovClass;
+  ui.trendCompareTest = test.id;
+  ui.trendCompareFrom = comparisonTarget(test)?.id || '';
+  fillTrendSubjectSelect();
+  fillKindSelect('trendKind', ui.trendKind, true);
+  fillClassSelect($('trendClass'), ui.trendClass);
+}
+
+function renderIndividualGroupReference(student, before, after, from, to) {
+  const reference = $('trendGroupReference');
+  reference.hidden = false;
+  const heading = '<h4 id="trendGroupReferenceTitle">所属グループの結果（参考）</h4>';
+  const scope = studentsOf(ui.trendClass);
+  if (!scope.some(s => s.id === student.id)) {
+    reference.innerHTML = heading + '<p>選択中のクラスに本人が含まれていません。本人を含むクラス、または全クラスを選んでください。</p>';
+    return;
+  }
+  if (from.rate == null) {
+    reference.innerHTML = heading + '<p>比較元の得点率がないため、本人の所属グループを決められません。</p>';
+    return;
+  }
+  const tier = rtiTierOf(from.rate);
+  const groups = groupComparisonData(scope, before, after).groups;
+  if (!groups) {
+    reference.innerHTML = heading + '<p>統計計算用ファイルを読み込めません。アプリをすべて展開し直してください。</p>';
+    return;
+  }
+  const row = groups.find(g => g.tier === tier);
+  const { tier2, tier3 } = data.settings.rti;
+  const range = tier === 1 ? `${tier2}%以上` : tier === 2 ? `${tier3}%以上${tier2}%未満` : `${tier3}%未満`;
+  const className = ui.trendClass === 'all' ? '全クラス' : ui.trendClass;
+  reference.innerHTML = `${heading}<p class="individual-reference-label">以下はグループの集計です。本人の検定結果ではありません。</p>
+    <p class="individual-reference-scope">${esc(className)} ／ 比較元の得点率で分けた Tier ${tier}（${esc(range)}） ／ 両方受験 ${row.n}名</p>
+    <p class="individual-reference-tests">${esc(termKeyOf(before))} → ${esc(termKeyOf(after))}</p>
+    ${to.rate == null ? '<p class="individual-reference-exclusion">本人は今回の得点率がないため、このグループの比較人数には含まれていません。</p>' : ''}
+    <p class="individual-reference-reading">${esc(comparisonReading(row))}</p>
+    <dl class="group-summary-values">
+      <div><dt>平均変化量<small>ポイント</small></dt><dd data-stat="group-change">${esc(comparisonNumber(row.meanChange, true))}</dd></div>
+      <div><dt>p値<small>グループの前後差の判定用</small></dt><dd data-stat="group-p">${esc(comparisonP(row.pAdjusted))}</dd></div>
+      <div><dt>効果量<small>グループの変化の大きさ</small></dt><dd data-stat="group-dz">${esc(comparisonNumber(row.dz, true))}</dd></div>
+    </dl>
+    <details class="individual-reference-help"><summary>グループの数値の見方</summary>
+      <p>本人と同じ2つのテストを使い、選択中のクラス範囲で、比較元の得点率が同じTierの生徒を集計します。今回の得点率でグループを入れ替えません。欠席・未入力・入力途中を除き、両方に得点がある同じ生徒だけを比較します。0点は含めます。</p>
+      <p>平均変化量はグループの「今回 − 比較元」です。p値はグループの前後差を調べるt検定の結果で、0.05未満を前後差が認められる目安にしています。「&lt;0.001」は0.001より小さいという意味です。概要と同じく、全体と3グループを調べる分の調整は計算済みです。</p>
+      <p>効果量は変化量のばらつきを基準にしたグループの変化の大きさです。比較人数が0・1名、または変化量のばらつきがないなどの場合、p値や効果量は「—」となります。</p>
+      <p>グループで差が認められても、本人に同じ変化があったとは判断できません。差を確認しきれないことも、差がないという証明ではありません。この比較だけで、指導による変化かどうかは判断できません。</p>
+    </details>`;
+}
+
 function renderTrendComparison() {
   const scope = $('trendComparisonScope');
   const controls = $('trendComparisonControls');
   const result = $('trendComparisonResult');
   const help = $('trendComparisonHelp');
+  const reference = $('trendGroupReference');
+  reference.hidden = true;
+  reference.innerHTML = '';
+  $('trendUseOverview').disabled = !testById(ui.ovTest);
   controls.hidden = help.hidden = true;
   result.innerHTML = '';
   if (ui.trendSelected.size !== 1) {
@@ -1716,7 +1786,7 @@ function renderTrendComparison() {
   if (!student) { scope.textContent = '名簿から生徒を選び直してください。'; return; }
   scope.textContent = [student.name + 'さん', student.className || '', student.number == null || student.number === '' ? '' : student.number + '番', ui.trendSubject === SUM_KEY ? '全教科合計' : ui.trendSubject].filter(Boolean).join(' ／ ');
   if (ui.trendSubject === SUM_KEY) {
-    result.textContent = '2回の比較は、左で教科を選ぶと表示できます。全教科合計の推移は下のグラフで確認できます。';
+    result.textContent = '2回の比較は、教科を選ぶと表示できます。全教科合計の推移は下のグラフで確認できます。';
     return;
   }
   const tests = sortTestsByTerm(data.tests.filter(t => t.subject === ui.trendSubject && testKindMatches(t, ui.trendKind)));
@@ -1724,8 +1794,8 @@ function renderTrendComparison() {
   if (!after) { result.textContent = '選択した教科・種類にテストがありません。'; return; }
   if (after.id !== ui.trendCompareTest) { ui.trendCompareTest = after.id; ui.trendCompareFrom = null; }
   const candidates = comparisonCandidates(after);
-  const beforeId = ui.trendCompareFrom === null ? comparisonTarget(after)?.id || '' : ui.trendCompareFrom;
-  const before = candidates.find(t => t.id === beforeId);
+  if (ui.trendCompareFrom === null) ui.trendCompareFrom = comparisonTarget(after)?.id || '';
+  const before = candidates.find(t => t.id === ui.trendCompareFrom);
   const option = t => `<option value="${esc(t.id)}">${esc(termKeyOf(t))}（${esc(individualTestDetail(t))}）</option>`;
   $('trendCompareTest').innerHTML = tests.map(option).join('');
   $('trendCompareTest').value = after.id;
@@ -1754,6 +1824,7 @@ function renderTrendComparison() {
     <p class="individual-value" data-stat="change">${esc(comparisonNumber(change, true))}<small>ポイント</small></p></section></div>
     ${differentType ? '<p class="individual-type-note">種類・シリーズが異なります。比較に適した2回か確認してください。</p>' : ''}
     <p class="comparison-caution">テストの範囲・難しさも変わるため、これだけで学力や指導の効果は判断できません。</p>`;
+  renderIndividualGroupReference(student, before, after, from, to);
 }
 
 function renderStudentList() {
@@ -2760,6 +2831,7 @@ async function submitSettingsDialog(e) {
   $('settingsDialog').close();
   if (ui.tab === 'rti') renderRti();
   else if (ui.tab === 'overview') renderOverview();
+  else if (ui.tab === 'trend') renderTrendComparison();
 }
 
 /* ========== 支援（RTI）タブ ========== */
@@ -3780,6 +3852,7 @@ function init() {
   $('trendSubject').onchange = (e) => { ui.trendSubject = e.target.value; ui.trendCompareTest = ''; ui.trendCompareFrom = null; renderTrend(); resizeCharts(); };
   $('trendCompareTest').onchange = e => { ui.trendCompareTest = e.target.value; ui.trendCompareFrom = null; renderTrendComparison(); };
   $('trendCompareFrom').onchange = e => { ui.trendCompareFrom = e.target.value; renderTrendComparison(); };
+  $('trendUseOverview').onclick = () => { useOverviewComparison(); renderTrend(); resizeCharts(); };
 
   // データ一覧
   $('listSubject').onchange = (e) => { ui.listSubject = e.target.value; ui.listSort = null; renderList(); };
