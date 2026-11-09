@@ -1659,6 +1659,9 @@ body:not(.is-admin) .admin-only {
   margin: 12px 0;
 }
 .es-help-details > summary { cursor: pointer; margin: 12px 0; color: var(--primary-dark); font-weight: 600; }
+.es-help-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.es-help-heading h2 { margin: 0; }
+.es-help-heading .btn { flex-shrink: 0; }
 
 .es-table th,
 .es-table td {
