@@ -17,9 +17,9 @@ function fixture() {
 }
 function harness(d=fixture()) {
   const elements={};const element=id=>elements[id]||={innerHTML:'',textContent:'',hidden:false,closest(){return this},querySelectorAll(){return []},querySelector(){return this}};
-  const ctx=vm.createContext({input:d,window:{addEventListener(){}},document:{addEventListener(){},getElementById:element},alert(){},confirm(){return true;}});
+  const ctx=vm.createContext({input:d,window:{addEventListener(){},GD_PAIRED:require('../src/files/paired-comparison.js')},document:{addEventListener(){},getElementById:element},alert(){},confirm(){return true;}});
   vm.runInContext(source+`\ndata=input;rebuildIndex();chart=()=>({setOption(){},clear(){}});renderAll=()=>{};markDirty=()=>{};
-    globalThis.api={comparisonTarget,validateDataset,rtiRateFor,termSeriesFor,trendAxis,renderOverview,deleteCurrentTest,
+    globalThis.api={comparisonTarget,comparisonNumber,comparisonP,validateDataset,rtiRateFor,termSeriesFor,trendAxis,renderOverview,deleteCurrentTest,
       run(code){return eval(code)},getData(){return data},ui};`,ctx);
   return {api:ctx.api,elements,element};
 }
@@ -47,7 +47,7 @@ test('満点が違う比較は得点率差と両方受験した人数を示し�
   d.scores.find(r=>r.testId==='c'&&r.studentId==='s3').total=null;
   h.api.renderOverview();
   assert.match(h.element('ovComparison').innerHTML,/両方受験 2名/);
-  assert.match(h.element('ovComparison').innerHTML,/得点率差 0ポイント/);
+  assert.match(h.element('ovComparison').innerHTML,/全体の平均変化 0ポイント/);
   assert.match(h.element('ovComparison').innerHTML,/今回の受験者3名/);
   assert.equal((h.element('ovComparison').innerHTML.match(/<strong>25%<\/strong>/g)||[]).length,2);
   assert.match(h.element('kpiGrid').innerHTML,/平均点[\s\S]*?43\.3/);
@@ -70,13 +70,24 @@ test('比較人数が1人・0人のときも0点と未入力を区別し、対�
   for(const score of d.scores)if(score.studentId!=='s0')score.absent=true;
   h.api.renderOverview();let html=h.element('ovComparison').innerHTML;
   assert.match(html,/両方受験 1名/);assert.equal((html.match(/<strong>0%<\/strong>/g)||[]).length,2);
-  assert.match(html,/比較人数が不足/);assert.doesNotMatch(html,/得点率差|効果量 dz/);
+  assert.match(html,/全体の平均変化 0ポイント/);assert.doesNotMatch(html,/class="btn btn-ghost es-link comparison-effect"/);
   d.scores.find(r=>r.testId==='a'&&r.studentId==='s0').total=null;
   h.api.renderOverview();html=h.element('ovComparison').innerHTML;
   assert.match(html,/両方受験 0名/);assert.equal((html.match(/<strong>—<\/strong>/g)||[]).length,2);
   h.api.ui.ovTest='missing';h.api.renderOverview();
   assert.equal(h.element('ovComparison').hidden,true);assert.equal(h.element('ovComparison').innerHTML,'');
   assert.equal(h.element('ovSummaryContext').textContent,'');
+});
+test('比較の表示丸めで小さい非ゼロ値やp値の0.05前後を消さず、差の正負を対称に示す',()=>{
+  const {api}=harness();
+  for(const value of [0.0496,0.0504,0.049999999999,0.050000000001,0.05]){
+    const shown=Number(api.comparisonP(value));assert.equal(shown<0.05,value<0.05);assert.equal(shown>0.05,value>0.05);
+  }
+  assert.equal(api.comparisonP(0),'\u003c0.001');assert.equal(api.comparisonP(null),'—');
+  for(const value of [0.004,1e-13,1.125]){
+    const positive=Number(api.comparisonNumber(value,true)),negative=Number(api.comparisonNumber(-value,true));
+    assert.ok(positive>0);assert.equal(positive,-negative);
+  }
 });
 test('保存JSONの種類・系列・比較相手を検証し、旧JSONを推測で分類しない',()=>{
   for(const version of [1,2,3]) {
