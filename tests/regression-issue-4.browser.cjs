@@ -15,6 +15,7 @@ module.exports = async function checkRtiTermAlignment(page, fixture) {
         await page.locator('#rtiLogWrap [data-iv="iv"]').first().click();
         assert.equal(await page.locator('#rtiEsNote').isVisible(), true);
         assert.match(await page.locator('#rtiEsNote').textContent(), /直近 80%.*\+0\.67/);
+        assert.doesNotMatch(await page.locator('#rtiEsNote').textContent(), /（(?:ごく小さい|小|中|大)(?:伸び|低下|変化)/);
         const option = await page.evaluate(() => {
           const chart = echarts.getInstanceByDom(document.getElementById('rtiProgressChart')).getOption();
           return { labels: chart.xAxis[0].data, student: chart.series[0].data, average: chart.series[1].data };

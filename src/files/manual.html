@@ -210,6 +210,8 @@
       white-space: nowrap;
     }
 
+    .effect-location-table th { white-space: normal; }
+
     .steps {
       counter-reset: step;
       list-style: none;
@@ -572,19 +574,39 @@
       </table>
       <div class="warn"><strong>相関≠因果。</strong>「読書量と読解力に相関がある」ことは「読書をさせれば読解力が上がる」ことを保証しません。指導の仮説づくりの材料として使ってください。</div>
 
-      <h3>効果量とカイ二乗検定</h3>
+      <h3 id="effect-size-guide">効果量の見方</h3>
+      <p><strong>効果量は、点数のばらつきを物差しにした、差や変化の大きさです。</strong>平均が何点変わったかと合わせて確認します。同じ生徒の前後比較では、＋は上昇、−は低下を表します。</p>
+      <p>この値だけで、はっきりした差があるか、指導による変化かは判断できません。人数や点数のばらつき、表示されている検定結果も合わせて確認してください。概要のグループ比較では、<a href="#group-comparison">前後比較の読み取りと検定結果</a>を確認できます。</p>
+      <table class="effect-location-table">
+        <thead><tr><th>表示する場所</th><th>見ている差や変化</th></tr></thead>
+        <tbody>
+          <tr><td>概要：全体・Tier別の前後比較</td><td>同じ生徒の前後の得点率の変化</td></tr>
+          <tr><td>概要：クラス間の差</td><td>クラス同士の平均点の差</td></tr>
+          <tr><td>分野・問題分析</td><td>同じ生徒の分野別の得点率の変化</td></tr>
+          <tr><td>支援（RTI）：個人の参考値</td><td>現在のクラスのばらつきを物差しにした、本人の直近までの変化（参考値）</td></tr>
+          <tr><td>相関分析</td><td>アンケートの高評価群と低評価群の平均点の差</td></tr>
+        </tbody>
+      </table>
+      <p>前後比較・グループ間の比較・個人の参考値では、計算の物差しが異なります。異なる方法の値をそのまま横並びには比較できません。画面の「効果量とは？」や、下線のある効果量の値から説明を開けます。</p>
+      <details id="effect-size-sources">
+        <summary>計算方法・目安・出典を確認</summary>
+        <ul>
+          <li><strong>別グループの比較（d）：</strong>平均点の差を、両グループ内の点数のばらつき（プールした標本標準偏差）で割ります。</li>
+          <li><strong>同じ生徒の前後比較（dz）：</strong>一人ずつの得点率の差を求め、その平均を、差の標本標準偏差で割ります。</li>
+          <li><strong>支援画面の個人の標準化変化量：</strong>開始時から本人に点数がある直近回までの得点率の差を、現在のクラスのメンバーについて同じ回の得点率の標本標準偏差で割るアプリ独自の参考値です。過去の所属クラスは使いません。d や dz と同じ値ではなく、大小の分類は付けません。</li>
+        </ul>
+        <p>Cohen（1992, Table 1, p. 157）の独立した2群の d の目安は、小＝0.2・中＝0.5・大＝0.8です。本アプリの「ごく小さい／小／中／大」は、この値を境にした便宜的な区分です。絶対値で 0.2未満／0.2以上0.5未満／0.5以上0.8未満／0.8以上と表示します。原典の表をそのまま転載したものではなく、普遍的な判定基準でもありません。前後比較の dz や個人の参考値に一律には当てはめません。</p>
+        <p>小さい値でも誤差とは限らず、大きい値でも指導の効果の証明にはなりません。本アプリの値を「何年分の学習効果」に換算する計算はありません。</p>
+        <h4>説明の根拠と参考文献</h4>
+        <p>リンク先は外部サイトです（オンライン）。それぞれ、次の説明の根拠として参照しています。</p>
+        <ul>
+          <li><strong>d の目安：</strong>Cohen, J. (1992). A power primer. <cite>Psychological Bulletin, 112</cite>(1), 155–159. Table 1（p. 157）. DOI: <a href="https://doi.org/10.1037/0033-2909.112.1.155" target="_blank" rel="noopener">10.1037/0033-2909.112.1.155</a>。</li>
+          <li><strong>前後比較の dz の定義：</strong>Lakens, D. (2013). Calculating and reporting effect sizes to facilitate cumulative science: a practical primer for t-tests and ANOVAs. <cite>Frontiers in Psychology, 4</cite>, 863. DOI: <a href="https://doi.org/10.3389/fpsyg.2013.00863" target="_blank" rel="noopener">10.3389/fpsyg.2013.00863</a>。dz の定義を参照しており、本アプリや教育的な判定基準全体を推奨する資料という意味ではありません。</li>
+          <li><strong>p値と効果の大きさの区別：</strong>American Statistical Association. (2016, March 7). <a href="https://www.amstat.org/asa/files/pdfs/P-ValueStatement.pdf" target="_blank" rel="noopener">声明公表資料（6つの原則）</a>。原則5では、p値や統計的有意性は効果の大きさ・重要性を示すものではないと説明しています。</li>
+        </ul>
+      </details>
+      <h3>カイ二乗検定</h3>
       <table>
-        <tr>
-          <th>効果量（Cohen's d）</th>
-          <td><strong>変化や差の大きさを、点数のばらつきを物差しにして測り直した標準化指標</strong>です。「平均が3点上がった」が大きい変化なのか誤差なのかを判断できます。目安：±0.2未満＝ごく小さい／0.5前後＝中くらい／0.8以上＝大きい。教育介入では d=0.4 前後が「1年間の通常授業以上の効果」の目安とされます（Hattie）。<br><br>
-          アプリでは次の<strong>5か所</strong>に自動表示されます：<br>
-          ① <strong>概要</strong>：平均点の前回比（クラス全体の伸びの大きさ）<br>
-          ② <strong>概要</strong>：クラス間の差（1組と3組の差は大きいのか）<br>
-          ③ <strong>分野・問題分析</strong>：前回比で伸びた／下がった分野<br>
-          ④ <strong>支援（RTI）</strong>：支援開始後の個人の伸び（クラスのばらつき基準）<br>
-          ⑤ <strong>相関分析</strong>：アンケート高評価群と低評価群の平均点差<br>
-          画面上の「効果量とは？」や d の値をクリックすると、いつでも説明が読めます</td>
-        </tr>
         <tr>
           <th>カイ二乗検定</th>
           <td>「相関分析」で横軸に<strong>5段階アンケート</strong>、縦軸に<strong>テスト</strong>を選ぶと、回答×成績帯（低・中・高）のクロス集計表と検定結果が自動表示されます。5段階のようなカテゴリデータでは相関係数より適切な方法です。「関連あり（5%水準で有意）」＝偶然では説明しにくい偏りがある、という意味。関連の強さは Cramér's V（0.1未満=ごく弱い／0.3=弱い／0.5=中程度）で示します</td>

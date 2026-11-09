@@ -2916,9 +2916,8 @@ function renderRtiProgress() {
       const sd = sampleSd(clsRates);
       if (sd > 0) {
         const dval = (latest - iv.baseline) / sd;
-        const dir = dval >= 0.2 ? '伸び' : dval <= -0.2 ? '低下' : '変化';
         esNote = `開始時 ${esc(iv.baseline)}% → 直近 ${round1(latest)}%（${latest >= iv.baseline ? '+' : ''}${round1(latest - iv.baseline)}pt）。` +
-          `直近クラスのばらつきを物差しにした標準化変化量は <strong>${esFmt(dval)}</strong>（${esLabel(dval)}${dir}・参考値）` +
+          `現在のクラスのばらつきを物差しにした標準化変化量は <strong>${esFmt(dval)}</strong>（個人の変化を見る参考値）` +
           `<span class="es-link">効果量とは？</span>`;
       }
     }
@@ -3774,6 +3773,7 @@ function init() {
     if (e.target.closest('.es-link')) $('esHelpDialog').showModal();
   });
   $('esHelpClose').onclick = () => $('esHelpDialog').close();
+  $('esHelpCloseTop').onclick = () => $('esHelpDialog').close();
 
   // 権限（管理者モード）
   $('roleBtn').onclick = () => {

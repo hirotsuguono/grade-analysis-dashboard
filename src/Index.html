@@ -550,16 +550,30 @@
   <!-- 効果量の説明ダイアログ -->
   <dialog id="esHelpDialog">
     <div class="dialog-form">
-      <h2>効果量（Cohen's d / dz）とは</h2>
-      <p>「平均が5点上がった」——それが<strong>大きな変化なのか、誤差の範囲なのか</strong>は、点数だけでは分かりません。みんなが60点前後に固まっている集団での5点と、20〜90点までバラバラな集団での5点は、意味がまったく違うからです。</p>
-      <p><strong>効果量は、変化や差を「点数のばらつき（標準偏差）」を物差しにして測り直した値</strong>です。別集団の比較には d、同じ生徒の前後比較には差分を基準にした dz を表示します。</p>
-      <table class="es-table">
-        <tr><th>d = ±0.2 未満</th><td>ごく小さい（誤差の可能性が高い）</td></tr>
-        <tr><th>d = 0.2〜0.5</th><td>小さい変化</td></tr>
-        <tr><th>d = 0.5〜0.8</th><td>中くらいの変化（体感できる差）</td></tr>
-        <tr><th>d = 0.8 以上</th><td>大きな変化</td></tr>
-      </table>
-      <p class="form-note">※ 効果量は「大きさ」の指標であって、授業や支援が原因だったことの証明ではありません。テストの難易度や受験者が違う場合、単純比較はできません。人数が少ないときは参考程度に扱ってください。</p>
+      <div class="es-help-heading">
+        <h2>効果量の見方</h2>
+        <button type="button" class="btn btn-ghost" id="esHelpCloseTop">閉じる</button>
+      </div>
+      <div class="es-help-intro">
+        <p><strong>効果量は、点数のばらつきを物差しにした、差や変化の大きさです。</strong>平均が何点変わったかと合わせて確認します。</p>
+        <p>同じ生徒の前後比較では、＋は上昇、−は低下を表します。別のグループを比べる場合や、支援画面で個人の変化を見る場合は、計算の物差しが異なります。</p>
+        <p><strong>この値だけで、はっきりした差があるか、指導による変化かは判断できません。</strong>人数や点数のばらつき、表示されている検定結果も合わせて確認してください。</p>
+      </div>
+      <details class="es-help-details">
+        <summary>計算方法と目安を見る</summary>
+        <p>別グループの比較には、両グループ内の点数のばらつきを使う d を表示します。同じ生徒の前後比較には、一人ずつの得点率の差のばらつきを使う dz を表示します。</p>
+        <p>支援画面の個人の標準化変化量は、現在のクラスのメンバーについて、本人に点数がある直近回のばらつきを使うアプリ独自の参考値です。d や dz と同じ値ではありません。異なる計算方法の値を、そのまま横並びには比較できません。</p>
+        <table class="es-table">
+          <caption>別グループの比較で使う d の絶対値の目安</caption>
+          <tr><th>0.2 未満</th><td>ごく小さい差</td></tr>
+          <tr><th>0.2 以上 0.5 未満</th><td>小さい差</td></tr>
+          <tr><th>0.5 以上 0.8 未満</th><td>中くらいの差</td></tr>
+          <tr><th>0.8 以上</th><td>大きい差</td></tr>
+        </table>
+        <p class="form-note">Cohen（1992）の小＝0.2・中＝0.5・大＝0.8を境にした本アプリの便宜的な区分です。原典の表をそのまま転載したものではなく、普遍的な判定基準でもありません。前後比較の dz や個人の参考値に一律には当てはめません。</p>
+        <p class="form-note">小さい値でも誤差とは限らず、大きい値でも指導の効果の証明にはなりません。本アプリの値を「何年分の学習効果」に換算する計算はありません。</p>
+      </details>
+      <p class="form-note"><a href="files/manual.html#effect-size-guide" target="_blank" rel="noopener">出典と詳しい説明（使い方ガイド）</a></p>
       <div class="dialog-actions">
         <button type="button" class="btn btn-primary" id="esHelpClose">閉じる</button>
       </div>
