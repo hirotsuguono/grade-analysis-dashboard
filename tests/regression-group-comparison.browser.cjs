@@ -9,11 +9,23 @@ module.exports=async(page,original)=>{
     scores:[],metrics:[],interventions:[],settings:{rti:{tier2:60,tier3:40},adminPinHash:null}};
   for(let i=0;i<rates.length;i++)for(let j=0;j<2;j++)d.scores.push({studentId:d.students[i].id,testId:d.tests[j].id,total:rates[i][j]===null?50:rates[i][j]/100*d.tests[j].maxScore,absent:rates[i][j]===null});
   const reset=async()=>{await page.evaluate(v=>applyJsonText(JSON.stringify(v),'fictional-groups.json',null),d);await page.locator('[data-tab="overview"]').click();await page.locator('#ovSubject').selectOption('数学');await page.locator('#ovTest').selectOption('after');await page.locator('#ovClass').selectOption('all');};
-  const cell=(key,stat)=>page.locator(`#ovComparison tr[data-group="${key}"] td[data-stat="${stat}"]`);
+  const card=key=>page.locator(`#ovComparison .group-summary-card[data-group="${key}"]`);
+  const cell=(key,stat)=>['before','after','ci'].includes(stat)
+    ?page.locator(`#ovComparison tr[data-group-detail="${key}"] td[data-stat="${stat}"]`)
+    :card(key).locator(`[data-stat="${stat}"]`);
   const n=async(key,value)=>assert.match(await cell(key,'n').textContent(),new RegExp('^'+value+'名'));
   try{
     await reset();const before=await page.evaluate(()=>JSON.stringify(data));
-    assert.equal(await page.locator('#ovComparison tr[data-group]').count(),4);
+    assert.equal(await page.locator('#ovComparison .group-summary-card').count(),4);
+    assert.equal(await page.locator('.group-comparison-details').evaluate(e=>e.open),false);
+    assert.equal(await cell('all','ci').isVisible(),false);
+    assert.equal(await page.locator('#ovGroupComparisonChart').isVisible(),false);
+    assert.equal(await page.evaluate(()=>!!echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart'))),false);
+    assert.equal(await card('all').locator('dd').count(),3);
+    for(const stat of ['change','p','dz'])assert.equal(await cell('all',stat).isVisible(),true);
+    await page.locator('.group-comparison-details > summary').click();
+    await page.waitForFunction(()=>!!echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart')));
+    assert.equal(await cell('all','ci').isVisible(),true);
     await n('all',13);await n('tier1',6);await n('tier2',3);await n('tier3',4);
     assert.match(await cell('all','before').textContent(),/53\.08%/);
     assert.match(await cell('all','after').textContent(),/61\.15%/);
@@ -29,23 +41,25 @@ module.exports=async(page,original)=>{
     assert.equal(await cell('tier1','before').textContent(),'70%');assert.equal(await cell('tier1','after').textContent(),'75%');
     assert.ok(!(await cell('tier2','p').textContent()).includes('—'));
     await page.locator('#ovClass').selectOption('2年B組');await n('all',3);
-    assert.equal(await cell('all','ci').textContent(),'—');assert.match(await cell('all','p').textContent(),/ばらつきなし/);
+    assert.equal(await cell('all','ci').textContent(),'—');assert.equal(await cell('all','p').textContent(),'—');assert.match(await card('all').locator('.group-stat-status').textContent(),/ばらつきなし/);
     const emptyBars=await page.evaluate(()=>echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart')).getOption().series.map(s=>s.data.slice(2)));
     assert.deepEqual(emptyBars,[[null,null],[null,null]]);
     await page.locator('#ovClass').selectOption('2年C組');await n('all',1);
     assert.equal(await cell('all','before').textContent(),'0%');assert.equal(await cell('all','change').textContent(),'+10');
-    assert.match(await cell('all','p').textContent(),/比較1名/);
+    assert.equal(await cell('all','p').textContent(),'—');assert.match(await card('all').locator('.group-stat-status').textContent(),/比較1名/);
     await page.locator('#ovClass').selectOption('all');
     await page.evaluate(()=>{ui.rtiBasis='avg';ui.rtiSubject='数学';renderOverview();});await n('tier1',6);
     await page.evaluate(()=>{data.settings.rti={tier3:40.5,tier2:60.5};renderOverview();});
     await n('tier1',5);await n('tier2',3);await n('tier3',5);
-    assert.match(await page.locator('tr[data-group="tier2"] th').textContent(),/40\.5%以上60\.5%未満/);
+    assert.match(await page.locator('tr[data-group-detail="tier2"] th').textContent(),/40\.5%以上60\.5%未満/);
     await page.locator('#ovClass').selectOption('2年B組');
     await page.evaluate(()=>{for(let i=12;i<15;i++)data.scores.find(r=>r.studentId==='group-'+i&&r.testId==='after').total=90+[0.005,0.006,0.007][i-12];renderOverview();});
     const smallInterval=(await cell('all','ci').textContent()).split('～').map(Number);
     assert.ok(smallInterval[0]>0&&smallInterval[1]>smallInterval[0]);
     assert.ok(Number(await cell('all','p').textContent())<0.05);
     await reset();
+    await page.locator('.group-comparison-details > summary').click();
+    assert.equal(await page.locator('.group-comparison-details').evaluate(e=>e.open),false);
     const view=page.viewportSize();
     for(const width of [320,768,1280]){
       await page.setViewportSize({width,height:1000});
@@ -56,6 +70,7 @@ module.exports=async(page,original)=>{
     await page.setViewportSize(view);
     await page.locator('.group-comparison-details > summary').focus();await page.keyboard.press('Enter');
     assert.equal(await page.locator('.group-comparison-details').evaluate(e=>e.open),true);
+    await page.waitForFunction(()=>!!echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart')));
     const popup=page.waitForEvent('popup');await page.locator('.group-comparison-details a').click();
     const guide=await popup;await guide.waitForLoadState();assert.ok(guide.url().endsWith('/files/manual.html#group-comparison'));assert.equal(await guide.locator('#group-comparison').count(),1);await guide.close();
     const saved=await download(page);assert.deepEqual(saved.scores,d.scores);assert.deepEqual(saved.students,d.students);assert.deepEqual(saved.tests,d.tests);

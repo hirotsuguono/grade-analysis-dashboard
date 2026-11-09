@@ -11,7 +11,7 @@ module.exports=async(page,fixture)=>{
   assert.match(await page.locator('#ovComparison').textContent(),/両方受験 6名/);
   assert.equal(await page.locator('#ovComparison [data-position="before"] .comparison-test-title').textContent(),'架空期末1');
   assert.equal(await page.locator('#ovComparison [data-position="after"] .comparison-test-title').textContent(),'架空期末2');
-  assert.match(await page.locator('#ovComparison').textContent(),/全体の平均変化 0ポイント/);
+  assert.equal(await page.locator('.group-summary-card[data-group="all"] [data-stat="change"]').textContent(),'0');
   await page.locator('#ovComparisonBtn').click();await page.locator('#cfCompare').selectOption('none');
   await page.locator('#comparisonForm button[type="submit"]').click();
   assert.equal(await page.locator('#ovComparison').isVisible(),false);

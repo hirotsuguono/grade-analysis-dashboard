@@ -1922,17 +1922,24 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
 .comparison-test-label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700; color: var(--text-sub); }
 .comparison-test-title { display: block; font-size: 16px; }
 .comparison-test-detail { display: block; margin-top: 6px; font-size: 12px; color: var(--text-sub); }
-.comparison-test-rate { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-sub); }
-.comparison-test-rate strong { margin-left: 8px; color: var(--text); font-size: 23px; font-variant-numeric: tabular-nums; }
 .comparison-arrow { align-self: center; text-align: center; font-size: 24px; color: var(--text-sub); }
-.comparison-result { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 16px; }
-.comparison-result .kpi-delta { margin: 0; font-size: 19px; }
-.comparison-direction { font-size: 12px; color: var(--text-sub); }
-.comparison-effect { white-space: normal; text-align: left; }
 .comparison-population, .comparison-caution { margin: 12px 0 0; color: var(--text-sub); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
 .comparison-caution { margin-top: 4px; }
 .group-comparison { margin-top: 24px; border-top: 1px solid var(--border-strong); padding-top: 20px; }
 .group-comparison h4 { margin: 0 0 8px; font-size: 16px; }
+.group-test-method { margin: 0 0 10px; color: var(--primary-dark); font-size: 13px; font-weight: 600; }
+.group-summary-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.group-summary-card { min-width: 0; padding: 16px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-2); }
+.group-summary-card[data-group="all"] { background: var(--primary-light); border-color: #a8c2e8; }
+.group-summary-card h5 { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 14px; font-size: 15px; }
+.group-summary-card h5 span { font-size: 12px; font-weight: 400; color: var(--text-sub); }
+.group-summary-values { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin: 0; }
+.group-summary-values > div { min-width: 0; }
+.group-summary-values dt { font-size: 13px; color: var(--text-sub); }
+.group-summary-values small { display: block; font-size: 11px; line-height: 1.7; }
+.group-summary-values dd { margin: 8px 0 0; font-size: 22px; font-weight: 700; line-height: 1.4; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.group-stat-status { margin: 12px 0 0; font-size: 12px; color: var(--text-sub); }
+.group-summary-guide { margin: 12px 0 0; font-size: 12px; line-height: 1.8; color: var(--text-sub); }
 .group-comparison-intro, .group-comparison-note, .group-comparison-caution { font-size: 13px; line-height: 1.8; color: var(--text-sub); overflow-wrap: anywhere; }
 .group-comparison-intro { margin: 0 0 16px; }
 .group-comparison-chart { height: 260px; margin-bottom: 12px; }
@@ -1957,8 +1964,9 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
 @media (max-width: 600px) {
   .comparison-tests { grid-template-columns: 1fr; gap: 8px; }
   .comparison-arrow { transform: rotate(90deg); }
-  .comparison-result { align-items: flex-start; flex-direction: column; }
   .comparison-test { padding: 12px; }
+  .group-summary-grid { grid-template-columns: 1fr; }
+  .group-summary-card { padding: 14px 12px; }
 }
 
 /* Teaching notes remain ordinary text, including long words and line breaks. */
