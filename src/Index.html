@@ -266,14 +266,18 @@
               <label>比較元のテスト<select id="trendCompareFrom"></select></label>
             </div>
             <div id="trendComparisonResult" aria-live="polite"></div>
-            <section id="trendGroupReference" class="individual-group-reference" aria-labelledby="trendGroupReferenceTitle" hidden></section>
             <details id="trendComparisonHelp" class="individual-comparison-help" hidden>
-              <summary>数値の見方</summary>
+              <summary>本人の数値の見方</summary>
               <p>得点率は「得点 ÷ 満点 × 100」です。変化は「今回 − 比較元」で、50%から60%なら＋10ポイントです。欠席・未入力は比較せず、0点は含めます。</p>
+              <p>「同じTierの平均との差」は、本人の変化量から、同じグループの平均変化量を引いた値です。＋なら平均を上回り、−なら平均を下回ります。本人が＋19ポイント、平均が＋5.25ポイントなら、平均との差は＋13.75ポイントです。</p>
+              <p>「変化の相対位置」は、この平均との差をグループの変化量のばらつきで割った参考値です。0が平均、＋は平均より大きい変化、−は平均より小さい変化です。SDは標準偏差の単位で、＋1 SDは平均から標準偏差1個分の位置を表します。本人の得点率が下がっていても、グループ平均より低下が小さければ＋になります。効果量や個人の検定結果ではなく、±2などを有意差の判定基準にはしません。</p>
+              <p>比較の基準は本人を含む同じTierの両方受験者です。本人だけの場合は平均との差を出さず、変化の相対位置は3名から表示します。3名以上でも信頼性が保証されるわけではなく、人数や分布の偏りに影響されます。変化量のばらつきがない場合などは「—」となります。</p>
+              <p>平均との差と相対位置は、同じ差を異なる単位で表しています。</p>
               <p>1人の前後1組だけではt検定はできないため、本人のp値や効果量は表示しません。参考欄のp値・効果量はグループの結果で、本人の変化の判定には使えません。</p>
               <p>初めて個人推移を開くと、概要のテスト・比較元・クラスを引き継ぎます。「概要と同じ比較にする」で選び直すこともできます。この画面での変更は、概要の設定や保存データを変えません。今回のテストは教科・種類で絞り込み、比較元は同じ教科の過去のテストから選べます。</p>
               <p><a href="files/manual.html#individual-comparison" target="_blank" rel="noopener">使い方ガイド：本人の2回の変化</a></p>
             </details>
+            <section id="trendGroupReference" class="individual-group-reference" aria-labelledby="trendGroupReferenceTitle" hidden></section>
           </div>
           <div class="card">
             <h3>得点の推移（クラス平均と比較）</h3>

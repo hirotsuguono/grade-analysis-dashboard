@@ -1726,29 +1726,52 @@ function useOverviewComparison() {
   fillClassSelect($('trendClass'), ui.trendClass);
 }
 
-function renderIndividualGroupReference(student, before, after, from, to) {
-  const reference = $('trendGroupReference');
-  reference.hidden = false;
-  const heading = '<h4 id="trendGroupReferenceTitle">所属グループの結果（参考）</h4>';
+function individualComparisonContext(student, before, after, from, to) {
+  const context = { row: null, gap: null, position: null, reason: '', positionReason: '' };
   const scope = studentsOf(ui.trendClass);
   if (!scope.some(s => s.id === student.id)) {
-    reference.innerHTML = heading + '<p>選択中のクラスに本人が含まれていません。本人を含むクラス、または全クラスを選んでください。</p>';
-    return;
+    context.reason = '選択中のクラスに本人が含まれていません。本人を含むクラス、または全クラスを選んでください。';
+    return context;
   }
   if (from.rate == null) {
-    reference.innerHTML = heading + '<p>比較元の得点率がないため、本人の所属グループを決められません。</p>';
-    return;
+    context.reason = '比較元の得点率がないため、本人の所属グループを決められません。';
+    return context;
   }
   const tier = rtiTierOf(from.rate);
   const groups = groupComparisonData(scope, before, after).groups;
   if (!groups) {
-    reference.innerHTML = heading + '<p>統計計算用ファイルを読み込めません。アプリをすべて展開し直してください。</p>';
-    return;
+    context.reason = '統計計算用ファイルを読み込めません。アプリをすべて展開し直してください。';
+    return context;
   }
   const row = groups.find(g => g.tier === tier);
   const { tier2, tier3 } = data.settings.rti;
-  const range = tier === 1 ? `${tier2}%以上` : tier === 2 ? `${tier3}%以上${tier2}%未満` : `${tier3}%未満`;
-  const className = ui.trendClass === 'all' ? '全クラス' : ui.trendClass;
+  Object.assign(context, { row, tier, range: tier === 1 ? `${tier2}%以上` : tier === 2 ? `${tier3}%以上${tier2}%未満` : `${tier3}%未満`,
+    className: ui.trendClass === 'all' ? '全クラス' : ui.trendClass });
+  if (to.rate == null) {
+    context.positionReason = '本人の今回の得点率がないため、平均との差と位置は表示できません。';
+  } else if (row.n < 2) {
+    context.positionReason = '比較できる生徒が本人だけのため、平均との差と位置は表示しません。';
+  } else {
+    context.gap = to.rate - from.rate - row.meanChange;
+    if (row.n < 3) {
+      context.positionReason = '比較人数が2名のため、変化の相対位置は表示しません。このアプリでは3名から表示します。';
+    } else if (row.status !== 'ok' || !(row.sdChange > 0)) {
+      context.positionReason = '変化量のばらつきがないか計算精度以下のため、変化の相対位置は表示できません。';
+    } else {
+      const position = context.gap / row.sdChange;
+      if (Number.isFinite(position)) context.position = position;
+      else context.positionReason = '計算に必要な数値を確認できないため、変化の相対位置は表示できません。';
+    }
+  }
+  return context;
+}
+
+function renderIndividualGroupReference(before, after, to, context) {
+  const reference = $('trendGroupReference');
+  reference.hidden = false;
+  const heading = '<h4 id="trendGroupReferenceTitle">所属グループの結果（参考）</h4>';
+  if (context.reason) { reference.innerHTML = heading + `<p>${esc(context.reason)}</p>`; return; }
+  const { row, tier, range, className } = context;
   reference.innerHTML = `${heading}<p class="individual-reference-label">以下はグループの集計です。本人の検定結果ではありません。</p>
     <p class="individual-reference-scope">${esc(className)} ／ 比較元の得点率で分けた Tier ${tier}（${esc(range)}） ／ 両方受験 ${row.n}名</p>
     <p class="individual-reference-tests">${esc(termKeyOf(before))} → ${esc(termKeyOf(after))}</p>
@@ -1808,6 +1831,7 @@ function renderTrendComparison() {
   }
   const from = individualTestScore(student.id, before);
   const to = individualTestScore(student.id, after);
+  const context = individualComparisonContext(student, before, after, from, to);
   const change = from.rate == null || to.rate == null ? null : to.rate - from.rate;
   const reading = change == null
     ? [from.reason ? '比較元は' + from.reason : '', to.reason ? '今回は' + to.reason : ''].filter(Boolean).join('、') + 'のため、2回を比較できません。'
@@ -1818,13 +1842,22 @@ function renderTrendComparison() {
     <p class="individual-value" data-stat="rate">${esc(comparisonNumber(score.rate))}${score.rate == null ? '' : '<small>%</small>'}</p>
     <p class="individual-raw-score" data-stat="score">${score.rate == null ? esc(score.reason) : esc(comparisonNumber(score.total)) + ' / ' + esc(comparisonNumber(test.maxScore)) + '点'}</p></section>`;
   const differentType = (before.kind || 'unclassified') !== (after.kind || 'unclassified') || (before.series || '').trim() !== (after.series || '').trim();
-  result.innerHTML = `<p class="individual-reading">${esc(reading)}</p><div class="individual-values">
-    ${scoreCard(before, from, 'before', '比較元')}${scoreCard(after, to, 'after', '今回')}
-    <section class="individual-change"><h4>得点率の変化</h4><p class="individual-test-detail">今回 − 比較元</p>
-    <p class="individual-value" data-stat="change">${esc(comparisonNumber(change, true))}<small>ポイント</small></p></section></div>
+  const relativeReading = context.gap == null ? '' : context.gap > 0 ? '変化量は、同じTierの平均を上回っています。'
+    : context.gap < 0 ? '変化量は、同じTierの平均を下回っています。' : '同じTierの平均と同じ変化量です。';
+  const scopeNote = context.row ? `${context.className} ／ 比較元の Tier ${context.tier} ／ 両方受験 ${context.row.n}名${to.rate == null ? '' : '（本人を含む）'}` : '';
+  result.innerHTML = `<div class="individual-test-context">${scoreCard(before, from, 'before', '比較元')}${scoreCard(after, to, 'after', '今回')}</div>
+    <p class="individual-reading">${esc(reading)}${esc(relativeReading)}</p>
+    ${scopeNote ? `<p class="individual-metrics-scope">比較の基準：${esc(scopeNote)}</p>` : ''}<div class="individual-values">
+    <section class="individual-change"><h4>本人の変化</h4><p class="individual-test-detail">得点率：今回 − 比較元</p>
+    <p class="individual-value" data-stat="change">${esc(comparisonNumber(change, true))}<small>ポイント</small></p></section>
+    <section><h4>同じTierの平均との差</h4><p class="individual-test-detail">本人の変化 − 平均変化</p>
+    <p class="individual-value" data-stat="gap">${esc(comparisonNumber(context.gap, true))}<small>ポイント</small></p></section>
+    <section><h4>変化の相対位置（参考）</h4><p class="individual-test-detail">0が平均、＋は平均より大きい変化</p>
+    <p class="individual-value" data-stat="position">${esc(comparisonNumber(context.position, true))}${context.position == null ? '' : '<small>SD</small>'}</p></section></div>
+    ${context.reason || context.positionReason ? `<p class="individual-metrics-note">${esc(context.reason || context.positionReason)}</p>` : ''}
     ${differentType ? '<p class="individual-type-note">種類・シリーズが異なります。比較に適した2回か確認してください。</p>' : ''}
-    <p class="comparison-caution">テストの範囲・難しさも変わるため、これだけで学力や指導の効果は判断できません。</p>`;
-  renderIndividualGroupReference(student, before, after, from, to);
+    <p class="comparison-caution">相対位置はグループ内での比較用の参考値です。テストの範囲・難しさも変わるため、個人の有意差や指導効果を判定するものではありません。</p>`;
+  renderIndividualGroupReference(before, after, to, context);
 }
 
 function renderStudentList() {
