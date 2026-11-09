@@ -62,6 +62,21 @@ module.exports=async(page,original)=>{
     assert.ok(options.tooltip.every(t=>t.renderMode==='richText'));
     assert.ok(Math.abs(options.series[0].data[3]-14.9975)<1e-9);assert.equal(options.series[1].data[3],28.75);
     assert.equal(await page.evaluate(()=>JSON.stringify(data)),before);
+    // Saving thresholds through Settings must refresh the comparison without switching tabs or filters.
+    await page.locator('#roleBtn').click();await page.locator('#adminPinInput').fill('2468');await page.locator('#adminSubmit').click();
+    await page.waitForFunction(()=>isAdmin);
+    const settings=async tier2=>{
+      await page.locator('#settingsBtn').click();await page.locator('#setTier3').fill('40');await page.locator('#setTier2').fill(tier2);
+      await page.locator('#settingsForm button[type="submit"]').click();
+    };
+    await settings('70');await n('tier1',5);await n('tier2',4);await n('tier3',4);
+    assert.equal(await cell('tier1','before').textContent(),'84%');assert.equal(await cell('tier1','after').textContent(),'92%');
+    assert.equal(await cell('tier1','change').textContent(),'+8');
+    assert.match(await page.locator('tr[data-group-detail="tier1"] th').textContent(),/70%以上/);
+    assert.deepEqual(await page.evaluate(()=>echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart')).getOption().series.map(s=>s.data[1])),[84,92]);
+    assert.equal(await page.locator('#ovTest').inputValue(),'after');assert.equal(await page.locator('#ovClass').inputValue(),'all');
+    assert.deepEqual(await page.evaluate(()=>data.scores),d.scores);
+    await settings('60');await n('tier1',6);await n('tier2',3);await n('tier3',4);
     await page.locator('#ovClass').selectOption('2年A組');
     await n('all',9);await n('tier1',3);await n('tier2',3);await n('tier3',3);
     assert.equal(await cell('tier1','before').textContent(),'70%');assert.equal(await cell('tier1','after').textContent(),'75%');

@@ -2684,6 +2684,7 @@ async function submitSettingsDialog(e) {
   markDirty();
   $('settingsDialog').close();
   if (ui.tab === 'rti') renderRti();
+  else if (ui.tab === 'overview') renderOverview();
 }
 
 /* ========== 支援（RTI）タブ ========== */
