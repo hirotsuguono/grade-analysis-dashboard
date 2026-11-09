@@ -983,6 +983,17 @@ function comparisonDecision(value) {
   return value < COMPARISON_ALPHA ? '帰無仮説を棄却' : '棄却できず';
 }
 
+function comparisonReading(row) {
+  if (row.n === 0 || !Number.isFinite(row.meanChange)) return '比較できる点数がありません。';
+  const trend = row.meanChange > 0 ? '平均得点率は上がっています。'
+    : row.meanChange < 0 ? '平均得点率は下がっています。' : '平均得点率は変わっていません。';
+  if (row.n < 2) return trend + '比較が1名のため、差を検定できません。';
+  const decision = comparisonDecision(row.pAdjusted);
+  if (decision === '判定不可') return trend + (row.status === 'constant'
+    ? '全員の変化量が同じか、ばらつきがごく小さいため、差を検定できません。' : '検定に必要な数値を計算できません。');
+  return trend + (decision === '帰無仮説を棄却' ? '統計上も前後差が認められました。' : '前後差は確認しきれていません。');
+}
+
 function comparisonP(value) {
   if (value == null) return '—';
   if (value < 0.001) return '<0.001';
@@ -1014,37 +1025,53 @@ function groupComparisonHtml(groups, context) {
   }).join('');
   const cards = groups.map(row => `<article class="group-summary-card" data-group="${row.key}" aria-labelledby="group-summary-${row.key}">
     <h5 id="group-summary-${row.key}">${labels[row.key]}<span data-stat="n">${row.n}名</span></h5>
+    <p class="group-reading" data-stat="reading">${comparisonReading(row)}</p>
     <dl class="group-summary-values">
       <div><dt>平均変化量<small>ポイント</small></dt><dd data-stat="change">${esc(comparisonNumber(row.meanChange,true))}</dd></div>
-      <div><dt>p値<small>補正済み</small></dt><dd><span data-stat="p">${esc(comparisonP(row.pAdjusted))}</span><small class="group-test-decision" data-stat="decision">${comparisonDecision(row.pAdjusted)}</small></dd></div>
-      <div><dt>効果量<small>dz</small></dt><dd data-stat="dz">${esc(comparisonNumber(row.dz,true))}</dd></div>
-    </dl>${statusText(row) ? `<p class="group-stat-status">${statusText(row)}</p>` : ''}</article>`).join('');
-  const details = groups.map(row => `<tr><th scope="row">${labels[row.key]}</th><td>${esc(comparisonNumber(row.t))}</td><td>${row.df ?? '—'}</td><td>${esc(comparisonP(row.p))}</td><td>${esc(comparisonNumber(row.dz))}</td></tr>`).join('');
+      <div><dt>p値<small>前後差の判定用</small></dt><dd data-stat="p">${esc(comparisonP(row.pAdjusted))}</dd></div>
+      <div><dt>効果量<small>変化の大きさ</small></dt><dd data-stat="dz">${esc(comparisonNumber(row.dz,true))}</dd></div>
+    </dl></article>`).join('');
+  const details = groups.map(row => `<tr data-group-calculation="${row.key}"><th scope="row">${labels[row.key]}</th><td>${esc(comparisonNumber(row.t))}</td><td>${row.df ?? '—'}</td><td>${esc(comparisonP(row.p))}</td><td>${esc(comparisonNumber(row.dz))}</td><td data-stat="decision">${comparisonDecision(row.pAdjusted)}</td></tr>`).join('');
   return `<section class="group-comparison" aria-labelledby="groupComparisonTitle">
-    <h4 id="groupComparisonTitle">全体・事前のTier別の変化</h4><p class="group-test-method">対応のあるt検定（両側）</p>
-    <p class="group-comparison-intro">まず平均変化量で、変化の向きと大きさを確認します。比較元の得点率で層を固定し、同じ生徒の前後を比べています。</p>
-    <div class="group-test-criteria"><strong>判定基準：5％水準</strong><p>帰無仮説は「前後の得点率の平均変化は0」です。補正済みp値が0.05未満なら棄却、0.05以上なら棄却できません。</p></div>
+    <h4 id="groupComparisonTitle">全体・事前のTier別の変化</h4><p class="group-test-method">同じ生徒の前後を比較</p>
+    <p class="group-comparison-intro">前のテストの得点率でグループを分けています。今回の点数ではグループを入れ替えていません。</p>
     <div class="group-summary-grid">${cards}</div>
-    <p class="group-summary-guide">平均変化量は「今回 − 比較元」。p値はt検定の補正済み結果、効果量dzは変化量のばらつきを基準にした大きさです。</p>
-    <p class="group-comparison-caution">「棄却できず」は「差がない」という証明ではありません。この結果だけで指導の効果あり／なしは判断できません。</p>
+    <details class="group-reading-help"><summary>数値の見方</summary>
+      <p>平均変化量は「今回 − 比較元」です。＋なら上昇、−なら低下を表します。50%から55%になった場合は＋5ポイントです。</p>
+      <p>p値は、前後差を調べるt検定の結果です。0.05未満を「統計上も前後差が認められる」目安にしています。全体と3グループを調べる分の調整は計算済みです。「&lt;0.001」は「0.001より小さい」という意味です。</p>
+      <p>効果量は、変化量のばらつきを基準にした変化の大きさです。＋なら上昇、−なら低下を表します。p値と合わせて確認し、指導の成果をこの値だけで判断しないでください。</p>
+      <p>「前後差を確認しきれない」は「差がない」という証明ではありません。人数や点数のばらつきによっても結果は変わります。</p>
+    </details>
+    <p class="group-comparison-caution">得点の変化を示す参考情報です。指導による変化かどうかは、この比較だけでは判断できません。</p>
     <details class="group-comparison-details"><summary>詳細を表示</summary>
-    <p>丸める前の比較元の得点率と、現在のRTIしきい値（${esc(tier3)}%・${esc(tier2)}%）で層を固定しています。今回の点数では層を入れ替えません。</p>
+    <p>グループの区切りは、現在の設定では${esc(tier3)}%・${esc(tier2)}%です。前のテストの得点率で分けます。</p>
     <p>比較元は${esc(beforeMax)}点満点、今回は${esc(afterMax)}点満点です。得点率に直して比較します。</p>
     <p class="comparison-population">概要の平均点は今回の受験者${currentCount}名、ここでの比較は両方を受験した${groups[0].n}名が対象です。</p>
     <div id="ovGroupComparisonChart" class="chart group-comparison-chart"></div>
     <p class="group-scroll-hint">表は横にスクロールできます。</p>
     <div class="group-table-scroll" role="region" aria-label="全体・Tier別の前後比較表" tabindex="0">
       <table class="group-comparison-table"><caption>両方受験した同じ生徒の得点率で比較（差＝今回 − 比較元）</caption>
-      <thead><tr><th scope="col">グループ</th><th scope="col">比較人数</th><th scope="col">比較元の平均</th><th scope="col">今回の平均</th><th scope="col">平均変化<br>ポイント</th><th scope="col">変化の95%信頼区間<br>ポイント・各行未補正</th><th scope="col">t検定のp値<br>両側・Holm補正</th></tr></thead><tbody>${rows}</tbody></table>
+      <thead><tr><th scope="col">グループ</th><th scope="col">比較人数</th><th scope="col">比較元の平均</th><th scope="col">今回の平均</th><th scope="col">平均変化<br>ポイント</th><th scope="col">平均変化の推定範囲<br>ポイント</th><th scope="col">判定に使うp値</th></tr></thead><tbody>${rows}</tbody></table>
     </div>
-    <p class="group-comparison-note">比較元の点数なし${missingBefore}名は層分け対象外、比較元のみ点数あり${missingAfter}名は前後比較対象外です。欠席・未入力を除き、0点は含みます。</p>
+    <p class="group-comparison-note">比較元の点数なし${missingBefore}名はグループ分け対象外、比較元のみ点数あり${missingAfter}名は前後比較対象外です。欠席・未入力を除き、0点は含みます。</p>
+    <details class="group-interval-help"><summary>平均変化の推定範囲の説明を見る</summary>
+      <p>平均変化の推定に、どのくらい幅があるかを表します。狭いほど推定の不確かさが小さくなります。例えば＋2～＋8なら上昇する範囲、−1～＋8なら低下・変化なし・上昇を含む範囲です。生徒一人ひとりの変化の範囲ではありません。</p>
+      <p>この範囲は各グループで個別に計算しています。p値は複数の検定をまとめて調整しているため、範囲が0を含まなくても前後差を確認しきれない場合があります。この画面の判定には、右端のp値を使います。</p>
+    </details>
+    <details class="group-p-help"><summary>判定に使うp値の説明を見る</summary>
+      <p>同じ生徒の前後差を調べた結果で、0.05未満を「統計上も前後差が認められる」目安にしています。全体と3グループの計4回を調べると、どこかで誤って差があると判断する機会が増えるため、その分を調整しています。表示したp値は調整済みです。</p>
+      <p>p値は変化の大きさや、指導が効いた確率ではありません。上がったか下がったかは平均変化量で確認します。グループ同士の差を検定したものでもありません。</p>
+    </details>
+    <details class="group-calculation-details"><summary>詳しい計算方法・統計用語を確認</summary>
+    <div class="group-test-criteria"><strong>判定基準：5％水準</strong><p>帰無仮説は「前後の得点率の平均変化は0」です。丸める前の補正済みp値が0.05未満なら棄却、0.05以上なら棄却できません。算出できない場合は判定不可です。</p></div>
     <p class="group-comparison-note">p値は全体と3層の計4比較でHolm補正しています。95%信頼区間は各行ごとの未補正区間のため、0を含まなくても補正p値が0.05以上になることがあります。</p>
       <p>得点率の変化を確認する探索的な比較です。テストの範囲・難しさや平均への回帰の影響があり、この結果だけで指導の効果やTier間の効果差は判断できません。</p>
       <p>対応のある両側t検定で、同じ生徒の「今回 − 比較元」の平均変化が0という仮説を検討します。変化が生徒間で独立であること、特に少人数では変化量の分布が極端に偏らず外れ値の影響が大きくないことが前提です。学級全体に共通する影響や欠測による偏りも考慮してください。</p>
       <p>有意差がないことは「指導の効果がない」ことを意味しません。また、各層のp値を比べるだけでは層間の変化の違いは検証できません。事前得点で層分けすると、初回に低かった層の上昇や高かった層の低下に、平均への回帰が混ざることがあります。</p>
       <p>0名では記述値も表示せず、1名では平均と差だけを表示します。変化量が全員同じ、またはばらつきが計算精度以下の場合は、信頼区間・p値・効果量を算出しません。極めて小さい数値は指数表記で示します。</p>
-      <p>下表は補正前の数値です。上表のHolm補正は、この画面の4比較に対するものです。テスト・クラス・しきい値を変更して繰り返す探索全体は補正しません。信頼区間は平均変化の推定の不確かさを示すもので、個々の生徒の変化の範囲や、4比較を同時に保証する区間ではありません。しきい値を変更すると、比較元の得点率から層を分け直します。</p>
-      <div class="group-table-scroll"><table class="group-comparison-table group-detail-table"><caption>計算の詳細（p値は両側・未補正）</caption><thead><tr><th scope="col">グループ</th><th scope="col">t値</th><th scope="col">自由度</th><th scope="col">p値・未補正</th><th scope="col">効果量 dz</th></tr></thead><tbody>${details}</tbody></table></div>
+      <p>下表のp値は補正前で、判定欄は補正済みp値に基づきます。上表のHolm補正は、この画面の4比較に対するものです。テスト・クラス・しきい値を変更して繰り返す探索全体は補正しません。信頼区間は平均変化の推定の不確かさを示すもので、個々の生徒の変化の範囲や、4比較を同時に保証する区間ではありません。しきい値を変更すると、比較元の得点率から層を分け直します。</p>
+      <div class="group-table-scroll"><table class="group-comparison-table group-detail-table"><caption>計算の詳細</caption><thead><tr><th scope="col">グループ</th><th scope="col">t値</th><th scope="col">自由度</th><th scope="col">p値・両側・未補正</th><th scope="col">効果量 dz</th><th scope="col">判定<br>補正済みp値・5％水準</th></tr></thead><tbody>${details}</tbody></table></div>
+    </details>
       <p><a href="files/manual.html#group-comparison" target="_blank" rel="noopener">使い方ガイド：グループの前後比較</a></p>
     </details></section>`;
 }

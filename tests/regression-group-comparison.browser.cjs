@@ -10,7 +10,9 @@ module.exports=async(page,original)=>{
   for(let i=0;i<rates.length;i++)for(let j=0;j<2;j++)d.scores.push({studentId:d.students[i].id,testId:d.tests[j].id,total:rates[i][j]===null?50:rates[i][j]/100*d.tests[j].maxScore,absent:rates[i][j]===null});
   const reset=async()=>{await page.evaluate(v=>applyJsonText(JSON.stringify(v),'fictional-groups.json',null),d);await page.locator('[data-tab="overview"]').click();await page.locator('#ovSubject').selectOption('数学');await page.locator('#ovTest').selectOption('after');await page.locator('#ovClass').selectOption('all');};
   const card=key=>page.locator(`#ovComparison .group-summary-card[data-group="${key}"]`);
-  const cell=(key,stat)=>['before','after','ci'].includes(stat)
+  const cell=(key,stat)=>stat==='decision'
+    ?page.locator(`#ovComparison tr[data-group-calculation="${key}"] td[data-stat="decision"]`)
+    :['before','after','ci'].includes(stat)
     ?page.locator(`#ovComparison tr[data-group-detail="${key}"] td[data-stat="${stat}"]`)
     :card(key).locator(`[data-stat="${stat}"]`);
   const n=async(key,value)=>assert.match(await cell(key,'n').textContent(),new RegExp('^'+value+'名'));
@@ -23,13 +25,33 @@ module.exports=async(page,original)=>{
     assert.equal(await page.evaluate(()=>!!echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart'))),false);
     assert.equal(await card('all').locator('dd').count(),3);
     for(const stat of ['change','p','dz'])assert.equal(await cell('all',stat).isVisible(),true);
-    assert.equal(await page.locator('.group-test-criteria').isVisible(),true);
+    assert.equal(await page.locator('.group-test-criteria').isVisible(),false);
+    assert.equal(await page.locator('.group-reading-help').evaluate(e=>e.open),false);
+    assert.doesNotMatch(await page.locator('.group-summary-grid').textContent(),/帰無仮説|棄却|Holm|信頼区間|自由度|\bdz\b/);
+    assert.match(await cell('all','reading').textContent(),/上がっています。前後差は確認しきれていません/);
+    assert.match(await cell('tier3','reading').textContent(),/上がっています。統計上も前後差が認められました/);
+    await page.locator('.group-reading-help > summary').click();
+    assert.equal(await page.locator('.group-reading-help p').first().isVisible(),true);
+    assert.match(await page.locator('.group-reading-help').textContent(),/0\.05未満.*0\.001より小さい/s);
+    await page.locator('.group-reading-help > summary').click();
     assert.match(await page.locator('.group-test-criteria').textContent(),/5％水準.*前後の得点率の平均変化は0.*0\.05未満.*0\.05以上/s);
     for(const key of ['all','tier1','tier2'])assert.equal(await cell(key,'decision').textContent(),'棄却できず');
     assert.equal(await cell('tier3','decision').textContent(),'帰無仮説を棄却');
     await page.locator('.group-comparison-details > summary').click();
     await page.waitForFunction(()=>!!echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart')));
     assert.equal(await cell('all','ci').isVisible(),true);
+    assert.equal(await page.locator('.group-calculation-details').evaluate(e=>e.open),false);
+    assert.equal(await cell('all','decision').isVisible(),false);
+    assert.equal(await page.locator('.group-interval-help p').first().isVisible(),false);
+    await page.locator('.group-interval-help > summary').click();
+    assert.equal(await page.locator('.group-interval-help p').first().isVisible(),true);
+    assert.match(await page.locator('.group-interval-help').textContent(),/生徒一人ひとりの変化の範囲ではありません/);
+    await page.locator('.group-p-help > summary').click();
+    assert.match(await page.locator('.group-p-help').textContent(),/計4回.*調整済み/s);
+    assert.doesNotMatch(await page.locator('.group-comparison-table').first().locator('thead').textContent(),/Holm|信頼区間|両側/);
+    assert.match(await page.locator('.group-comparison-table').first().locator('thead').textContent(),/平均変化の推定範囲.*判定に使うp値/s);
+    await page.locator('.group-calculation-details > summary').focus();await page.keyboard.press('Enter');
+    assert.equal(await cell('all','decision').isVisible(),true);
     await n('all',13);await n('tier1',6);await n('tier2',3);await n('tier3',4);
     assert.match(await cell('all','before').textContent(),/53\.08%/);
     assert.match(await cell('all','after').textContent(),/61\.15%/);
@@ -49,14 +71,14 @@ module.exports=async(page,original)=>{
     assert.ok(Number(await cell('tier3','p').textContent())>0.05);
     assert.equal(await cell('tier3','decision').textContent(),'棄却できず');
     await page.locator('#ovClass').selectOption('2年B組');await n('all',3);
-    assert.equal(await cell('all','ci').textContent(),'—');assert.equal(await cell('all','p').textContent(),'—');assert.match(await card('all').locator('.group-stat-status').textContent(),/ばらつきなし/);
+    assert.equal(await cell('all','ci').textContent(),'—');assert.equal(await cell('all','p').textContent(),'—');assert.match(await cell('all','reading').textContent(),/全員の変化量が同じ.*差を検定できません/);
     assert.equal(await cell('all','decision').textContent(),'判定不可');
     assert.equal(await cell('tier3','decision').textContent(),'判定不可');
     const emptyBars=await page.evaluate(()=>echarts.getInstanceByDom(document.getElementById('ovGroupComparisonChart')).getOption().series.map(s=>s.data.slice(2)));
     assert.deepEqual(emptyBars,[[null,null],[null,null]]);
     await page.locator('#ovClass').selectOption('2年C組');await n('all',1);
     assert.equal(await cell('all','before').textContent(),'0%');assert.equal(await cell('all','change').textContent(),'+10');
-    assert.equal(await cell('all','p').textContent(),'—');assert.match(await card('all').locator('.group-stat-status').textContent(),/比較1名/);
+    assert.equal(await cell('all','p').textContent(),'—');assert.match(await cell('all','reading').textContent(),/比較が1名/);
     assert.equal(await cell('all','decision').textContent(),'判定不可');
     await page.locator('#ovClass').selectOption('all');
     await page.evaluate(()=>{ui.rtiBasis='avg';ui.rtiSubject='数学';renderOverview();});await n('tier1',6);

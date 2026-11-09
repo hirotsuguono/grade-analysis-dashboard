@@ -19,7 +19,7 @@ function harness(d=fixture()) {
   const elements={};const element=id=>elements[id]||={innerHTML:'',textContent:'',hidden:false,closest(){return this},querySelectorAll(){return []},querySelector(){return this}};
   const ctx=vm.createContext({input:d,window:{addEventListener(){},GD_PAIRED:require('../src/files/paired-comparison.js')},document:{addEventListener(){},getElementById:element},alert(){},confirm(){return true;}});
   vm.runInContext(source+`\ndata=input;rebuildIndex();chart=()=>({setOption(){},clear(){}});renderAll=()=>{};markDirty=()=>{};
-    globalThis.api={comparisonTarget,comparisonNumber,comparisonP,comparisonDecision,validateDataset,rtiRateFor,termSeriesFor,trendAxis,renderOverview,deleteCurrentTest,
+    globalThis.api={comparisonTarget,comparisonNumber,comparisonP,comparisonDecision,comparisonReading,validateDataset,rtiRateFor,termSeriesFor,trendAxis,renderOverview,deleteCurrentTest,
       run(code){return eval(code)},getData(){return data},ui};`,ctx);
   return {api:ctx.api,elements,element};
 }
@@ -103,6 +103,18 @@ test('5％水準の判定は0.05未満だけを棄却し、境界の表示丸め
     assert.ok(Number(api.comparisonP(value))>=0.05);
   }
   for(const value of [null,undefined,NaN,Infinity,-0.1,1.1,'0.01'])assert.equal(api.comparisonDecision(value),'判定不可');
+});
+test('結果の読み取りは上昇・低下と検定結果を分け、0人・1人・定数差を差なしと断定しない',()=>{
+  const {api}=harness();
+  const read=changes=>api.comparisonReading({n:10,meanChange:5,p:0.001,pAdjusted:0.01,status:'ok',...changes});
+  assert.match(read({}),/上がっています。統計上も前後差が認められました/);
+  assert.match(read({meanChange:-5}),/下がっています。統計上も前後差が認められました/);
+  assert.match(read({pAdjusted:0.05}),/上がっています。前後差は確認しきれていません/);
+  assert.match(read({meanChange:-5,pAdjusted:0.1}),/下がっています。前後差は確認しきれていません/);
+  assert.match(read({meanChange:0,pAdjusted:1}),/平均得点率は変わっていません。前後差は確認しきれていません/);
+  assert.equal(read({n:0,meanChange:null,pAdjusted:null}),'比較できる点数がありません。');
+  assert.match(read({n:1,pAdjusted:null}),/上がっています。比較が1名のため、差を検定できません/);
+  assert.match(read({status:'constant',pAdjusted:null}),/ばらつきがごく小さいため、差を検定できません/);
 });
 test('保存JSONの種類・系列・比較相手を検証し、旧JSONを推測で分類しない',()=>{
   for(const version of [1,2,3]) {
