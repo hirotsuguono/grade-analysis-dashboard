@@ -18,12 +18,15 @@ FILES = (
     'files/manual.html', 'files/sample-data.json', 'files/sample-data.js',
     'files/vendor/echarts.min.js', 'files/vendor/xlsx.full.min.js', 'files/vendor/exceljs.min.js',
     'files/vendor/echarts.LICENSE', 'files/vendor/echarts.NOTICE',
+    'files/vendor/echarts.LICENSE-d3', 'files/vendor/zrender.LICENSE',
     'files/vendor/sheetjs.LICENSE', 'files/vendor/exceljs.LICENSE', 'files/vendor/exceljs.BUNDLED-LICENSES.txt', 'files/licenses/THIRD-PARTY-NOTICES.md',
 )
 VENDOR = {
     'files/vendor/echarts.min.js': 'b66b25aeb4df84e33199dc21694014d336d222cbd9deb0e5a7c14bd6aa0d0fd0',
     'files/vendor/echarts.LICENSE': '634293835b43a6dd2094fa39182a3d9a6b9ca43b7fdb9ac354e8037af2a3093a',
     'files/vendor/echarts.NOTICE': 'd491d358344f842685c1b1585970999db65fe30ecf7ef3867af8814f4016c016',
+    'files/vendor/echarts.LICENSE-d3': 'e1211892da0b0e0585b7aebe8f98c1274fba15bafe47fa1f4ee8a7a502c06304',
+    'files/vendor/zrender.LICENSE': 'a681e9d183c72b4af4856935893805eb48c08f0f5a3f260203db7444c20fb98a',
     'files/vendor/xlsx.full.min.js': 'cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41',
     'files/vendor/sheetjs.LICENSE': '4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64',
     'files/vendor/exceljs.min.js': '7e49da68588e250dbb8bba190d2caa8ab3787cc0284bda1d8b2f805c4df742c9',

@@ -45,6 +45,25 @@ class ContentPrivacyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             privacy.check_bytes(content + b'\n', 'modified notices', name)
 
+    def test_echarts_component_licenses_do_not_allow_unreviewed_content(self):
+        root = Path(__file__).resolve().parents[1]
+        private = ('synthetic-private' + '@' + 'school.example.org').encode()
+        for name in ['files/vendor/echarts.LICENSE-d3', 'files/vendor/zrender.LICENSE']:
+            with self.subTest(name=name):
+                content = (root / 'src' / name).read_bytes()
+                privacy.check_file(content, 'src/' + name)
+                with self.assertRaisesRegex(ValueError, 'withheld'):
+                    privacy.check_file(content + b'\n' + private, 'src/' + name)
+                for data, rejected in [(content, False), (content + b'\n' + private, True)]:
+                    archive = io.BytesIO()
+                    with zipfile.ZipFile(archive, 'w') as z:
+                        z.writestr('grade-analysis-dashboard/' + name, data)
+                    if rejected:
+                        with self.assertRaisesRegex(ValueError, 'withheld'):
+                            privacy.check_file(archive.getvalue(), 'synthetic.zip')
+                    else:
+                        privacy.check_file(archive.getvalue(), 'synthetic.zip')
+
 
 if __name__ == '__main__':
     unittest.main()
