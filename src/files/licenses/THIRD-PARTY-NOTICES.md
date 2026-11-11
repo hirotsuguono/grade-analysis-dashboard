@@ -6,11 +6,17 @@
 
 | Component | Version | License | Included notices |
 | --- | --- | --- | --- |
-| Apache ECharts | 6.1.0 | Apache-2.0 and notices in its LICENSE | `../vendor/echarts.LICENSE`, `../vendor/echarts.NOTICE` |
+| Apache ECharts | 6.1.0 | Apache-2.0; bundled BSD-3-Clause components listed below | `../vendor/echarts.LICENSE`, `../vendor/echarts.NOTICE` |
+| d3-derived code in Apache ECharts | Included in ECharts 6.1.0 | BSD-3-Clause | `../vendor/echarts.LICENSE-d3` |
+| ZRender (bundled in Apache ECharts) | 6.1.0 | BSD-3-Clause | `../vendor/zrender.LICENSE` |
 | SheetJS Community Edition | 0.20.3 | Apache-2.0 | `../vendor/sheetjs.LICENSE` |
 | ExcelJS (browser distribution) | 4.4.0 | MIT and bundled dependency notices | `../vendor/exceljs.LICENSE`, `../vendor/exceljs.BUNDLED-LICENSES.txt` |
 
-Apache ECharts: Copyright 2017–2026 The Apache Software Foundation. The bundled distribution includes code covered by the additional notices in its full LICENSE, including zrender. The original distribution header is retained. [Release source](https://github.com/apache/echarts/tree/6.1.0).
+Apache ECharts: Copyright 2017–2026 The Apache Software Foundation. The original distribution header, LICENSE and NOTICE are retained. [Release source](https://github.com/apache/echarts/tree/6.1.0).
+
+d3-derived code: Copyright 2010–2016 Mike Bostock. ECharts の LICENSE が参照する d3 由来コードの BSD-3-Clause ライセンス全文を、ECharts 6.1.0 の [licenses/LICENSE-d3](https://github.com/apache/echarts/blob/6.1.0/licenses/LICENSE-d3) から変更せず `echarts.LICENSE-d3` として同梱しています。単独の d3 ライブラリを追加しているわけではありません。
+
+ZRender: Copyright (c) 2017, Baidu Inc. ECharts 6.1.0 のブラウザバンドルに含まれる ZRender 6.1.0 には、ECharts の Apache-2.0 とは別に BSD-3-Clause が適用されます。[ZRender 6.1.0 の LICENSE](https://github.com/ecomfe/zrender/blob/6.1.0/LICENSE) 全文を変更せず `zrender.LICENSE` として同梱しています。
 
 SheetJS CE: Copyright SheetJS LLC and contributors. The original distribution header is retained. [Official standalone distribution](https://docs.sheetjs.com/docs/getting-started/installation/standalone/).
 
