@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlsplit
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FILES = (
     'Index.html', 'LICENSE', 'はじめに.txt',
-    'files/style.css', 'files/script.js', 'files/accessibility.js',
+    'files/style.css', 'files/script.js', 'files/accessibility.js', 'files/update-check.js',
     'files/import-core.js', 'files/roster-reassign.js', 'files/teaching-notes.js', 'files/teaching-notes-ui.js', 'files/paired-comparison.js', 'files/initial-import.js', 'files/onboarding.js', 'files/excel-templates.js',
     'files/manual.html', 'files/sample-data.json', 'files/sample-data.js',
     'files/vendor/echarts.min.js', 'files/vendor/xlsx.full.min.js', 'files/vendor/exceljs.min.js',
@@ -34,6 +34,10 @@ VENDOR = {
     'files/vendor/exceljs.LICENSE': '2ee88321435317a4dbf464f275b88fe2efe6968c381f5ce34b5de539200e5855',
 }
 PREFIX = 'grade-analysis-dashboard/'
+# The sole reviewed runtime network exception. Re-review and update intentionally
+# when changing this isolated, fixed-endpoint module; other app JS stays offline.
+UPDATE_CHECK_SHA256 = 'cb77da5b31f3ab80fb185548a4f03ef58ad0f4a19058b069bc381ff5aee1a24c'
+UPDATE_ENDPOINT = 'https://api.github.com/repos/hirotsuguono/grade-analysis-dashboard/releases/latest'
 
 
 def require(condition, message):
@@ -69,6 +73,9 @@ def payloads(source):
         check_bytes(content, name, name)
     version = json.loads((ROOT / 'package.json').read_text())['version']
     html = data['Index.html'].decode('utf8')
+    require('connect-src ' + UPDATE_ENDPOINT + ';' in html, 'Update connection policy mismatch')
+    require(hashlib.sha256(data['files/update-check.js']).hexdigest() == UPDATE_CHECK_SHA256,
+            'Update checker checksum mismatch: review the network exception intentionally')
     require(f'data-version="{version}">v{version}</span>' in html, 'Application version mismatch')
     require(f'v{version}' in data['はじめに.txt'].decode('utf-8-sig'), 'Readme version mismatch')
     for name, digest in VENDOR.items():
@@ -84,7 +91,7 @@ def payloads(source):
         require(not re.search(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|'
                               r'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}\b', text),
                 'Possible credential in ' + name)
-        if name.endswith('.js'):
+        if name.endswith('.js') and name != 'files/update-check.js':
             require(not re.search(r'\bfetch\s*\(|\bimport\s*\(', text),
                     'Network or dynamic-module dependency in ' + name)
         if not name.endswith('.html'):

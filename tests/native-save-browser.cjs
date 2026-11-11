@@ -36,7 +36,9 @@ async function selectPath(file){
   const browser=await chromium.launch({headless:false,...(process.env.BROWSER_EXECUTABLE?{executablePath:process.env.BROWSER_EXECUTABLE}:{})});
   let page;
   try{
-    const context=await browser.newContext({offline:true,acceptDownloads:true});page=await context.newPage();
+    const context=await browser.newContext({offline:true,acceptDownloads:true});
+    await context.addInitScript(()=>{try{localStorage.setItem('grade-dashboard-auto-update-check','off');}catch(_){}});
+    page=await context.newPage();
     page.on('console',m=>console.log('BROWSER',m.text()));
     let acceptConfirm=true;page.on('dialog',d=>d.type()==='confirm'&&!acceptConfirm?d.dismiss():d.accept());
     await page.goto(pathToFileURL(path.join(app,'Index.html')).href);
