@@ -55,3 +55,17 @@ test('check-only detects a stale artifact after an intentional source edit', t =
   fs.appendFileSync(path.join(f.source, 'files/style.css'), '\n/* fictional test edit */\n');
   fails(f, /Stale or changed/, '--check'); assert.deepEqual(fs.readFileSync(f.output), old);
 });
+test('only the reviewed updater may use the fixed network exception', t => {
+  const f = fixture(t), updater = path.join(f.source, 'files/update-check.js');
+  const saved = fs.readFileSync(updater, 'utf8');
+  fs.writeFileSync(updater, saved.replace('/releases/latest', '/issues'));
+  fails(f, /Update checker checksum/);
+  fs.writeFileSync(updater, saved);
+  fs.appendFileSync(path.join(f.source, 'files/script.js'), '\nfetch("https://example.invalid");');
+  fails(f, /Network or dynamic-module/);
+});
+test('the fixed update connection policy is required', t => {
+  const f = fixture(t), html = path.join(f.source, 'Index.html');
+  fs.writeFileSync(html, fs.readFileSync(html, 'utf8').replace('connect-src https://api.github.com/repos/hirotsuguono/grade-analysis-dashboard/releases/latest;', 'connect-src https:;'));
+  fails(f, /connection policy/);
+});

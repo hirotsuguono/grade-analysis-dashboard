@@ -7,7 +7,7 @@
   <title>成績分析ダッシュボード</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232458a6'/%3E%3Cpath d='M8 24V16h4v8zm6 0V11h4v13zm6 0V6h4v18z' fill='white'/%3E%3C/svg%3E">
   <meta name="description" content="成績の入力・可視化・支援記録をブラウザ内で。登録不要で使える成績分析ダッシュボード。">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://api.github.com/repos/hirotsuguono/grade-analysis-dashboard/releases/latest; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <link rel="stylesheet" href="files/style.css">
   <!-- ライブラリはローカル同梱（オフライン・閉域校務PCでも動作） -->
   <script src="files/vendor/echarts.min.js"></script>
@@ -491,8 +491,12 @@
       <div class="update-card-copy">
         <h2 id="updateCardTitle">アプリのバージョンと更新</h2>
         <p class="update-current-version">ご利用中：<span id="appVersion" class="app-version" data-version="0.4.1">v0.4.1</span></p>
+        <p id="updateStatus" class="update-status" role="status" aria-live="polite">正式リリースは未確認です。</p>
+        <label class="update-auto"><input id="autoUpdateCheck" type="checkbox" checked>起動時に正式リリースを確認（オンライン）</label>
+        <p class="update-privacy">GitHubに更新情報だけを問い合わせます。氏名・成績・JSONは送りません。</p>
       </div>
       <div class="update-card-actions">
+        <button id="checkUpdateBtn" type="button" class="btn btn-ghost">更新を確認</button>
         <a id="latestReleaseLink" class="update-download-link" href="https://github.com/hirotsuguono/grade-analysis-dashboard/releases/latest" target="_blank" rel="noopener noreferrer">
           <span>GitHubで最新版を確認 <span aria-hidden="true">↗</span></span>
           <span class="sr-only">（ダウンロード・更新履歴、オンライン・別タブ）</span>
@@ -503,7 +507,9 @@
     <details id="updateGuide" class="update-guide">
       <summary>更新方法・データの引き継ぎ</summary>
       <div class="update-guide-content">
-        <p>上のバージョンと、配布ページのバージョン・変更内容を確認してください。青い「GitHubで最新版を確認」ボタンは正式公開済みの配布ページを別タブで開きます（インターネット接続が必要です）。</p>
+        <p>起動時に1回、GitHubの正式リリース情報とご利用中の版を照合します。自動確認は上のチェックで止められます。「更新を確認」で再確認できます。接続できない場合は未確認となり、成績の入力・保存はそのまま使えます。</p>
+        <p>確認できるのは正式リリースの版番号です。同じ版番号での開発中の変更は判定しません。青い「GitHubで最新版を確認」ボタンで配布ページと変更内容を確認してから、以下の手順で更新してください。</p>
+        <p>更新確認ではGitHubへ接続するため、IPアドレスなど通常の通信情報はGitHubに伝わります。成績データは送信しません。自動確認の設定だけをこのブラウザに記憶しますが、ブラウザの設定やアプリの置き場所によっては保持されない場合があります。</p>
         <ol>
           <li>今のアプリで<strong>「保存」からJSONファイルに保存</strong>し、保存が完了したことを確認します。</li>
           <li>配布ページの<strong>grade-analysis-dashboard.zip</strong>をダウンロードし、元のアプリとは別のフォルダへ<strong>すべて展開</strong>します。</li>
@@ -850,6 +856,7 @@
   <script src="files/teaching-notes-ui.js"></script>
   <script src="files/accessibility.js"></script>
   <script src="files/onboarding.js"></script>
+  <script src="files/update-check.js"></script>
 </body>
 
 </html>

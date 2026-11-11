@@ -1842,7 +1842,12 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
 .update-card h2 { color:#42556c; font-size:15px; line-height:1.5; margin:0 0 4px; }
 .update-card-copy > p { margin:0; }
 .update-card-copy .update-current-version { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+.update-status { margin-top:6px !important; color:#1a1a2e; font-weight:600; overflow-wrap:anywhere; }
+.update-auto { display:flex; align-items:center; gap:8px; min-height:44px; font-size:13px; }
+.update-auto input { flex:0 0 auto; width:18px; height:18px; }
+.update-card-copy .update-privacy { font-size:12px; }
 .update-card-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.update-card-actions button[aria-disabled="true"] { opacity:.65; cursor:progress; }
 .app-footer .update-download-link { display:flex; align-items:center; justify-content:center; min-height:44px; padding:10px 14px; border:1px solid #2458a6; border-radius:6px; background:#2458a6; color:#fff; text-decoration:none; text-align:center; font-size:14px; font-weight:600; line-height:1.5; }
 .app-footer .update-download-link:hover { background:#183f7b; border-color:#183f7b; }
 .app-footer .update-project-link { display:flex; align-items:center; justify-content:center; min-height:44px; padding:10px 12px; background:#fff; border:1px solid #b9c5d5; border-radius:6px; color:#183f7b; text-decoration:none; text-align:center; font-weight:600; }
@@ -1851,7 +1856,7 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
 .update-online-note { font-size:12px; }
 @media (max-width:800px) {
   .update-card { flex-direction:column; align-items:stretch; padding:12px; }
-  .update-card-actions > a { flex:1 1 200px; }
+  .update-card-actions > a, .update-card-actions > button { flex:1 1 200px; }
 }
 .update-guide { flex:1 1 260px; }
 .update-guide[open] { flex-basis:100%; border:1px solid #dce2eb; border-radius:8px; background:#fff; }
