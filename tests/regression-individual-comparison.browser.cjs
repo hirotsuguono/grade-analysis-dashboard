@@ -32,6 +32,8 @@ module.exports = async (page, original) => {
     await selectStudent('one');
     assert.equal(await page.locator('#trendCompareTest').inputValue(), 'after');
     assert.equal(await page.locator('#trendCompareFrom').inputValue(), 'before');
+    await page.locator('#trendCompareFrom').focus(); await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'trendCompareTest');
     assert.equal(await rate('before').textContent(), '74%');
     assert.equal(await rate('after').textContent(), '82%');
     assert.equal(await change.textContent(), '+8ポイント');
