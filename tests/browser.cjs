@@ -22,6 +22,8 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     const context = await browser.newContext({ acceptDownloads: true, reducedMotion: 'reduce' });
     await context.addInitScript(() => {
       delete window.showOpenFilePicker;
+      // Grade workflows must remain completely offline with the optional checker off.
+      try { localStorage.setItem('grade-dashboard-auto-update-check', 'off'); } catch (_) {}
       window.print = () => { window.printRequested = true; };
     });
     context.on('page', p => {

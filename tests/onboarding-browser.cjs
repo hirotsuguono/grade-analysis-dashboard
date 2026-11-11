@@ -17,6 +17,7 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
   const browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : {}) });
   try {
     const context = await browser.newContext({ acceptDownloads: true, offline: true, reducedMotion: 'reduce' });
+    await context.addInitScript(() => { try { localStorage.setItem('grade-dashboard-auto-update-check', 'off'); } catch (_) {} });
     const page = await context.newPage();
     let acceptConfirm = true;
     page.on('dialog', async d => { dialogs.push(d.message()); if (d.type() === 'confirm' && !acceptConfirm) await d.dismiss(); else await d.accept(); });

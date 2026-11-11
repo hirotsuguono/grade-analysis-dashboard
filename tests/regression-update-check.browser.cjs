@@ -8,12 +8,17 @@ module.exports = async (parent, fixture) => {
   // A separate context mocks every online response; real student data and real API calls are never used.
   const context = await parent.context().browser().newContext({ viewport: { width: 1280, height: 900 } });
   const calls = [], unexpected = [], errors = [];
-  let response = release('v0.4.1'), status = 200, delay = 0;
-  await context.addInitScript(() => { delete window.showOpenFilePicker; });
+  let response = release('v0.4.1'), status = 200, delay = 0, networkFailure = false;
+  await context.addInitScript(() => {
+    delete window.showOpenFilePicker;
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => window.name !== 'fictional-offline' });
+    if (window.name === 'fictional-storage-denied') Object.defineProperty(window, 'localStorage', { get() { throw new Error('Storage unavailable'); } });
+  });
   await context.route('**/*', async route => {
     const request = route.request(), url = request.url();
     if (url === endpoint) {
       calls.push({ url, method: request.method(), body: request.postData(), headers: await request.allHeaders() });
+      if (networkFailure) { await route.abort('internetdisconnected'); return; }
       if (delay) await new Promise(resolve => setTimeout(resolve, delay));
       await route.fulfill({ status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(response) }).catch(() => {});
     } else if (/^(file:|data:|blob:|http:\/\/127\.0\.0\.1:\d+\/)/.test(url)) await route.continue();
@@ -43,6 +48,8 @@ module.exports = async (parent, fixture) => {
     delay = 0;
     status = 403; await check('unconfirmed');
     assert.doesNotMatch(await page.locator('#updateStatus').textContent(), /同じ版です/);
+    networkFailure = true; await check('unconfirmed'); networkFailure = false;
+    assert.equal(await page.locator('#appMain').isVisible(), true, 'failed metadata requests do not interrupt grades');
     status = 200; response = release('v0.4.2'); response.assets = []; await check('unconfirmed');
     response = release('v0.4.2'); response.tag_name = '<img src=x onerror=alert(1)>'; await check('unconfirmed');
     assert.equal(await page.locator('.update-card img, .update-card script').count(), 0);
@@ -71,7 +78,7 @@ module.exports = async (parent, fixture) => {
     await state('unconfirmed');
     assert.match(await page.locator('#updateStatus').textContent(), /自動確認はオン/);
     assert.equal(calls.length, disabledCount, 'enabling applies to startup without an extra request');
-    await context.addInitScript(() => Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }));
+    await page.evaluate(() => { window.name = 'fictional-offline'; });
     await page.reload(); await state('unconfirmed');
     assert.match(await page.locator('#updateStatus').textContent(), /オフライン/);
     assert.equal(calls.length, disabledCount);
@@ -82,10 +89,7 @@ module.exports = async (parent, fixture) => {
       const box = await page.locator('#checkUpdateBtn').boundingBox(); assert.ok(box.width >= 44 && box.height >= 44);
     }
     // Storage denial must not prevent the app or the current session's opt out.
-    await context.addInitScript(() => {
-      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
-      Object.defineProperty(window, 'localStorage', { get() { throw new Error('Storage unavailable'); } });
-    });
+    await page.evaluate(() => { window.name = 'fictional-storage-denied'; });
     await page.reload(); await state('available');
     await page.locator('#autoUpdateCheck').uncheck(); await state('disabled');
     assert.equal(await page.locator('#emptyState').isVisible(), true);
