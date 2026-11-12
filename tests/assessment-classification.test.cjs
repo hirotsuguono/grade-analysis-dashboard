@@ -31,3 +31,13 @@ test('classification text including prototype names is treated as text and persp
   for (const value of [undefined, null, '', 'knowledge', 'thinking']) assert.equal(C.validPerspective(value), true);
   for (const value of [{}, [], 'constructor', '知識技能', 1]) assert.equal(C.validPerspective(value), false);
 });
+
+test('domain-only saved aggregates remain usable without inventing perspective scores or partial totals', () => {
+  const rec = { total: 9, domains: { listen: 4, read: 5 }, questions: {} };
+  const before = JSON.stringify(rec);
+  assert.deepEqual(C.summarize(exam, [rec], 'domain').map(g => [g.n, g.rate]), [[1, 80], [1, 100], [0, null]]);
+  assert.ok(C.summarize(exam, [rec], 'perspective').every(g => g.n === 0 && g.rate === null));
+  assert.ok(C.summarize(exam, [{ ...rec, questions: { a: 1 } }], 'domain').every(g => g.n === 0));
+  assert.ok(C.summarize(exam, [{ ...rec, absent: true }], 'domain').every(g => g.n === 0));
+  assert.equal(JSON.stringify(rec), before);
+});
