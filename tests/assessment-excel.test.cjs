@@ -30,6 +30,7 @@ test('new workbook stores three perspective choices, fixed headers and two input
   for (let c = 6; c <= 55; c++) {
     assert.equal(sheet.getCell(8, c).dataValidation.type, 'list');
     assert.deepEqual(sheet.getCell(8, c).dataValidation.formulae, ['"知識・技能,思考・判断・表現,未設定"']);
+    assert.match(sheet.getCell(8, c).dataValidation.prompt, /両観点.*大問合計.*未設定/);
     assert.equal(sheet.getCell(8, c).value, '');
   }
   assert.equal(sheet.views[0].topLeftCell, 'F11');
@@ -73,4 +74,18 @@ test('perspective parsing accepts only the displayed choices and empty cells', (
   for (const value of ['', undefined, null, '未設定']) assert.equal(h.core.parsePerspective(value), '');
   assert.equal(h.core.parsePerspective('知識・技能'), 'knowledge'); assert.equal(h.core.parsePerspective('思考・判断・表現'), 'thinking');
   for (const value of ['知識技能','knowledge','thinking',true,{},['知識・技能']]) assert.equal(h.core.parsePerspective(value), null);
+});
+test('actual XLSX error cells in used and unused columns are rejected before blank conversion', async () => {
+  for (const [sheet, address] of [['② 点数入力','F8'],['② 点数入力','BD8'],['② 点数入力','F7'],['② 点数入力','F9'],['② 点数入力','F10'],['② 点数入力','F11'],['① テスト設定','B18']]) {
+    const h = harness(), before = h.api.snapshot();
+    set(h.wb, '② 点数入力', 'F11', 1);
+    const ws = h.wb.Sheets[sheet];
+    XLSX.utils.sheet_add_aoa(ws, [['']], { origin: address });
+    ws[address] = { t: 'e', v: 15 }; // #VALUE!: sheet_to_json(defval:'') would silently turn this into blank.
+    const bytes = XLSX.write(h.wb, { type: 'array', bookType: 'xlsx' });
+    const reread = XLSX.read(bytes, { type:'array' });
+    assert.equal(reread.Sheets[sheet][address].t, 'e', 'the regression must exercise a real XLSX error cell');
+    await assert.rejects(h.api.importTestTemplate(new Blob([bytes])), error => error.message.includes(address) && /Excelのエラー値/.test(error.message));
+    const after = h.api.snapshot(); assert.deepEqual(after, before); assert.strictEqual(after.fileHandle, before.fileHandle);
+  }
 });
