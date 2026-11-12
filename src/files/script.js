@@ -707,6 +707,7 @@ function applyJsonText(text, name, handle) {
 
     // 選択状態を初期化
     ui.ovClass = ui.inClass = ui.anClass = ui.trendClass = ui.metClass = 'all';
+    ui.anAxis = 'domain';
     ui.inSubject = ui.ovSubject = ui.anSubject = ui.listSubject = 'all';
     ui.listClass = 'all'; ui.listMode = 'total'; ui.listSort = null; ui.listPivot = 60;
     ui.listGrade = 'all'; ui.listTerm = 'all';
