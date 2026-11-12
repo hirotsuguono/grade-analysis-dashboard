@@ -136,8 +136,8 @@ test('test import rejects unknown, duplicates, text, nonfinite, mixed absence, a
 test('new template IDs round-trip after class reassignment using recognized history', async () => {
   const h = harness(), d = dataset(); h.api.setData(d); h.api.issueNewTestTemplate();
   const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['② 点数入力'], { header: 1, defval: '' });
-  assert.equal(rows[8][0], '生徒ID'); assert.equal(rows[9][0], 's1');
-  rows[0][1] = '架空テスト'; rows[1][1] = '英語'; rows[9][5] = 4;
+  assert.equal(rows[9][0], '生徒ID'); assert.equal(rows[10][0], 's1');
+  rows[0][1] = '架空テスト'; rows[1][1] = '英語'; rows[10][5] = 4;
   d.students[0].classHistory.push({className: d.students[0].className, number: d.students[0].number});
   d.students[0].className = '3年C組'; d.students[0].number = 12;
   await h.api.importTestTemplate(configuredFile(h.downloads[0].wb, rows, '架空列追加', 2, '2026-06-10'));
@@ -148,10 +148,10 @@ test('test template separates settings from the five roster columns and expandab
   const wb = h.downloads[0].wb;
   const rows = xlsx.utils.sheet_to_json(wb.Sheets['② 点数入力'], {header:1,defval:''});
   assert.deepEqual(wb.SheetNames, ['① テスト設定','② 点数入力','記入例']);
-  assert.deepEqual(rows[8].slice(0,5), ['生徒ID','学年','クラス','出席番号','氏名']);
-  assert.deepEqual(rows[9].slice(0,5), ['s1','2','A',1,'架空生徒001']);
-  assert.ok(rows.slice(9).every(r=>r.slice(5).every(v=>v==='')));
-  assert.equal(wb.Sheets['① テスト設定'].B12.f, "SUM('② 点数入力'!8:8)");
+  assert.deepEqual(rows[9].slice(0,5), ['生徒ID','学年','クラス','出席番号','氏名']);
+  assert.deepEqual(rows[10].slice(0,5), ['s1','2','A',1,'架空生徒001']);
+  assert.ok(rows.slice(10).every(r=>r.slice(5).every(v=>v==='')));
+  assert.equal(wb.Sheets['① テスト設定'].B12.f, "SUM('② 点数入力'!9:9)");
 });
 
 test('four-domain workbook preserves roster and separate test grade/date, zero and blanks', async () => {
@@ -181,9 +181,9 @@ test('entire question-column insertions and additions never move new metadata or
   // Insert a whole Excel column at G, then append enough questions to extend beyond J.
   rows.forEach(r => { while (r.length < 6) r.push(''); r.splice(6, 0, ''); });
   for (let c = 5; c < 17; c++) {
-    rows[6][c] = c < 11 ? '読解' : '文法'; rows[7][c] = 10; rows[8][c] = '問' + (c - 4);
-    rows[9][c] = c - 5; // 0..11; cap the last score below the 10-point maximum.
-    if (rows[9][c] > 10) rows[9][c] = 10;
+    rows[6][c] = c < 11 ? '読解' : '文法'; rows[8][c] = 10; rows[9][c] = '問' + (c - 4);
+    rows[10][c] = c - 5; // 0..11; cap the last score below the 10-point maximum.
+    if (rows[10][c] > 10) rows[10][c] = 10;
   }
   const metadata = rows.slice(0, 5).map(r => r.slice(0, 2));
   await h.api.importTestTemplate(configuredFile(h.downloads[0].wb, rows, '架空列追加', 2, '2026-06-10'));
@@ -192,7 +192,7 @@ test('entire question-column insertions and additions never move new metadata or
   assert.equal(d.tests[0].date, '2026-06-10'); assert.equal(d.scores[0].total, 65);
   assert.equal(d.tests[0].domains.length, 2); assert.equal(d.scores[0].domains['読解'], 15);
   assert.equal(d.scores[0].domains['文法'], 50);
-  assert.equal(rows[9][0], 's1');
+  assert.equal(rows[10][0], 's1');
   assert.deepEqual(rows.slice(0, 5).map(r => r.slice(0, 2)), metadata);
 });
 test('new-format identity uses grade, class and number from the same current or historical roster entry', async () => {
@@ -218,9 +218,9 @@ test('compact and unrecognized class names round-trip without modifying stored c
   const h = harness(), d = dataset(); d.students[0].className = '2A'; d.students[1].className = '特別クラス';
   h.api.setData(d); h.api.issueNewTestTemplate();
   const rows = xlsx.utils.sheet_to_json(h.downloads[0].wb.Sheets['② 点数入力'], {header:1, defval:''});
-  assert.deepEqual(rows[9].slice(1, 3), ['2', 'A']);
-  assert.deepEqual(rows[10].slice(1, 3), ['', '特別クラス']);
-  rows[0][1] = '架空クラス'; rows[1][1] = '英語'; rows[9][5] = 0; rows[10][5] = 10;
+  assert.deepEqual(rows[10].slice(1, 3), ['2', 'A']);
+  assert.deepEqual(rows[11].slice(1, 3), ['', '特別クラス']);
+  rows[0][1] = '架空クラス'; rows[1][1] = '英語'; rows[10][5] = 0; rows[11][5] = 10;
   await h.api.importTestTemplate(configuredFile(h.downloads[0].wb, rows, '架空列追加', 2, '2026-06-10'));
   assert.equal(d.scores.length, 2);
   assert.deepEqual(d.students.map(s => s.className), ['2A', '特別クラス']);
