@@ -111,6 +111,15 @@
     return Object.keys(kinds).find(key => key === label || kinds[key] === label);
   }
 
+  function parsePerspective(value) {
+    if (value != null && typeof value !== 'string') return null;
+    const label = text(value);
+    if (label === '' || label === '未設定') return '';
+    if (label === '知識・技能') return 'knowledge';
+    if (label === '思考・判断・表現') return 'thinking';
+    return null;
+  }
+
   function testLayout(rows, settingsRows = null) {
     const headers = [];
     rows.forEach((r, i) => {
@@ -122,6 +131,8 @@
       return { errors: ['テンプレートの形式が違います。分野・配点・問題名と生徒の行を残してください。'] };
     }
     const metadata = {}, errors = [];
+    const perspectiveRow = splitRoster && text(rows[headerIdx - 2]?.[0]) === '2 評価の観点 →' ? headerIdx - 2 : null;
+    if (settingsRows && headerIdx !== 8 && perspectiveRow == null) errors.push('評価の観点の行が見つかりません。A8の案内を残し、新しいテンプレートを使ってください。');
     const labels = ['テスト名', '教科', '満点', '実施学年', '実施日', 'テスト種類', '比較系列'];
     const read = (label, value) => {
       const raw = text(label).normalize('NFKC').replace(/\s*\*$/, '').replace(/→$/, '');
@@ -142,7 +153,7 @@
       }
     }
     return { errors, metadata, automaticMax: !!settingsRows, headerIdx, scoreStart: splitRoster ? 5 : 3,
-      domainRow: headerIdx - 2, maxRow: headerIdx - 1,
+      domainRow: headerIdx - (perspectiveRow == null ? 2 : 3), perspectiveRow, maxRow: headerIdx - 1,
       identityColumns: splitRoster ? { id: 0, grade: 1, className: 2, number: 3, name: 4 } : null };
   }
 
@@ -257,5 +268,5 @@
     if (!plans.length && !errors.length) errors.push('指標の数値がまだ入力されていません。' + help);
     return { errors, plans };
   }
-  root.GD_IMPORT = { limits, validateWorkbook, inspectZip, readWorkbook, createMatcher, selectSheet, findHeader, idColumn, isIdHeader, isPlaceholder, numeric, matchedRows, parseMetricRows, inputHelp, splitClassName, testLayout, parseTestKind };
+  root.GD_IMPORT = { limits, validateWorkbook, inspectZip, readWorkbook, createMatcher, selectSheet, findHeader, idColumn, isIdHeader, isPlaceholder, numeric, matchedRows, parseMetricRows, inputHelp, splitClassName, testLayout, parseTestKind, parsePerspective };
 })(typeof window !== 'undefined' ? window : globalThis);

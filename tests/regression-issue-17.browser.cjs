@@ -14,18 +14,18 @@ module.exports = async function checkExpandableTestExcel(page, fixture) {
       window.GD_EXCEL.download = originalWrite;
     }
     const rows = XLSX.utils.sheet_to_json(wb.Sheets['② 点数入力'], { header: 1, defval: '' });
-    const identityHeader = rows[8].slice(0, 5);
-    const firstId = rows[9][0], secondId = rows[10][0], blankId = rows[11][0];
+    const identityHeader = rows[9].slice(0, 5);
+    const firstId = rows[10][0], secondId = rows[11][0], blankId = rows[12][0];
     const settings=wb.Sheets['① テスト設定'];
     for(const [key,value] of Object.entries({B8:'英語',B10:'架空の4分野Excel',B16:1,B14:'2026-05-22'})) settings[key]={t:typeof value==='number'?'n':'s',v:value};
     // Simulate inserting an entire G column, including row 1, then enter four domains.
     rows.forEach(row => { while (row.length < 6) row.push(''); row.splice(6, 0, ''); });
     for (const r of rows.slice(6)) for (let c=5;c<r.length;c++) r[c]='';
     ['リスニング', '読解', 'ライティング', '文法'].forEach((domain, i) => {
-      rows[6][5 + i] = domain; rows[7][5 + i] = 25; rows[8][5 + i] = '問' + (i + 1);
-      rows[9][5 + i] = [0, 25, 20, 15][i];
+      rows[6][5 + i] = domain; rows[8][5 + i] = 25; rows[9][5 + i] = '問' + (i + 1);
+      rows[10][5 + i] = [0, 25, 20, 15][i];
     });
-    rows[10][5] = '欠';
+    rows[11][5] = '欠';
     const importRows = async input => {
       const book = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(book, settings, '① テスト設定');
@@ -41,7 +41,7 @@ module.exports = async function checkExpandableTestExcel(page, fixture) {
     applyJsonText(saved, 'fictional-expandable-reopened.json', null);
     const reopened = test && getScore(firstId, test.id);
     const invalid = rows.map(r => r.slice());
-    invalid[9][0] = 'fictional-unknown-id';
+    invalid[10][0] = 'fictional-unknown-id';
     dirty = true;
     const before = JSON.stringify(data);
     await importRows(invalid);

@@ -177,12 +177,12 @@ test('split-grade roster flows into test Excel, history matching and JSON save/r
   `, context);
   context.api.load(data); context.api.issueNewTestTemplate();
   const wb = downloads[0], rows = XLSX.utils.sheet_to_json(wb.Sheets['② 点数入力'], {header:1, defval:''});
-  assert.deepEqual(rows[9].slice(0, 5), [data.students[0].id, '1', '1', '1', '架空 同名']);
-  assert.deepEqual(rows[10].slice(0, 5), [data.students[1].id, '2', '1', '1', '架空 同名']);
+  assert.deepEqual(rows[10].slice(0, 5), [data.students[0].id, '1', '1', '1', '架空 同名']);
+  assert.deepEqual(rows[11].slice(0, 5), [data.students[1].id, '2', '1', '1', '架空 同名']);
   wb.Sheets['① テスト設定'].B8 = {t:'s',v:'英語'}; wb.Sheets['① テスト設定'].B10 = {t:'s',v:'架空の追加'}; wb.Sheets['① テスト設定'].B14 = {t:'s',v:'2026-05-22'};
-  rows[9][5] = 0; rows[10][5] = 8;
+  rows[10][5] = 0; rows[11][5] = 8;
   // Complete the remaining questions explicitly; this test verifies identity, not partial totals.
-  for (const row of [rows[9], rows[10]]) for (let c = 6; c < 9; c++) row[c] = 0;
+  for (const row of [rows[10], rows[11]]) for (let c = 6; c < 9; c++) row[c] = 0;
   data.students[0].classHistory = [{className: data.students[0].className, number: data.students[0].number}];
   data.students[0].className = '2年A組'; data.students[0].number = '5';
   wb.Sheets['② 点数入力'] = XLSX.utils.aoa_to_sheet(rows);
