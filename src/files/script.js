@@ -345,7 +345,7 @@ function questionScoreState(rec, test) {
     answered++;
     partialTotal += value;
   }
-  const domains = {};
+  const domains = Object.create(null);
   for (const [key, qs] of byDomain) {
     if (qs.every(q => Number.isFinite(rec?.questions?.[q.key]))) {
       domains[key] = qs.reduce((sum, q) => sum + rec.questions[q.key], 0);
@@ -707,6 +707,7 @@ function applyJsonText(text, name, handle) {
 
     // 選択状態を初期化
     ui.ovClass = ui.inClass = ui.anClass = ui.trendClass = ui.metClass = 'all';
+    ui.anAxis = 'domain';
     ui.inSubject = ui.ovSubject = ui.anSubject = ui.listSubject = 'all';
     ui.listClass = 'all'; ui.listMode = 'total'; ui.listSort = null; ui.listPivot = 60;
     ui.listGrade = 'all'; ui.listTerm = 'all';
@@ -1256,7 +1257,7 @@ function renderDomainBar(chartId, test, students, highlightWeakest, axis = 'doma
   chart(chartId).setOption({
     grid: BASE_GRID,
     tooltip: { trigger: 'axis', valueFormatter: (v) => v + '%' },
-    xAxis: { type: 'category', data: domains.map((d) => d.label) },
+    xAxis: { type: 'category', data: domains.map((d) => d.label), axisLabel: axis === 'perspective' ? { interval: 0, formatter: value => value === '思考・判断・表現' ? '思考・判断\n・表現' : value } : {} },
     yAxis: { type: 'value', max: 100, name: '得点率%' },
     series: [{
       type: 'bar',
@@ -1568,7 +1569,14 @@ function addQuestionRow(label = '', max = '', perspective = '') {
     <label>分野<select class="bq-domain"></select></label>
     <label>評価の観点<select class="bq-perspective"></select></label>
     <button type="button" class="row-del" title="削除">✕</button>`;
-  div.querySelector('.row-del').onclick = () => div.remove();
+  const remove = div.querySelector('.row-del');
+  const nameRemoval = () => remove.setAttribute('aria-label', (div.querySelector('.bq-label').value || 'この問題') + 'を削除');
+  nameRemoval();
+  div.querySelector('.bq-label').addEventListener('input', nameRemoval);
+  remove.onclick = () => {
+    const target = div.nextElementSibling?.querySelector('.bq-label') || div.previousElementSibling?.querySelector('.bq-label') || $('tfAddQuestion');
+    div.remove(); target.focus();
+  };
   div.querySelector('.bq-perspective').replaceChildren(...window.GD_CLASSIFICATION.perspectives.map(p => new Option(p.label, p.key, false, p.key === perspective)));
   $('tfQuestions').appendChild(div);
   refreshQuestionDomainSelects();
@@ -2084,7 +2092,7 @@ function renderAnalysis() {
   const summary = window.GD_CLASSIFICATION.summarize(test, students.map(s => getAttendedScore(s.id, test.id)), axis).filter(g => axis !== 'perspective' || g.key);
   const unassigned = (test.questions || []).filter(q => axis === 'perspective' ? !q.perspective : !q.domain).length;
   $('anClassificationSummary').textContent = !test.questions?.length
-    ? '合計点のみのテストです。観点別の集計には、小問または採点する内訳ごとの点数が必要です。'
+    ? '問題ごとの点数がないため、観点別は集計できません。小問または採点する内訳ごとの点数が必要です。'
     : `${test.questions.length}項目 ／ ${axis === 'perspective' ? '観点' : '分野'}未設定 ${unassigned}項目・${(test.questions || []).filter(q => axis === 'perspective' ? !q.perspective : !q.domain).reduce((sum, q) => sum + q.max, 0)}点分。${axis === 'perspective' ? '観点未設定の項目は観点別の得点率に含めません。' : ''}総合点は重複して加算しません。`;
   const { domains, rates } = renderDomainBar('anDomainChart', test, students, true, axis);
   $('anClassificationTable').innerHTML = summary.length ? `<table class="data-table classification-table"><caption>${axis === 'perspective' ? '評価の観点' : '分野'}ごとの集計</caption><thead><tr><th>分類</th><th>項目数</th><th>満点</th><th>集計人数</th><th>平均得点率</th></tr></thead><tbody>${summary.map(g => `<tr><th scope="row">${esc(g.label)}</th><td>${g.count}</td><td>${esc(g.max)}点</td><td>${g.n}名</td><td>${g.rate == null ? '—' : round1(g.rate) + '%'}</td></tr>`).join('')}</tbody></table>` : '';

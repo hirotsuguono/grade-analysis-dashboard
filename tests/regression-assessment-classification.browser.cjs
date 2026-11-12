@@ -30,7 +30,7 @@ module.exports = async (page, original) => {
     await page.evaluate(value => applyJsonText(JSON.stringify(value), 'fictional-classifications.json', null), d);
     await page.locator('[data-tab="input"]').click(); await page.locator('#addTestBtn').click();
     await page.locator('#tfName').fill('架空の手入力'); await page.locator('#tfSubject').fill('英語');
-    await page.locator('#tfMax').fill('2');
+    await page.locator('#tfMax').fill('100');
     await page.evaluate(() => { addDomainRow('架空分野', 2); addQuestionRow('架空小問', 2); });
     await page.locator('#tfQuestions .bq-domain').selectOption('架空分野');
     await page.locator('#tfQuestions .bq-perspective').selectOption('thinking');
@@ -38,6 +38,9 @@ module.exports = async (page, original) => {
       await page.setViewportSize({ width, height: 900 });
       assert.ok(await page.locator('#testDialog').evaluate(el => el.scrollWidth <= el.clientWidth + 1), String(width) + 'px test dialog');
     }
+    await page.evaluate(() => document.getElementById('testForm').requestSubmit());
+    assert.equal(await page.evaluate(() => data.tests.length), 1, 'mismatched maximum must not add a test');
+    await page.locator('#tfMax').fill('2');
     await page.evaluate(() => document.getElementById('testForm').requestSubmit());
     assert.equal(await page.evaluate(() => data.tests.at(-1).questions[0].perspective), 'thinking');
     assert.equal(await page.evaluate(() => data.tests.at(-1).questions[0].domain), '架空分野');
