@@ -2110,3 +2110,5 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
   .teaching-target-controls { grid-template-columns: 1fr; }
   .teaching-note { padding: 12px; }
 }
+
+#anClassificationSummary { margin-top:10px; }
