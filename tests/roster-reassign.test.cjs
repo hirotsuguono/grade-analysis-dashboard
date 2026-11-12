@@ -28,7 +28,7 @@ function harness() {
   vm.runInContext(fs.readFileSync(path.join(root, 'script.js'), 'utf8').replace(/\ninit\(\);\s*$/, '') + `
     renderAll=()=>{};renderRosterTable=()=>updateReassignUndo();fillReassignScope=()=>{};switchRosterPane=()=>{};markDirty=()=>{};requireAdmin=()=>globalThis.allowAdmin!==false;
     globalThis.api={importReassignWorkbook,saveReassignBackup,applyReassign,undoReassign,invalidateReassignRoster,validateDataset,
-      setData(d){data=d;activeDataToken++;},getData:()=>data,plan:()=>reassignPlan,backup:()=>reassignBackupText};`, context);
+      setData(d){data=d;activeDataToken++;},getData:()=>data,plan:()=>reassignPlan,backup:()=>reassignBackupText,ui,activeStudents,studentsOf,classList,gradeList,individualComparisonContext,openIvDialog,submitIvDialog};`, context);
   return { core: context.window.GD_ROSTER, excel: context.window.GD_EXCEL, api: context.api, context, elements, alerts, downloads, blobs };
 }
 function put(wb, address, value) { XLSX.utils.sheet_add_aoa(wb.Sheets['クラス替え'], [[value]], { origin: address }); }
@@ -140,10 +140,11 @@ test('バックアップ確認前・確認取消・反映確認の取消では�
 test('反映・取り消しでIDと点数・指標・支援記録を保持し、その後の点数入力も消さない', async () => {
   const h = harness(), d = await ready(h), students = JSON.stringify(d.students), rest = JSON.stringify([d.tests, d.scores, d.metrics, d.interventions]);
   backed(h); h.api.applyReassign();
-  assert.equal(d.students[0].id, 's1'); assert.equal(d.students[0].className, '2年B組', h.elements.reassignPreview.innerHTML); assert.equal(d.students[0].classHistory[0].className, '1年A組');
-  assert.equal(JSON.stringify([d.tests, d.scores, d.metrics, d.interventions]), rest);
-  d.scores[0].total = 50; h.api.undoReassign();
-  assert.equal(JSON.stringify(d.students), students); assert.equal(d.scores[0].total, 50); assert.equal(h.api.validateDataset(d).length, 0);
+  const after = h.api.getData();
+  assert.equal(after.students[0].id, 's1'); assert.equal(after.students[0].className, '2年B組', h.elements.reassignPreview.innerHTML); assert.equal(after.students[0].classHistory[0].className, '1年A組');
+  assert.equal(JSON.stringify([after.tests, after.scores, after.metrics, after.interventions]), rest);
+  after.scores[0].total = 50; h.api.undoReassign();
+  assert.equal(JSON.stringify(h.api.getData().students), students); assert.equal(h.api.getData().scores[0].total, 50); assert.equal(h.api.validateDataset(h.api.getData()).length, 0);
   assert.equal(h.elements.reassignUndoBtn.disabled, true);
 });
 test('プレビュー後の名簿変更・JSON切替とバックアップ後の別編集を検出する', async () => {
@@ -182,4 +183,65 @@ test('遅れて完了した旧ファイルの読込で新しいプレビュー�
   const preview = h.elements.reassignPreview.innerHTML;
   first(filled(h, d)); await oldFile;
   assert.equal(h.elements.reassignPreview.innerHTML, preview); assert.equal(h.api.plan().changes[0].number, 3);
+});
+
+const wholeConfig = () => ({ operation: 'whole', sourceType: 'all', sourceValue: '', mode: 'all', kind: 'move', schoolYear: 2026, naming2: 'letters', count2: 1, naming3: 'letters', count3: 1, date: '2026-06-24' });
+function wholeFixture() { const d = fixture(); d.students[1].className = '2年A組'; d.students[1].number = 1; d.students[2].className = '3年A組'; return d; }
+async function readyWhole(h) { const d = wholeFixture(); h.api.setData(d); const wb = h.excel.reassignTemplate(XLSX, d, wholeConfig()); await h.api.importReassignWorkbook(await file(h, wb)); assert.ok(h.api.plan()); return d; }
+test('全名簿の反映は卒業生のIDと記録を残し、通常の名簿・候補から外す。JSON保存・再読込にも保持する', async () => {
+  const h = harness(), original = await readyWhole(h); backed(h); h.api.applyReassign();
+  const after = h.api.getData();
+  assert.deepEqual(Array.from(after.students, s => s.className), ['2年A組', '3年A組', '3年A組']);
+  assert.equal(after.students[2].enrollmentStatus, 'graduated'); assert.equal(after.students[2].graduatedAt, '2026-06-24');
+  assert.deepEqual(Array.from(h.api.activeStudents(), s => s.id), ['s1', 's2']);
+  assert.deepEqual(Array.from(h.api.studentsOf('all'), s => s.id), ['s1', 's2']);
+  assert.deepEqual(Array.from(h.api.classList()), ['2年A組', '3年A組']);
+  for (const key of ['scores', 'tests', 'metrics', 'interventions']) assert.deepEqual(plain(after[key]), original[key]);
+  const saved = JSON.parse(JSON.stringify(after)); assert.deepEqual(plain(h.api.validateDataset(saved)), []);
+  h.api.setData(saved); assert.equal(h.api.activeStudents().length, 2); assert.equal(h.api.getData().students.length, 3);
+  assert.match(h.api.individualComparisonContext(saved.students[2], {}, {}, {}, {}).reason, /卒業生/);
+});
+test('全名簿の取消は年度・卒業状態・履歴を戻し、反映後の点数・支援を保持する', async () => {
+  const h = harness(), original = await readyWhole(h); backed(h); h.api.applyReassign();
+  h.api.getData().scores[0].total = 71; h.api.getData().interventions[0].note = '架空の追記';
+  h.api.undoReassign();
+  assert.deepEqual(plain(h.api.getData().students), original.students);
+  assert.equal(h.api.getData().scores[0].total, 71); assert.equal(h.api.getData().interventions[0].note, '架空の追記');
+  assert.equal(h.api.activeStudents().length, 3); assert.equal(h.elements.reassignUndoBtn.disabled, true);
+});
+test('描画中に選択Setが変わって失敗しても、名簿・未保存・選択・控え・再試行状態を戻す', async () => {
+  const h = harness(), original = await readyWhole(h); backed(h);
+  h.api.ui.trendSelected.add('s3'); h.api.ui.ovClass = '1年A組';
+  vm.runInContext(`dirty=false; pendingDownload={fictional:true}; renderAll=()=>{if(!globalThis.failedOnce){globalThis.failedOnce=true;ui.trendSelected.delete('s3');throw new Error('fictional render failure');}};`, h.context);
+  const backup = h.api.backup(); h.api.applyReassign();
+  assert.equal(h.api.getData(), original); assert.deepEqual(Array.from(h.api.ui.trendSelected), ['s3']); assert.equal(h.api.ui.ovClass, '1年A組');
+  assert.equal(vm.runInContext('dirty', h.context), false); assert.equal(vm.runInContext('pendingDownload.fictional', h.context), true);
+  assert.equal(h.api.backup(), backup); assert.ok(h.api.plan()); assert.equal(h.elements.reassignBackupConfirmed.checked, true);
+  assert.equal(h.elements.reassignApplyBtn.disabled, true); // The harness leaves the confirmation listener disabled.
+  assert.match(h.elements.reassignPreview.innerHTML, /変更は反映していません/);
+  h.api.applyReassign(); assert.equal(h.api.getData().students[2].enrollmentStatus, 'graduated');
+  assert.equal(h.api.ui.ovClass, 'all');
+});
+test('取消の描画失敗でも反映済み名簿と取消権を保持し、再試行で戻せる', async () => {
+  const h = harness(), original = await readyWhole(h); backed(h); h.api.applyReassign(); const after = h.api.getData();
+  vm.runInContext(`renderAll=()=>{if(!globalThis.failedUndo){globalThis.failedUndo=true;throw new Error('fictional undo render failure');}};`, h.context);
+  h.api.undoReassign(); assert.equal(h.api.getData(), after); assert.equal(h.elements.reassignUndoBtn.disabled, false);
+  h.api.undoReassign(); assert.deepEqual(plain(h.api.getData().students), original.students);
+});
+test('卒業状態・卒業日・進級年度のJSON型を検証し、卒業生への新しい支援フォームを開かない', async () => {
+  const h = harness(), d = wholeFixture(); h.api.setData(d);
+  for (const edit of [s => s.enrollmentStatus = 'other', s => {s.enrollmentStatus='graduated';}, s => s.graduatedAt='2026-06-24', s => s.lastPromotionYear='2026', s => s.lastPromotionYear=2026.5]) {
+    const copy = plain(d); edit(copy.students[0]); assert.ok(h.api.validateDataset(copy).length);
+  }
+  d.students[2].enrollmentStatus = 'graduated'; d.students[2].graduatedAt = '2026-06-24'; h.api.openIvDialog('s3');
+  assert.equal(h.alerts.length, 0); // No dialog elements exist in this harness, so opening would throw.
+});
+test('旧Excelの卒業生・同名同番号の曖昧な行は拒否し、在籍者のIDなら照合する', () => {
+  const h = harness(), d = wholeFixture(); d.students[2].name = d.students[1].name; d.students[2].enrollmentStatus='graduated';
+  d.students[2].classHistory = [{className:'2年A組',number:1,at:'2026-06-24'}];
+  const match = h.context.window.GD_IMPORT.createMatcher(d.students);
+  assert.match(match({id:'s3'}).error, /卒業生/);
+  assert.match(match({name:d.students[1].name,className:'2年A組',number:1}).error, /曖昧/);
+  assert.equal(match({id:'s2',name:d.students[1].name,className:'2年A組',number:1}).student.id, 's2');
+  assert.match(match({name:d.students[2].name,className:'3年A組',number:1}).error, /卒業生/);
 });

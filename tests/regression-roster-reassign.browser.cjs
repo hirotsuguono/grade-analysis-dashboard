@@ -21,7 +21,7 @@ module.exports = async (page, original) => {
     const saved = JSON.parse((await bytes(await event)).toString('utf8'));
     await page.locator('#reassignBackupConfirmed').check(); return saved;
   }
-  async function open() { await page.locator('#rosterBtn').click(); await page.locator('[data-rtab="reassign"]').click(); }
+  async function open() { await page.locator('#rosterBtn').click(); await page.locator('[data-rtab="reassign"]').click(); await page.locator('#reassignOperation').selectOption('partial'); }
   const fixture = JSON.parse(JSON.stringify(original));
   fixture.students = fixture.students.slice(0, 3);
   fixture.students[0].name = '架空<svg/onload=globalThis.rosterUnsafe=1>';
@@ -70,6 +70,7 @@ module.exports = async (page, original) => {
     await open(); await page.locator('#reassignUndoBtn').click();
     assert.deepEqual(await page.evaluate(() => data.students), before.students);
     assert.deepEqual(await page.evaluate(() => data.scores), laterScores);
+    await page.locator('[data-rtab="reassign"]').click();
     await page.locator('#reassignGrade').selectOption('2'); await page.locator('#reassignMode').selectOption('partial');
     await page.locator('#reassignKind').selectOption('correction');
     const correction = await template(), correctionInput = correction.getWorksheet('クラス替え');

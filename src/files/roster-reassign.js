@@ -171,6 +171,7 @@
       changes.push({ id, name: s.name, fromClass: s.className || '', fromNumber: s.number ?? '', className, number: newNumber, ...(useWhole ? { action: 'promote' } : {}) });
     }
     if (seen.size !== expected.length) add('発行時と対象名簿の人数・生徒IDが一致しません。生徒の行は削除せず、名簿が変わった場合はExcelを発行し直してください。');
+    if (errors.length) return fail();
     const changed = new Map(changes.map(c => [c.id, c])), slots = new Map();
     for (const s of data.students) {
       const next = changed.get(s.id) || s;

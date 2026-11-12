@@ -169,12 +169,14 @@
         const student = candidates[0];
         if (name && nameKey(student.name) !== name) return { error: '生徒IDと氏名が一致しません。別の生徒には振り替えません。' };
         if ((grade || klass || num) && !pairMatches(student, klass, num, grade, row.separateClass)) return { error: '生徒IDと学年・組・番号が現在の名簿／クラス履歴に一致しません。' };
+        if (student.enrollmentStatus === 'graduated') return { error: '卒業生の行は取り込めません。在籍中の名簿入りテンプレートを発行し直してください。' };
         return { student };
       }
       if (!name) return { error: '氏名または生徒IDを入力してください。' };
       let candidates = students.filter((s) => nameKey(s.name) === name);
       if (grade || klass || num) candidates = candidates.filter((s) => pairMatches(s, klass, num, grade, row.separateClass));
       if (candidates.length !== 1) return { error: candidates.length > 1 ? '同姓同名などで照合が曖昧です。生徒ID入りの最新テンプレートを使ってください。' : '氏名と組・番号が名簿に一致しません。名簿を確認してください。' };
+      if (candidates[0].enrollmentStatus === 'graduated') return { error: '卒業生の行は取り込めません。在籍中の名簿入りテンプレートを発行し直してください。' };
       return { student: candidates[0] };
     };
   }
