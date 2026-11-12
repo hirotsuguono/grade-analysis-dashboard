@@ -1569,7 +1569,14 @@ function addQuestionRow(label = '', max = '', perspective = '') {
     <label>分野<select class="bq-domain"></select></label>
     <label>評価の観点<select class="bq-perspective"></select></label>
     <button type="button" class="row-del" title="削除">✕</button>`;
-  div.querySelector('.row-del').onclick = () => div.remove();
+  const remove = div.querySelector('.row-del');
+  const nameRemoval = () => remove.setAttribute('aria-label', (div.querySelector('.bq-label').value || 'この問題') + 'を削除');
+  nameRemoval();
+  div.querySelector('.bq-label').addEventListener('input', nameRemoval);
+  remove.onclick = () => {
+    const target = div.nextElementSibling?.querySelector('.bq-label') || div.previousElementSibling?.querySelector('.bq-label') || $('tfAddQuestion');
+    div.remove(); target.focus();
+  };
   div.querySelector('.bq-perspective').replaceChildren(...window.GD_CLASSIFICATION.perspectives.map(p => new Option(p.label, p.key, false, p.key === perspective)));
   $('tfQuestions').appendChild(div);
   refreshQuestionDomainSelects();
