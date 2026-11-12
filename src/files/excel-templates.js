@@ -88,6 +88,7 @@
   function reassignTemplate(X, data, config) {
     const errors = root.GD_ROSTER.configErrors(config);
     if (errors.length) throw new Error(errors.join('\n'));
+    if (root.GD_ROSTER.isWhole(config)) return promotionTemplate(X, data, config);
     const students = root.GD_ROSTER.selectedStudents(data.students, config);
     if (!students.length) throw new Error('対象の名簿がありません。対象を選び直してください。');
     const classes = root.GD_ROSTER.destinations(config), wb = X.utils.book_new();
@@ -117,6 +118,50 @@
     cell(X, settings, 6, 3, '新クラスの候補', style.header);
     classes.forEach((name, i) => cell(X, settings, 7 + i, 3, name, style.autoCenter));
     wb.Workbook = { Names: [{ Name: 'ReassignClasses', Ref: `'発行設定'!$D$8:$D$${classes.length + 7}` }] };
+    return wb;
+  }
+  function promotionTemplate(X, data, config) {
+    const yearErrors = root.GD_ROSTER.promotionYearErrors(data.students, config);
+    if (yearErrors.length) throw new Error(yearErrors.join('\n'));
+    const students = root.GD_ROSTER.selectedStudents(data.students, config);
+    if (!students.length) throw new Error('在籍中の名簿がありません。名簿を確認してください。');
+    if (students.length + 9 > root.GD_IMPORT.limits.rows) throw new Error('在籍中の名簿がExcelの行数上限を超えています。学校の管理者に確認してください。');
+    const targets = students.map(s => root.GD_ROSTER.promotionTarget(s, config));
+    const classes2 = root.GD_ROSTER.destinationsForGrade(config, 2), classes3 = root.GD_ROSTER.destinationsForGrade(config, 3);
+    const wb = X.utils.book_new(), lastRow = 8 + students.length;
+    const ws = makeSheet(X, wb, 'クラス替え', [22, 24, 19, 13, 13, 19, 13], lastRow, true);
+    header(X, ws, 6, '全名簿の進級・卒業', `${config.schoolYear}年度へ ／ 在籍中の名簿全員を、変更前の状態からまとめて更新します。`,
+      '1 新クラス・新番号を確認　→　2 全員分を読込・確認　→　3 控えを保存して一括反映',
+      '現1年→新2年、現2年→新3年、現3年→卒業。灰色の欄と生徒の行は変更しません。');
+    band(X, ws, 5, 0, 4, '現在の名簿・新しい扱い　｜　編集不要', style.section, 28);
+    band(X, ws, 5, 5, 6, '新しい所属　｜　入力する欄', style.section, 28);
+    band(X, ws, 6, 0, 6, '卒業する生徒の新クラス・新番号は空欄のままです。点数・支援記録は削除しません。', style.note, 28);
+    ws['!rows'][7] = { hpt: 10 };
+    root.GD_ROSTER.wholeHeaders.forEach((value, col) => cell(X, ws, 8, col, value, style.header));
+    students.forEach((student, i) => {
+      const target = targets[i], row = i + 9;
+      [student.id, student.name, student.className || '', student.number ?? '', target.action === 'graduate' ? '卒業' : '進級',
+        target.action === 'graduate' ? '' : target.className, target.action === 'graduate' ? '' : target.number].forEach((value, col) =>
+        cell(X, ws, row, col, value, col >= 5 && target.action === 'promote' ? style.inputCenter : col === 0 ? style.autoSmall : col === 1 ? style.auto : style.autoCenter));
+      if (target.action === 'promote') {
+        validation(ws, 'F' + (row + 1), { type: 'list', formulae: [`ReassignGrade${target.grade}Classes`], promptTitle: `新${target.grade}年のクラス`, prompt: '発行時に設定した候補から選択します。', error: `新${target.grade}年の候補から選んでください。` });
+        validation(ws, 'G' + (row + 1), { type: 'whole', operator: 'greaterThan', formulae: [0], promptTitle: '新番号', prompt: '正の整数を入力します。', error: '新番号は正の整数です。' });
+      }
+    });
+    ws['!freeze'] = { rows: 9, cols: 5 };
+    const settings = makeSheet(X, wb, '発行設定', [22, 45, 3, 22, 22], Math.max(18, classes2.length + 7, classes3.length + 7));
+    header(X, settings, 4, '発行設定 ／ 編集不要', '組名・クラス数・変更日を変える場合は、画面で選び直して再発行します。',
+      '記入する場所は「クラス替え」シートの黄色い欄です。');
+    root.GD_ROSTER.metadata(config, data.name).forEach(([key, value], i) => {
+      cell(X, settings, 6 + i, 0, key, style.label); cell(X, settings, 6 + i, 1, value, style.auto);
+    });
+    cell(X, settings, 6, 3, '新2年のクラス', style.header); cell(X, settings, 6, 4, '新3年のクラス', style.header);
+    classes2.forEach((name, i) => cell(X, settings, 7 + i, 3, name, style.autoCenter));
+    classes3.forEach((name, i) => cell(X, settings, 7 + i, 4, name, style.autoCenter));
+    wb.Workbook = { Names: [
+      { Name: 'ReassignGrade2Classes', Ref: `'発行設定'!$D$8:$D$${classes2.length + 7}` },
+      { Name: 'ReassignGrade3Classes', Ref: `'発行設定'!$E$8:$E$${classes3.length + 7}` },
+    ] };
     return wb;
   }
   function testTemplate(X, students) {
