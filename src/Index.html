@@ -782,6 +782,7 @@
           <legend>このテストの分野名</legend>
           <p class="form-note">名前の変更は、このテストの同じ分野に属する問題へまとめて反映します。過去のテストの分野名は変わりません。</p>
           <div id="ceDomains"></div>
+          <p id="ceDomainStatus" role="status" class="ce-status"></p>
           <button id="ceAddDomain" type="button" class="btn btn-ghost btn-sm">＋ 分野を追加</button>
         </fieldset>
         <details id="ceBulk" class="ce-bulk">
@@ -792,13 +793,14 @@
             <label>評価の観点<select id="ceBulkPerspective"><option value="__keep__">変更しない</option><option value="">未設定</option><option value="knowledge">知識・技能</option><option value="thinking">思考・判断・表現</option></select></label>
             <button id="ceBulkApply" type="button" class="btn btn-ghost">選んだ問題の編集欄へ反映</button>
           </div>
+          <p id="ceBulkStatus" role="status" class="ce-status"></p>
         </details>
         <label class="ce-select-all"><input id="ceSelectAll" type="checkbox">すべての問題を選ぶ</label>
         <div id="ceQuestions"></div>
         <button id="cePreview" type="submit" class="btn btn-primary">変更を確認</button>
       </div>
       <div id="cePreviewPane" hidden>
-        <h3>変更内容の確認</h3>
+        <h3 id="cePreviewHeading" tabindex="-1">変更内容の確認</h3>
         <p id="cePreviewSummary"></p>
         <ul id="ceChanges" class="ce-changes"></ul>
         <div class="dialog-actions">

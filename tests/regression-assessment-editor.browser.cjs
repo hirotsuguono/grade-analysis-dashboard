@@ -16,8 +16,14 @@ module.exports = async (page, original) => {
   };
   try {
     await load(); await open();
+    await page.setViewportSize({ width: 320, height: 640 });
+    await page.locator('#ceDomains button').first().click();
+    assert.match(await page.locator('#ceDomainStatus').textContent(), /この分野に属する問題/);
+    const domainStatus = await page.locator('#ceDomainStatus').boundingBox(); assert.ok(domainStatus.y >= 0 && domainStatus.y + domainStatus.height <= 640);
     const before = await page.evaluate(() => JSON.stringify(data));
     await change(); await page.locator('#cePreview').click();
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'cePreviewHeading');
+    const heading = await page.locator('#cePreviewHeading').boundingBox(); assert.ok(heading.y >= 0 && heading.y + heading.height <= 640);
     assert.match(await page.locator('#ceChanges').textContent(), /リスニング → 音声理解<img src=x>/);
     assert.equal(await dialog.locator('img, script').count(), 0);
     assert.equal(await page.evaluate(() => JSON.stringify(data)), before);
@@ -50,7 +56,13 @@ module.exports = async (page, original) => {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     }
     await page.locator('#ceBulk summary').click(); await page.locator('#ceSelectAll').check();
+    await page.locator('#ceQuestions .ce-select').first().uncheck();
+    assert.equal(await page.locator('#ceSelectAll').isChecked(), false);
+    assert.equal(await page.locator('#ceSelectAll').evaluate(el => el.indeterminate), true);
+    await page.locator('#ceQuestions .ce-select').first().check();
+    assert.equal(await page.locator('#ceSelectAll').isChecked(), true);
     await page.locator('#ceBulkPerspective').selectOption('knowledge'); await page.locator('#ceBulkApply').click();
+    assert.match(await page.locator('#ceBulkStatus').textContent(), /3項目/);
     assert.deepEqual(await page.locator('.ce-perspective').evaluateAll(fields => fields.map(f => f.value)), ['knowledge', 'knowledge', 'knowledge']);
     await page.keyboard.press('Escape'); assert.equal(await dialog.isVisible(), false);
     // A cancelled render must restore the exact model and save state.
@@ -68,6 +80,11 @@ module.exports = async (page, original) => {
     const replaced = await page.evaluate(() => JSON.stringify(data));
     await page.locator('#ceApply').click(); assert.match(await page.locator('#ceStatus').textContent(), /変わっています/);
     assert.equal(await page.evaluate(() => JSON.stringify(data)), replaced); await page.locator('#ceClose').click();
+    await load(); await open(); await change(); await page.locator('#cePreview').click();
+    await page.evaluate(() => data.tests.push({ id: 'async-domain', name: '架空の非同期追加', subject: '英語', maxScore: 10, domains: [{ key: 'async', label: '架空分野', max: 10 }] }));
+    const reclassifiedElsewhere = await page.evaluate(() => JSON.stringify(data));
+    await page.locator('#ceApply').click(); assert.match(await page.locator('#ceStatus').textContent(), /変わっています/);
+    assert.equal(await page.evaluate(() => JSON.stringify(data)), reclassifiedElsewhere); await page.locator('#ceClose').click();
     // Changes to scores use the latest values rather than restoring preview-time values.
     await load(); await open(); await change(); await page.locator('#cePreview').click();
     await page.evaluate(() => { data.scores[0].questions.a = 1; data.scores[0].total = 6; });
@@ -81,6 +98,7 @@ module.exports = async (page, original) => {
     await page.locator('#inTest').selectOption('t'); await launch.click();
     assert.equal(await dialog.isVisible(), false);
     assert.equal(await page.evaluate(() => JSON.stringify(data)), aggregateOnly);
+    await require('./domain-identity.browser.cjs')(page);
   } finally {
     if (await dialog.evaluate(el => el.open)) await dialog.evaluate(el => el.close());
     await page.setViewportSize({ width: 1280, height: 900 });
