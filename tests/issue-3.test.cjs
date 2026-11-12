@@ -18,7 +18,7 @@ function harness(dataset) {
     return elements.get(id);
   };
   const context = vm.createContext({
-    console, input: dataset, window: { addEventListener() {}, print() {} },
+    console, input: dataset, window: { addEventListener() {}, print() {}, GD_CLASSIFICATION: require('../src/files/assessment-classification.js') },
     document: { addEventListener() {}, getElementById: element },
   });
   vm.runInContext(source + `

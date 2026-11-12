@@ -322,8 +322,11 @@
 
       <div class="card-grid two-col">
         <div class="card">
-          <h3>分野別 平均得点率</h3>
+          <h3 id="anClassificationTitle">分野別 平均得点率</h3>
+          <label class="classification-axis">集計する分類<select id="anClassificationAxis"><option value="domain">分野別（リスニング・読解など）</option><option value="perspective">評価の観点別</option></select></label>
+          <p id="anClassificationSummary" class="card-note"></p>
           <div class="chart" id="anDomainChart"></div>
+          <div id="anClassificationTable" class="table-wrap"></div>
         </div>
         <div class="card">
           <h3>問題別 平均得点率</h3>
@@ -798,6 +801,7 @@
       <div class="builder-rows" id="tfDomains"></div>
 
       <h4>問題 <button type="button" class="btn btn-ghost btn-sm" id="tfAddQuestion">＋ 追加</button></h4>
+      <p class="form-note">各問題に「分野」と「評価の観点」をそれぞれ設定します。1行は小問、または別々に採点する内訳1つです。</p>
       <div class="builder-rows" id="tfQuestions"></div>
 
       <p class="form-note">問題を登録すると、合計点・分野別点は問題の得点から自動計算されます。問題なし（合計点のみ）でも作成できます。</p>
@@ -849,6 +853,7 @@
   <script src="files/roster-reassign.js"></script>
   <script src="files/teaching-notes.js"></script>
   <script src="files/paired-comparison.js"></script>
+  <script src="files/assessment-classification.js"></script>
   <script src="files/vendor/exceljs.min.js"></script>
   <script src="files/excel-templates.js"></script>
   <script src="files/initial-import.js"></script>
