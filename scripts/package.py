@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlsplit
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FILES = (
     'Index.html', 'LICENSE', 'はじめに.txt',
-    'files/style.css', 'files/script.js', 'files/accessibility.js', 'files/update-check.js', 'files/assessment-classification.js',
+    'files/style.css', 'files/script.js', 'files/accessibility.js', 'files/update-check.js', 'files/assessment-classification.js', 'files/classification-editor-core.js', 'files/classification-editor.js',
     'files/import-core.js', 'files/roster-reassign.js', 'files/teaching-notes.js', 'files/teaching-notes-ui.js', 'files/paired-comparison.js', 'files/initial-import.js', 'files/onboarding.js', 'files/excel-templates.js',
     'files/manual.html', 'files/sample-data.json', 'files/sample-data.js',
     'files/vendor/echarts.min.js', 'files/vendor/xlsx.full.min.js', 'files/vendor/exceljs.min.js',
