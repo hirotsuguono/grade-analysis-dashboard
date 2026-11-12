@@ -75,6 +75,12 @@ module.exports = async (page, original) => {
     assert.equal(await page.evaluate(() => data.scores[0].domains.listen), 6);
     assert.equal(await page.evaluate(() => data.scores[0].total), 6);
     await page.locator('#inTest').selectOption('other'); await launch.click(); assert.equal(await dialog.isVisible(), false);
+    await load();
+    await page.evaluate(() => { data.scores[0].questions = {}; data.scores[0].domains = { listen: 3, read: 4 }; });
+    const aggregateOnly = await page.evaluate(() => JSON.stringify(data));
+    await page.locator('#inTest').selectOption('t'); await launch.click();
+    assert.equal(await dialog.isVisible(), false);
+    assert.equal(await page.evaluate(() => JSON.stringify(data)), aggregateOnly);
   } finally {
     if (await dialog.evaluate(el => el.open)) await dialog.evaluate(el => el.close());
     await page.setViewportSize({ width: 1280, height: 900 });

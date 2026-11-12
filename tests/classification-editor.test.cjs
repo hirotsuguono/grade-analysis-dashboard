@@ -59,3 +59,11 @@ test('aggregate-only tests and broken source question keys cannot be edited', ()
   assert.throws(() => core.plan(broken, domains, assignments), /元の問題/);
   assert.throws(() => core.candidate(d, 't', { nextTest: { id: 'other' } }), /反映先/);
 });
+test('aggregate-only domain records are refused instead of losing their only stored points', () => {
+  const d = fixture(), p = core.plan(d.tests[0], domains, assignments);
+  d.scores[0].questions = {}; d.scores[0].domains = { listen: 3, read: 4 };
+  const before = JSON.stringify(d);
+  assert.throws(() => core.checkSourceScores(d, d.tests[0]), /問題ごとの得点がない/);
+  assert.throws(() => core.candidate(d, 't', p), /問題ごとの得点がない/);
+  assert.equal(JSON.stringify(d), before);
+});

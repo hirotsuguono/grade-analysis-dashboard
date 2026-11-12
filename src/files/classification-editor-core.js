@@ -61,11 +61,22 @@
     return Object.fromEntries([...grouped].filter(([, qs]) => qs.every(q => Object.hasOwn(rec.questions || {}, q.key) && Number.isFinite(rec.questions[q.key])))
       .map(([key, qs]) => [key, qs.reduce((sum, q) => sum + rec.questions[q.key], 0)]));
   }
+  function checkSourceScores(dataset, test) {
+    for (const rec of dataset.scores) if (rec.testId === test.id) {
+      for (const [key, value] of Object.entries(rec.domains || {})) if (value != null) {
+        const questions = test.questions.filter(q => q.domain === key);
+        requireValue(questions.length && questions.every(q => Object.hasOwn(rec.questions || {}, q.key) && Number.isFinite(rec.questions[q.key])),
+          '問題ごとの得点がない分野別記録があるため、分類を変更できません。元のExcelで小問または採点する内訳をご確認ください。');
+      }
+    }
+  }
   function candidate(dataset, testId, prepared) {
-    requireValue(dataset.tests.some(t => t.id === testId), '対象のテストが見つかりません。');
+    const test = dataset.tests.find(t => t.id === testId);
+    requireValue(test, '対象のテストが見つかりません。');
     requireValue(prepared?.nextTest?.id === testId, '分類の反映先が不正です。');
+    checkSourceScores(dataset, test);
     return { ...dataset, tests: dataset.tests.map(t => t.id === testId ? prepared.nextTest : t),
       scores: dataset.scores.map(rec => rec.testId === testId ? { ...rec, domains: domainScores(rec, prepared.nextTest) } : rec) };
   }
-  return Object.freeze({ plan, candidate, fingerprint });
+  return Object.freeze({ plan, candidate, fingerprint, checkSourceScores });
 });

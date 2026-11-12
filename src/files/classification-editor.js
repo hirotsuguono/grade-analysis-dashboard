@@ -46,6 +46,7 @@
     const test = data && testById(ui.inTest);
     if (!test) { alert('先にテストを選択してください。'); return; }
     if (!test.questions?.length) { alert('問題ごとの点数がないため分類を編集できません。小問または採点する内訳を設定したテストで利用してください。'); return; }
+    try { core.checkSourceScores(data, test); } catch (error) { alert(error.message); return; }
     session = { dataset: data, token: activeDataToken, testId: test.id, original: core.fingerprint(test) };
     byId('ceTestName').textContent = `${test.name} ／ ${test.subject}`;
     byId('ceDomains').replaceChildren(); byId('ceQuestions').replaceChildren();
