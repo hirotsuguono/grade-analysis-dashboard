@@ -41,7 +41,15 @@
   }
   function summarize(test, records, axis) {
     return groups(test, axis).map(group => {
-      const values = records.map(rec => score(rec, group)).filter(v => v != null);
+      const values = records.map(rec => {
+        const value = score(rec, group);
+        if (value != null || axis === 'perspective' || !rec || rec.absent) return value;
+        // A saved domain aggregate can be used only when no item details exist.
+        // Once any item is entered, incomplete groups must stay incomplete.
+        const hasDetails = (test.questions || []).some(q => Object.hasOwn(rec.questions || {}, q.key));
+        const aggregate = Object.hasOwn(rec.domains || {}, group.key) ? rec.domains[group.key] : null;
+        return !hasDetails && Number.isFinite(aggregate) && aggregate >= 0 && aggregate <= group.max ? aggregate : null;
+      }).filter(v => v != null);
       return { key: group.key, label: group.label, max: group.max, count: group.questions.length, n: values.length,
         rate: values.length && group.max > 0 ? values.reduce((sum, v) => sum + v / group.max * 100, 0) / values.length : null };
     });
