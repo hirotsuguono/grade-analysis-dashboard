@@ -23,12 +23,23 @@ module.exports = async (page, fixture) => {
         await importTestTemplate(new File([await GD_EXCEL.writeBuffer(wb)],'fictional-rejected-classifications.xlsx'));
         failures.push(JSON.stringify(data)===before.data && fileName===before.fileName && fileHandle===before.fileHandle && dirty===before.dirty && activeDataToken===before.activeDataToken);
       }
-      return {beforeCount,afterCount:data.tests.length,test,total:record.total,questions:record.questions,zero:getScore(secondId,test.id).total,absent:getScore(thirdId,test.id).absent,rosterSame:JSON.stringify(data.students)===roster,failures,valid:validateDataset(data).length};
+      const errorCells=[];
+      for(const address of ['F8','BD8']) {
+        set('② 点数入力','F8','知識・技能');set('② 点数入力','BD8','');
+        wb.Sheets['② 点数入力'][address]={t:'e',v:15};
+        const bytes=XLSX.write(wb,{type:'array',bookType:'xlsx'});
+        const reread=XLSX.read(bytes,{type:'array'});
+        let message='';
+        try {await importTestTemplate(new File([bytes],'fictional-excel-error.xlsx'));} catch(error) {message=error.message;}
+        errorCells.push(reread.Sheets['② 点数入力'][address].t==='e' && message.includes(address) && message.includes('Excelのエラー値') && JSON.stringify(data)===before.data && fileName===before.fileName && fileHandle===before.fileHandle && dirty===before.dirty && activeDataToken===before.activeDataToken);
+      }
+      return {beforeCount,afterCount:data.tests.length,test,total:record.total,questions:record.questions,zero:getScore(secondId,test.id).total,absent:getScore(thirdId,test.id).absent,rosterSame:JSON.stringify(data.students)===roster,failures,errorCells,valid:validateDataset(data).length};
     });
     assert.equal(result.afterCount,result.beforeCount+1);assert.equal(result.test.maxScore,14);
     assert.deepEqual(result.test.questions.map(q=>q.perspective||''),['knowledge','thinking','knowledge','']);
     assert.equal(result.total,7);assert.equal(result.zero,0);assert.equal(result.absent,true);
     assert.deepEqual(Object.values(result.questions),[2,1,4,0]);assert.equal(result.rosterSame,true);assert.deepEqual(result.failures,[true,true]);assert.equal(result.valid,0);
+    assert.deepEqual(result.errorCells,[true,true]);
     await page.locator('[data-tab="analysis"]').click();
     await page.locator('#anClassificationAxis').selectOption('perspective');
     assert.match(await page.locator('#anClassificationTable').textContent(),/知識・技能.*6点.*2名.*50%/s);

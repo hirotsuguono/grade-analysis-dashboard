@@ -3768,11 +3768,11 @@ async function issueNewTestTemplate() {
 // テンプレートからテストを取込
 async function importTestTemplate(file) {
   const wb = await window.GD_IMPORT.readWorkbook(file, XLSX);
-  const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['② 点数入力', '新規テスト']);
+  const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['② 点数入力', '新規テスト'], { rejectCellErrors: true });
   const settingsNames = wb.SheetNames.filter(n => ['① テスト設定', 'テスト設定'].includes(n));
   if (settingsNames.length > 1) { alert('テスト設定のシートが複数あります。1枚にしてください。'); return; }
   if (wb.SheetNames.includes('② 点数入力') && !settingsNames.length) { alert('「① テスト設定」シートが見つかりません。シート名を戻すか、新しいテンプレートを発行してください。'); return; }
-  const settingsRows = settingsNames.length ? XLSX.utils.sheet_to_json(wb.Sheets[settingsNames[0]], { header: 1, defval: '' }) : null;
+  const settingsRows = settingsNames.length ? window.GD_IMPORT.selectSheet(wb, XLSX, settingsNames, { rejectCellErrors: true }).rows : null;
   const layout = window.GD_IMPORT.testLayout(rows, settingsRows);
   if (layout.errors.length) { alert(layout.errors.join('\n')); return; }
   const { metadata, headerIdx, scoreStart, domainRow, perspectiveRow, maxRow, identityColumns } = layout;

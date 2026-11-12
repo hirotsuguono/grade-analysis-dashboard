@@ -190,14 +190,22 @@
     };
   }
 
-  function selectSheet(wb, XLSX, preferredNames) {
+  function selectSheet(wb, XLSX, preferredNames, options = {}) {
     validateWorkbook(wb, XLSX);
+    const read = name => {
+      const sheet = wb.Sheets[name];
+      if (options.rejectCellErrors) {
+        const address = Object.keys(sheet).find(key => !key.startsWith('!') && sheet[key]?.t === 'e');
+        if (address) throw new Error(`「${name}」の${address}セルがExcelのエラー値です。数式や入力を修正してください。取込は反映していません。`);
+      }
+      return { name, rows: XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) };
+    };
     for (const name of preferredNames) {
-      if (wb.SheetNames.includes(name)) return { name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }) };
+      if (wb.SheetNames.includes(name)) return read(name);
     }
     const candidates = wb.SheetNames.filter((n) => !/(記入例|書き方|説明|使い方)/.test(n)).map((name) => ({ name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }) })).filter((s) => findHeader(s.rows) >= 0 || s.rows.some(splitRosterHeader));
     if (candidates.length !== 1) throw new Error(candidates.length ? '取込対象のシートが複数あります。対象シート名を「' + preferredNames[0] + '」にしてください。' : '取込用シートが見つかりません。アプリが発行したテンプレートを使ってください。');
-    return candidates[0];
+    return options.rejectCellErrors ? read(candidates[0].name) : candidates[0];
   }
 
   function numeric(value) {

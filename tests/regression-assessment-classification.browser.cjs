@@ -25,6 +25,14 @@ module.exports = async (page, original) => {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     }
     assert.equal(await page.evaluate(() => JSON.stringify(data)), saved);
+    const aggregateOnly = structuredClone(d);
+    aggregateOnly.students = [aggregateOnly.students[0]];
+    aggregateOnly.scores = [{ studentId: 's0', testId: 'test', total: 9, questions: {}, domains: { listen: 4, read: 5 } }];
+    await page.evaluate(value => applyJsonText(JSON.stringify(value), 'fictional-aggregate-only.json', null), aggregateOnly);
+    assert.match(await page.locator('#anClassificationTable').textContent(), /80%/);
+    await page.locator('#anClassificationAxis').selectOption('perspective');
+    assert.equal(await page.locator('#anClassificationTable tbody tr').filter({ hasText: '0名' }).count(), 2, 'domain aggregates must not fabricate perspective scores');
+    await page.evaluate(value => applyJsonText(JSON.stringify(value), 'fictional-classifications.json', null), d);
     await page.evaluate(() => { data.tests[0].questions[0].perspective = { formula: '1+1' }; });
     assert.match(await page.evaluate(() => validateDataset(data).join('\n')), /評価の観点/);
     await page.evaluate(value => applyJsonText(JSON.stringify(value), 'fictional-classifications.json', null), d);

@@ -169,7 +169,7 @@
         cell(X, ws, 8, c, c < 9 ? 25 : '', style.inputCenter);
         cell(X, ws, 9, c, c < 9 ? (example ? ['大問1-(1)', '大問1-(2)', '大問2・知識技能分', '大問2・思考判断表現分'][c-5] : `問${c-4}`) : '', style.inputCenter);
         const letter = X.utils.encode_col(c);
-        validation(ws, `${letter}8`, { type: 'list', formulae: ['"知識・技能,思考・判断・表現,未設定"'], promptTitle: '評価の観点', prompt: 'この列の採点対象を選択。空欄は未設定です。', error: '知識・技能、思考・判断・表現、未設定から選んでください。' });
+        validation(ws, `${letter}8`, { type: 'list', formulae: ['"知識・技能,思考・判断・表現,未設定"'], promptTitle: '評価の観点', prompt: 'この列の観点を選択。両観点が混ざる大問合計のみなら未設定。空欄も未設定です。', error: '知識・技能、思考・判断・表現、未設定から選んでください。' });
         validation(ws, `${letter}9`, { type: 'decimal', operator: 'greaterThan', formulae: [0], promptTitle: '配点', prompt: 'この列の満点を入力します。' });
         validation(ws, `${letter}11:${letter}${lastRow+1}`, { type: 'custom', formulae: [`OR(${letter}11="",${letter}11="欠",AND(ISNUMBER(${letter}11),ISNUMBER(${letter}$9),${letter}$9>0,${letter}11>=0,${letter}11<=${letter}$9))`],
           promptTitle: '点数を入力', prompt: '0〜配点の数値、欠、または空欄です。', error: '0〜配点の数値、欠、または空欄で入力してください。' });
