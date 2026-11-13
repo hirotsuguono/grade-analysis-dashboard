@@ -27,7 +27,7 @@ const ui = {
   tab: 'overview',
   ovClass: 'all', ovTest: '', ovSubject: 'all',
   inClass: 'all', inTest: '', inSubject: 'all',
-  anClass: 'all', anTest: '', anSubject: 'all',
+  anClass: 'all', anTest: '', anSubject: 'all', anAxis: 'domain',
   trendClass: 'all', trendSearch: '', trendSubject: '', trendKind: 'all',
   trendSelected: new Set(),
   trendCompareTest: '', trendCompareFrom: null, trendComparisonStarted: false,
@@ -345,7 +345,7 @@ function questionScoreState(rec, test) {
     answered++;
     partialTotal += value;
   }
-  const domains = {};
+  const domains = Object.create(null);
   for (const [key, qs] of byDomain) {
     if (qs.every(q => Number.isFinite(rec?.questions?.[q.key]))) {
       domains[key] = qs.reduce((sum, q) => sum + rec.questions[q.key], 0);
@@ -561,6 +561,7 @@ function validateDataset(parsed) {
         if (!q || typeof q.key !== 'string' || !q.key || qKeys.has(q.key)) add(`テスト「${t.name || t.id || i}」の問題キーが空、または重複しています。`);
         else qKeys.add(q.key);
         if (!optionalText(q.label) || !optionalText(q.domain)) add('問題名・分野キーは文字列にしてください。');
+        if (q.perspective != null && q.perspective !== '' && !['knowledge', 'thinking'].includes(q.perspective)) add('評価の観点は知識・技能、思考・判断・表現、未設定から選んでください。');
         if (!Number.isFinite(q.max) || q.max <= 0) add(`テスト「${t.name || t.id || i}」の問題配点が不正です。`);
         else qMaxSum += q.max;
       }
@@ -706,6 +707,7 @@ function applyJsonText(text, name, handle) {
 
     // 選択状態を初期化
     ui.ovClass = ui.inClass = ui.anClass = ui.trendClass = ui.metClass = 'all';
+    ui.anAxis = 'domain';
     ui.inSubject = ui.ovSubject = ui.anSubject = ui.listSubject = 'all';
     ui.listClass = 'all'; ui.listMode = 'total'; ui.listSort = null; ui.listPivot = 60;
     ui.listGrade = 'all'; ui.listTerm = 'all';
@@ -1241,9 +1243,10 @@ function renderHistogram(test, totals) {
 }
 
 // 分野別平均得点率の棒グラフ（概要・分析共用）
-function renderDomainBar(chartId, test, students, highlightWeakest) {
-  const domains = testDomains(test);
-  const rates = domains.map((d) => {
+function renderDomainBar(chartId, test, students, highlightWeakest, axis = 'domain') {
+  const summary = test.questions?.length ? window.GD_CLASSIFICATION.summarize(test, students.map(s => getAttendedScore(s.id, test.id)), axis).filter(g => axis !== 'perspective' || g.key) : (axis === 'perspective' ? [] : null);
+  const domains = summary || testDomains(test);
+  const rates = summary ? summary.map(d => d.rate == null ? null : round1(d.rate)) : domains.map((d) => {
     const vals = students
       .map((s) => getAttendedScore(s.id, test.id))
       .filter((r) => r && r.domains && r.domains[d.key] != null)
@@ -1254,7 +1257,7 @@ function renderDomainBar(chartId, test, students, highlightWeakest) {
   chart(chartId).setOption({
     grid: BASE_GRID,
     tooltip: { trigger: 'axis', valueFormatter: (v) => v + '%' },
-    xAxis: { type: 'category', data: domains.map((d) => d.label) },
+    xAxis: { type: 'category', data: domains.map((d) => d.label), axisLabel: axis === 'perspective' ? { interval: 0, formatter: value => value === '思考・判断・表現' ? '思考・判断\n・表現' : value } : {} },
     yAxis: { type: 'value', max: 100, name: '得点率%' },
     series: [{
       type: 'bar',
@@ -1557,15 +1560,24 @@ function addDomainRow(label = '', max = '') {
   $('tfDomains').appendChild(div);
 }
 
-function addQuestionRow(label = '', max = '') {
+function addQuestionRow(label = '', max = '', perspective = '') {
   const div = document.createElement('div');
-  div.className = 'builder-row';
+  div.className = 'builder-row question-builder-row';
   div.innerHTML = `
-    <input type="text" class="bq-label" placeholder="問題名（例：問1）" value="${esc(label)}">
-    <input type="number" class="bq-max" placeholder="配点" min="1" value="${esc(max)}">
-    <select class="bq-domain"></select>
+    <label>問題・採点する内訳<input type="text" class="bq-label" placeholder="例：大問1-(1)" value="${esc(label)}"></label>
+    <label>配点<input type="number" class="bq-max" placeholder="配点" min="1" value="${esc(max)}"></label>
+    <label>分野<select class="bq-domain"></select></label>
+    <label>評価の観点<select class="bq-perspective"></select></label>
     <button type="button" class="row-del" title="削除">✕</button>`;
-  div.querySelector('.row-del').onclick = () => div.remove();
+  const remove = div.querySelector('.row-del');
+  const nameRemoval = () => remove.setAttribute('aria-label', (div.querySelector('.bq-label').value || 'この問題') + 'を削除');
+  nameRemoval();
+  div.querySelector('.bq-label').addEventListener('input', nameRemoval);
+  remove.onclick = () => {
+    const target = div.nextElementSibling?.querySelector('.bq-label') || div.previousElementSibling?.querySelector('.bq-label') || $('tfAddQuestion');
+    div.remove(); target.focus();
+  };
+  div.querySelector('.bq-perspective').replaceChildren(...window.GD_CLASSIFICATION.perspectives.map(p => new Option(p.label, p.key, false, p.key === perspective)));
   $('tfQuestions').appendChild(div);
   refreshQuestionDomainSelects();
 }
@@ -1592,7 +1604,7 @@ function copyPrevStructure() {
   for (const d of (prev.domains || [])) addDomainRow(d.label, d.max);
   const dLabelOf = new Map((prev.domains || []).map((d) => [d.key, d.label]));
   for (const q of (prev.questions || [])) {
-    addQuestionRow(q.label, q.max);
+    addQuestionRow(q.label, q.max, q.perspective || '');
     const sel = $('tfQuestions').lastElementChild.querySelector('.bq-domain');
     const label = dLabelOf.get(q.domain) || q.domain || '';
     if ([...sel.options].some((o) => o.value === label)) sel.value = label;
@@ -1624,11 +1636,12 @@ function submitTestDialog(e) {
     label: row.querySelector('.bq-label').value.trim() || `問${i + 1}`,
     max: Number(row.querySelector('.bq-max').value) || 0,
     domain: row.querySelector('.bq-domain').value || undefined,
+    perspective: row.querySelector('.bq-perspective').value || undefined,
   })).filter((q) => q.max > 0);
   const maxScore = Number($('tfMax').value) || 100;
   const questionMaxSum = questions.reduce((sum, q) => sum + q.max, 0);
-  if (questionMaxSum > maxScore) {
-    alert(`問題の配点合計（${questionMaxSum}点）がテストの満点（${maxScore}点）を超えています。配点を修正してください。`);
+  if (questions.length && questionMaxSum !== maxScore) {
+    alert(`問題の配点合計（${questionMaxSum}点）とテストの満点（${maxScore}点）を一致させてください。`);
     return;
   }
   const domainMismatch = domains.find((d) => {
@@ -2073,7 +2086,16 @@ function renderAnalysis() {
   }
   const students = studentsOf(ui.anClass);
 
-  const { domains, rates } = renderDomainBar('anDomainChart', test, students, true);
+  const axis = ui.anAxis || 'domain';
+  $('anClassificationAxis').value = axis;
+  $('anClassificationTitle').textContent = (axis === 'perspective' ? '評価の観点別' : '分野別') + ' 平均得点率';
+  const summary = window.GD_CLASSIFICATION.summarize(test, students.map(s => getAttendedScore(s.id, test.id)), axis).filter(g => axis !== 'perspective' || g.key);
+  const unassigned = (test.questions || []).filter(q => axis === 'perspective' ? !q.perspective : !q.domain).length;
+  $('anClassificationSummary').textContent = !test.questions?.length
+    ? '問題ごとの点数がないため、観点別は集計できません。小問または採点する内訳ごとの点数が必要です。'
+    : `${test.questions.length}項目 ／ ${axis === 'perspective' ? '観点' : '分野'}未設定 ${unassigned}項目・${(test.questions || []).filter(q => axis === 'perspective' ? !q.perspective : !q.domain).reduce((sum, q) => sum + q.max, 0)}点分。${axis === 'perspective' ? '観点未設定の項目は観点別の得点率に含めません。' : ''}総合点は重複して加算しません。`;
+  const { domains, rates } = renderDomainBar('anDomainChart', test, students, true, axis);
+  $('anClassificationTable').innerHTML = summary.length ? `<table class="data-table classification-table"><caption>${axis === 'perspective' ? '評価の観点' : '分野'}ごとの集計</caption><thead><tr><th>分類</th><th>項目数</th><th>満点</th><th>集計人数</th><th>平均得点率</th></tr></thead><tbody>${summary.map(g => `<tr><th scope="row">${esc(g.label)}</th><td>${g.count}</td><td>${esc(g.max)}点</td><td>${g.n}名</td><td>${g.rate == null ? '—' : round1(g.rate) + '%'}</td></tr>`).join('')}</tbody></table>` : '';
   const qResult = renderQuestionBar(test, students);
   renderQuestionBox(test, students);
 
@@ -2084,7 +2106,7 @@ function renderAnalysis() {
     let msg = '';
     if (validD.length) {
       const weak = validD.reduce((a, b) => (a.r <= b.r ? a : b));
-      msg += `最も弱い分野は <strong>${esc(weak.d.label)}</strong>（平均得点率 ${weak.r}%）`;
+      msg += `得点率が最も低い${axis === 'perspective' ? '観点' : '分野'}は <strong>${esc(weak.d.label)}</strong>（平均得点率 ${weak.r}%）`;
     }
     if (validQ.length) {
       const weakQ = validQ.reduce((a, b) => (a.rate <= b.rate ? a : b));
@@ -2094,7 +2116,7 @@ function renderAnalysis() {
 
     // 前回テスト比：分野ごとの伸びを効果量で（同じ分野キーを持つ直前テストと比較）
     const prev = comparisonTarget(test);
-    if (prev) {
+    if (prev && axis === 'domain') {
       const moves = [];
       for (const d of testDomains(test)) {
         const prevMax = domainMax(prev, d.key);
@@ -3985,6 +4007,7 @@ function init() {
   $('inTest').onchange = (e) => { ui.inTest = e.target.value; renderInput(); };
   $('inSubject').onchange = (e) => { ui.inSubject = e.target.value; fillScopedTestSelect('inTest', 'inSubject', 'inTest'); renderInput(); };
   $('anClass').onchange = (e) => { ui.anClass = e.target.value; renderAnalysis(); resizeCharts(); };
+  $('anClassificationAxis').onchange = e => { ui.anAxis = e.target.value; renderAnalysis(); resizeCharts(); };
   $('anSubject').onchange = (e) => { ui.anSubject = e.target.value; fillScopedTestSelect('anTest', 'anSubject', 'anTest'); renderAnalysis(); resizeCharts(); };
   $('anTest').onchange = (e) => { ui.anTest = e.target.value; renderAnalysis(); resizeCharts(); };
   $('trendClass').onchange = (e) => { ui.trendClass = e.target.value; renderTrend(); resizeCharts(); };
