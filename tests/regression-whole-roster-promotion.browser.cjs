@@ -23,6 +23,11 @@ module.exports = async (page, original) => {
     assert.equal(await page.locator('#reassignWholeFields').isVisible(),true);assert.equal(await page.locator('#reassignPartialFields').isVisible(),false);
     assert.match(await page.locator('#reassignWholeSummary').textContent(),/現在1年 2名.*現在2年 2名.*現在3年 2名/);
     const wb=await issue(), sheet=wb.getWorksheet('クラス替え');assert.equal(sheet.getCell('F10').value,'2年A組');assert.equal(sheet.getCell('F12').value,'3年A組');assert.equal(sheet.getCell('E14').value,'卒業');
+    sheet.getCell('F10').value='2年X組<img src=x onerror=window.rosterCandidateUnsafe=1>';await upload(wb);
+    assert.match(await page.locator('#reassignPreview').textContent(),/2年X組<img.*使えるクラス：2年A組/);assert.equal(await page.locator('#reassignPreview img').count(),0);assert.equal(await page.evaluate(()=>window.rosterCandidateUnsafe),undefined);assert.deepEqual(await page.evaluate(()=>data),before);
+    sheet.getCell('F10').value='2年A組';wb.getWorksheet('発行設定').getCell('E8').value='3年1組';sheet.getCell('F12').value='3年1組';await upload(wb);
+    assert.match(await page.locator('#reassignPreview').textContent(),/発行設定・E8.*3年1組.*3年A組.*発行し直/);assert.deepEqual(await page.evaluate(()=>data),before);
+    wb.getWorksheet('発行設定').getCell('E8').value='3年A組';sheet.getCell('F12').value='3年A組';
     sheet.getCell('F14').value='3年A組';await upload(wb);assert.match(await page.locator('#reassignPreview').textContent(),/卒業.*空欄/);assert.deepEqual(await page.evaluate(()=>data),before);
     assert.doesNotMatch(await page.locator('#reassignPreview').textContent(),/重複/);sheet.getCell('F14').value='';await upload(wb);assert.match(await page.locator('#reassignPreview').textContent(),/新2年 2名・新3年 2名・卒業 2名/);
     const viewport=page.viewportSize();for(const width of[320,768,1280]){await page.setViewportSize({width,height:950});assert.equal(await page.locator('.roster-dialog').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);}

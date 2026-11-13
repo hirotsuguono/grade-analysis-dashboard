@@ -120,6 +120,16 @@
     const config = configFrom(values);
     errors.push(...configErrors(config));
     if (errors.length) return fail();
+    if (useWhole) for (const grade of [2, 3]) {
+      const column = grade === 2 ? 3 : 4;
+      const candidates = destinationsForGrade(config, grade);
+      const mismatch = candidates.findIndex((candidate, i) => normalized(settings[7 + i]?.[column]) !== candidate);
+      if (mismatch !== -1) {
+        const address = `${grade === 2 ? 'D' : 'E'}${8 + mismatch}`;
+        add(`発行設定・${address}：表示されているクラス「${text(settings[7 + mismatch]?.[column]) || '空欄'}」と、発行時の設定「${candidates[mismatch]}」が一致しません。アプリの「新${grade}年生の組名・クラス数」を選び直してExcelを発行し直してください。発行設定シートは編集しません。`);
+      }
+    }
+    if (errors.length) return fail();
     errors.push(...promotionYearErrors(data.students, config));
     if (errors.length) return fail();
     if (config.kind === 'move' && config.date > today) add('変更日が未来です。Excelの準備はできますが、反映は変更日以降に行ってください。');
@@ -163,7 +173,11 @@
       const className = normalized(row[classColumn]), rawNumber = normalized(row[numberColumn]);
       if (!className && !rawNumber && config.mode === 'partial') { unchanged++; continue; }
       const rowAllowed = useWhole ? new Set(destinationsForGrade(config, target.grade)) : allowed;
-      if (!rowAllowed.has(className)) { add(`${at}・${useWhole ? 'F' : 'E'}列：新クラスを${useWhole ? `新${target.grade}年の` : '発行時の'}候補から選んでください。`); continue; }
+      if (!rowAllowed.has(className)) {
+        const candidates = [...rowAllowed], examples = candidates.slice(0, 3).join('、') + (candidates.length > 3 ? ` ほか${candidates.length - 3}クラス` : '');
+        add(`${at}・${useWhole ? 'F' : 'E'}列：新クラス「${className || '空欄'}」は${useWhole ? `新${target.grade}年の` : '発行時の'}候補にありません。使えるクラス：${examples}。新クラスのセルの候補から選んでください。組名・クラス数を変える場合は、アプリで設定してExcelを発行し直してください。`);
+        continue;
+      }
       const newNumber = number(row[numberColumn]);
       if (newNumber == null) { add(`${at}・${useWhole ? 'G' : 'F'}列：新番号は正の整数を入力してください。`); continue; }
       if (className === text(s.className) && newNumber === currentNumber) { unchanged++; continue; }

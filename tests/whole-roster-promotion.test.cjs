@@ -143,3 +143,30 @@ test('a completed year remains blocked when all previous pupils graduated and a 
   const nextYear = config({ schoolYear: 2028, date: '2028-04-01' });
   assert.equal(plan(h, make(h, after, nextYear), after, '2028-04-01').errors.length, 0);
 });
+
+test('matching 3年A組 in the displayed list and pupil row remains valid through a real XLSX round trip', async () => {
+  const h = harness(), d = fixture(), before = JSON.stringify(d), wb = make(h, d);
+  put(wb, 'F12', '3年A組');
+  const read = await h.imports.readWorkbook(new Blob([await h.excel.writeBuffer(wb)]), XLSX);
+  assert.equal(read.Sheets['発行設定'].E8.v, '3年A組'); assert.equal(read.Sheets['クラス替え'].F12.v, '3年A組');
+  const result = plan(h, read, d); assert.deepEqual(plain(result.errors), []); assert.equal(result.changes.length, 6); assert.equal(JSON.stringify(d), before);
+});
+
+test('a displayed class list that disagrees with the stored naming settings explains both values and refuses all changes', async () => {
+  const h = harness(), d = fixture(), before = JSON.stringify(d), wb = make(h, d, config({ naming3: 'numbers' }));
+  put(wb, 'E8', '3年A組', '発行設定'); put(wb, 'F12', '3年A組'); put(wb, 'F13', '3年2組');
+  const read = await h.imports.readWorkbook(new Blob([await h.excel.writeBuffer(wb)]), XLSX), result = plan(h, read, d);
+  assert.match(result.errors.join(), /発行設定・E8.*3年A組.*3年1組.*アプリ.*発行し直/);
+  assert.doesNotMatch(result.errors.join(), /12行目・F列/); assert.equal(result.changes.length, 0); assert.equal(JSON.stringify(d), before);
+  const changedSetting = make(h, d); put(changedSetting, 'B14', 'numbers', '発行設定');
+  assert.match(plan(h, changedSetting, d).errors.join(), /発行設定・E8.*3年A組.*3年1組/);
+});
+
+test('invalid new classes identify the typed value, valid class examples and how to change the configured classes', () => {
+  const h = harness(), d = fixture(), wb = make(h, d), before = JSON.stringify(d);
+  put(wb, 'F12', 'A'); const result = plan(h, wb, d);
+  assert.match(result.errors.join(), /12行目・F列.*「A」.*新3年.*3年A組、3年B組.*アプリ.*発行し直/);
+  assert.equal(result.changes.length, 0); assert.equal(JSON.stringify(d), before);
+  const many = make(h, d, config({ count3: 26 })); put(many, 'F12', '3年AA組');
+  const message = plan(h, many, d).errors.join(); assert.match(message, /3年A組、3年B組、3年C組 ほか23クラス/); assert.doesNotMatch(message, /3年Z組/);
+});
