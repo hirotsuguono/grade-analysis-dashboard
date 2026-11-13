@@ -3759,7 +3759,7 @@ async function issueNewTestTemplate() {
   try {
     const wb = window.GD_EXCEL.testTemplate(XLSX, sortedStudents());
     await window.GD_EXCEL.download(wb, '新規テスト取込テンプレート.xlsx');
-    alert('テスト用Excelをダウンロードしました。\n\n1) 「① テスト設定」の黄色い欄に教科・テスト名・実施日などを入力します。\n2) 「② 点数入力」の7行目に分野、8行目に配点、9行目に問題名、10行目以降に点数を入力します。満点は配点合計から自動計算します。\n3) 灰色のA〜E列は名簿です。変更せず、F列以降に点数を入力します。列を増やすときは直前の列全体をコピーして追加してください。\n4) 空欄は未入力、0は0点。欠席は1か所に「欠」、他の点数は空欄にします。\n5) 保存して「記入後に取込」で選びます。その後アプリでもJSONを保存してください。');
+    alert('テスト用Excelをダウンロードしました。\n\n1) 「① テスト設定」の黄色い欄に教科・テスト名・実施日などを入力します。\n2) 「② 点数入力」の7行目に分野、8行目に評価の観点、9行目に配点、10行目に問題名、11行目以降に点数を入力します。1列に1つの点数を入力し、大問合計と内訳を両方入れないでください。満点は配点合計から自動計算します。\n3) 灰色のA〜E列は名簿です。変更せず、F列以降に点数を入力します。列を増やすときは直前の列全体をコピーして追加してください。\n4) 空欄は未入力、0は0点。欠席は1か所に「欠」、他の点数は空欄にします。\n5) 保存して「記入後に取込」で選びます。その後アプリでもJSONを保存してください。');
   } catch (error) {
     alert('Excelを発行できませんでした。配布ZIPを展開し直してからお試しください。\n' + error.message);
   }
@@ -3768,14 +3768,14 @@ async function issueNewTestTemplate() {
 // テンプレートからテストを取込
 async function importTestTemplate(file) {
   const wb = await window.GD_IMPORT.readWorkbook(file, XLSX);
-  const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['② 点数入力', '新規テスト']);
+  const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['② 点数入力', '新規テスト'], { rejectCellErrors: true });
   const settingsNames = wb.SheetNames.filter(n => ['① テスト設定', 'テスト設定'].includes(n));
   if (settingsNames.length > 1) { alert('テスト設定のシートが複数あります。1枚にしてください。'); return; }
   if (wb.SheetNames.includes('② 点数入力') && !settingsNames.length) { alert('「① テスト設定」シートが見つかりません。シート名を戻すか、新しいテンプレートを発行してください。'); return; }
-  const settingsRows = settingsNames.length ? XLSX.utils.sheet_to_json(wb.Sheets[settingsNames[0]], { header: 1, defval: '' }) : null;
+  const settingsRows = settingsNames.length ? window.GD_IMPORT.selectSheet(wb, XLSX, settingsNames, { rejectCellErrors: true }).rows : null;
   const layout = window.GD_IMPORT.testLayout(rows, settingsRows);
   if (layout.errors.length) { alert(layout.errors.join('\n')); return; }
-  const { metadata, headerIdx, scoreStart, domainRow, maxRow, identityColumns } = layout;
+  const { metadata, headerIdx, scoreStart, domainRow, perspectiveRow, maxRow, identityColumns } = layout;
 
   const name = String(metadata['テスト名'] || '').trim();
   const subject = String(metadata['教科'] || '').trim();
@@ -3786,14 +3786,18 @@ async function importTestTemplate(file) {
 
   const header = rows[headerIdx] || [];
   const qCols = [];
-  const dataWidth = Math.max(header.length, ...rows.slice(headerIdx + 1).map((r) => r.length));
+  const dataWidth = Math.max(header.length, rows[domainRow]?.length || 0, rows[maxRow]?.length || 0, perspectiveRow == null ? 0 : rows[perspectiveRow]?.length || 0, ...rows.slice(headerIdx + 1).map((r) => r.length));
   for (let c = scoreStart; c < dataWidth; c++) {
     const label = String(header[c] || '').trim();
-    if (!label && (String(rows[maxRow]?.[c] ?? '').trim() || String(rows[domainRow]?.[c] ?? '').trim() || rows.slice(headerIdx + 1).some((r) => String(r[c] ?? '').trim()))) { alert(`問題名が空欄の列に分野・配点・点数があります。${headerIdx + 1}行目の問題名を入力してください。`); return; }
+    if (!label && (String(rows[maxRow]?.[c] ?? '').trim() || String(rows[domainRow]?.[c] ?? '').trim() || (perspectiveRow != null && String(rows[perspectiveRow]?.[c] ?? '').trim()) || rows.slice(headerIdx + 1).some((r) => String(r[c] ?? '').trim()))) { alert(`問題名が空欄の列に分野・評価の観点・配点・点数があります。${headerIdx + 1}行目の問題名を入力してください。`); return; }
     const max = Number(rows[maxRow] ? rows[maxRow][c] : 0);
     if (window.GD_IMPORT.isIdHeader(label)) continue;
     if (label && (!Number.isFinite(max) || max <= 0)) { alert(`問題「${label}」の配点は0より大きい数字で入力してください。`); return; }
-    if (label) qCols.push({ c, label, max, domain: String(rows[domainRow] ? rows[domainRow][c] : '').trim() });
+    if (label) {
+      const perspective = window.GD_IMPORT.parsePerspective(perspectiveRow == null ? '' : rows[perspectiveRow]?.[c]);
+      if (perspective === null) { alert(`${perspectiveRow + 1}行目・${XLSX.utils.encode_col(c)}列の評価の観点は、知識・技能、思考・判断・表現、未設定から選んでください。取込は反映していません。`); return; }
+      qCols.push({ c, label, max, domain: String(rows[domainRow] ? rows[domainRow][c] : '').trim(), perspective });
+    }
   }
   if (!qCols.length) { alert(`問題の列が見つかりません。${headerIdx + 1}行目の問題名と${maxRow + 1}行目の配点を確認してください。`); return; }
 
@@ -3805,7 +3809,7 @@ async function importTestTemplate(file) {
   }));
   const questions = qCols.map((q, i) => ({
     key: 'q' + (i + 1), label: q.label, max: q.max,
-    domain: q.domain || undefined,
+    domain: q.domain || undefined, perspective: q.perspective || undefined,
   }));
   const declaredMax = Number(metadata['満点']);
   const questionMaxSum = qCols.reduce((a, q) => a + q.max, 0);

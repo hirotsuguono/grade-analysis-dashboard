@@ -136,15 +136,15 @@
       band(X, settings, r, 4, 5, note, style.note, 36);
       settings['!rows'][r+1] = { hpt: 12 };
     }
-    settings.B12 = { t: 'n', f: "SUM('② 点数入力'!8:8)", v: 100, s: style.autoBig };
+    settings.B12 = { t: 'n', f: "SUM('② 点数入力'!9:9)", v: 100, s: style.autoBig };
     validation(settings, 'B8', { type: 'list', formulae: ['"国語,数学,英語,理科,社会,その他"'], promptTitle: '教科', prompt: '教科を選択します。' });
     validation(settings, 'B14', { type: 'date', operator: 'between', formulae: [new Date(Date.UTC(1900, 0, 1)), new Date(Date.UTC(9999, 11, 31))], promptTitle: '実施日', prompt: '2026/06/24のように入力します。', error: '実在する日付を入力してください。' });
     validation(settings, 'B16', { type: 'list', formulae: ['"1,2,3"'] });
     validation(settings, 'B18', { type: 'list', formulae: ['"未分類,単元テスト,中間テスト,期末テスト,実力テスト,その他"'] });
-    band(X, settings, 21, 0, 5, '＊の項目を記入し、次のシートで分野・配点・点数を入力します。', style.note, 28);
+    band(X, settings, 21, 0, 5, '＊の項目を記入し、次のシートで分野・評価の観点・配点・点数を入力します。', style.note, 28);
     band(X, settings, 23, 0, 5, '次のシート：② 点数入力', style.steps, 30);
     function scoreSheet(name, roster, example = false) {
-      const lastRow = Math.max(9, roster.length + 8);
+      const lastRow = Math.max(10, roster.length + 9);
       const questionColumns = example ? 5 : 50;
       const lastQuestionCol = 5 + questionColumns - 1;
       const ws = makeSheet(X, wb, name, [17, 7, 9, 11, 22, 16, 16, 16, 16, 16], lastRow, true);
@@ -153,31 +153,34 @@
       ws['!ref'] = X.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lastRow, c: lastQuestionCol } });
       header(X, ws, 9, '点数入力' + (example ? ' ／ 記入例' : ''),
         example ? '記入例：英語 ／ 1学期期末テスト ／ 2026/06/24 ／ 100点（すべて架空）' : '教科未設定 ／ テスト名未設定 ／ 満点 100点',
-        '1 分野名・配点・問題名を記入する　→　2 生徒ごとの点数を入力する　→　3 保存して取り込む',
-        example ? '空欄＝未入力 ／ 0＝0点 ／ 欠＝欠席。実際の入力は「② 点数入力」シートへ。' :
-          '問題欄は50問分。使わない列は空欄のままにします。空欄＝未入力 ／ 0＝0点 ／ 欠＝欠席。');
+        '1 分野・評価の観点・配点・問題名を記入する　→　2 点数を入力する　→　3 保存して取り込む',
+        example ? '1列に1つの点数。小問、または大問の観点別内訳を入力します。大問合計との二重入力はしません（すべて架空）。' :
+          '1列に1つの点数。大問合計とその内訳を両方入力しないでください。空欄＝未入力 ／ 0＝0点 ／ 欠＝欠席。');
       if (!example) ws.A2 = { t: 's', f: 'IF(\'① テスト設定\'!B8="","教科未設定",\'① テスト設定\'!B8)&" ／ "&IF(\'① テスト設定\'!B10="","テスト名未設定",\'① テスト設定\'!B10)&" ／ 満点 "&\'① テスト設定\'!B12&"点"', v: '教科未設定 ／ テスト名未設定 ／ 満点 100点', s: style.subtitle };
       band(X, ws, 5, 0, 4, '自動入力の名簿　｜　編集不要', style.section, 28);
       band(X, ws, 5, 5, lastQuestionCol, example ? '入力する欄　｜　ここから右側が得点用です' : '入力する欄　｜　50問分・使わない列は空欄', style.section, 28);
       band(X, ws, 6, 0, 4, '1 分野名 →', style.label, 28);
-      band(X, ws, 7, 0, 4, '2 配点（この列の満点） →', style.label, 28);
-      ['生徒ID', '学年', 'クラス', '出席番号', '氏名'].forEach((v, c) => cell(X, ws, 8, c, v, style.header));
+      band(X, ws, 7, 0, 4, '2 評価の観点 →', style.label, 28);
+      band(X, ws, 8, 0, 4, '3 配点（この列の満点） →', style.label, 28);
+      ['生徒ID', '学年', 'クラス', '出席番号', '氏名'].forEach((v, c) => cell(X, ws, 9, c, v, style.header));
       for (let c = 5; c <= lastQuestionCol; c++) {
-        cell(X, ws, 6, c, ['リスニング', '読解', 'ライティング', '文法'][c-5] || '', style.inputCenter);
-        cell(X, ws, 7, c, c < 9 ? 25 : '', style.inputCenter);
-        cell(X, ws, 8, c, c < 9 ? `問${c-4}` : '', style.inputCenter);
+        cell(X, ws, 6, c, (example ? ['リスニング', 'リスニング', '読解', '読解'] : ['リスニング', '読解', 'ライティング', '文法'])[c-5] || '', style.inputCenter);
+        cell(X, ws, 7, c, example && c < 9 ? ['知識・技能', '思考・判断・表現', '知識・技能', '思考・判断・表現'][c-5] : '', style.inputCenter);
+        cell(X, ws, 8, c, c < 9 ? 25 : '', style.inputCenter);
+        cell(X, ws, 9, c, c < 9 ? (example ? ['大問1-(1)', '大問1-(2)', '大問2・知識技能分', '大問2・思考判断表現分'][c-5] : `問${c-4}`) : '', style.inputCenter);
         const letter = X.utils.encode_col(c);
-        validation(ws, `${letter}8`, { type: 'decimal', operator: 'greaterThan', formulae: [0], promptTitle: '配点', prompt: 'この列の満点を入力します。' });
-        validation(ws, `${letter}10:${letter}${lastRow+1}`, { type: 'custom', formulae: [`OR(${letter}10="",${letter}10="欠",AND(ISNUMBER(${letter}10),ISNUMBER(${letter}$8),${letter}$8>0,${letter}10>=0,${letter}10<=${letter}$8))`],
+        validation(ws, `${letter}8`, { type: 'list', formulae: ['"知識・技能,思考・判断・表現,未設定"'], promptTitle: '評価の観点', prompt: 'この列の観点を選択。両観点が混ざる大問合計のみなら未設定。空欄も未設定です。', error: '知識・技能、思考・判断・表現、未設定から選んでください。' });
+        validation(ws, `${letter}9`, { type: 'decimal', operator: 'greaterThan', formulae: [0], promptTitle: '配点', prompt: 'この列の満点を入力します。' });
+        validation(ws, `${letter}11:${letter}${lastRow+1}`, { type: 'custom', formulae: [`OR(${letter}11="",${letter}11="欠",AND(ISNUMBER(${letter}11),ISNUMBER(${letter}$9),${letter}$9>0,${letter}11>=0,${letter}11<=${letter}$9))`],
           promptTitle: '点数を入力', prompt: '0〜配点の数値、欠、または空欄です。', error: '0〜配点の数値、欠、または空欄で入力してください。' });
       }
       const values = [[20, 18, 22, 19], [0, 0, 0, 0], ['欠', '', '', ''], [25, '', '', '']];
       roster.forEach((s, i) => {
         const parts = root.GD_IMPORT.splitClassName(s.className);
-        [s.id, parts.grade, parts.className, s.number ?? '', s.name].forEach((v, c) => cell(X, ws, 9+i, c, v, c === 0 ? style.autoSmall : c === 4 ? style.auto : style.autoCenter));
-        for (let c = 5; c <= lastQuestionCol; c++) cell(X, ws, 9+i, c, example && c < 9 ? values[i]?.[c-5] ?? '' : '', style.inputCenter);
+        [s.id, parts.grade, parts.className, s.number ?? '', s.name].forEach((v, c) => cell(X, ws, 10+i, c, v, c === 0 ? style.autoSmall : c === 4 ? style.auto : style.autoCenter));
+        for (let c = 5; c <= lastQuestionCol; c++) cell(X, ws, 10+i, c, example && c < 9 ? values[i]?.[c-5] ?? '' : '', style.inputCenter);
       });
-      ws['!freeze'] = { rows: 9, cols: 5 }; ws['!repeatRows'] = '6:9';
+      ws['!freeze'] = { rows: 10, cols: 5 }; ws['!repeatRows'] = '6:10';
     }
     scoreSheet('② 点数入力', students);
     scoreSheet('記入例', Array.from({ length: 4 }, (_, i) => ({ id: `架空ID${i+1}`, name: `架空生徒${i+1}`, className: '1年1組', number: i+1 })), true);

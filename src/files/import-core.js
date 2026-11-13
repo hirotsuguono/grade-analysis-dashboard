@@ -111,6 +111,15 @@
     return Object.keys(kinds).find(key => key === label || kinds[key] === label);
   }
 
+  function parsePerspective(value) {
+    if (value != null && typeof value !== 'string') return null;
+    const label = text(value);
+    if (label === '' || label === '未設定') return '';
+    if (label === '知識・技能') return 'knowledge';
+    if (label === '思考・判断・表現') return 'thinking';
+    return null;
+  }
+
   function testLayout(rows, settingsRows = null) {
     const headers = [];
     rows.forEach((r, i) => {
@@ -122,6 +131,8 @@
       return { errors: ['テンプレートの形式が違います。分野・配点・問題名と生徒の行を残してください。'] };
     }
     const metadata = {}, errors = [];
+    const perspectiveRow = splitRoster && text(rows[headerIdx - 2]?.[0]) === '2 評価の観点 →' ? headerIdx - 2 : null;
+    if (settingsRows && headerIdx !== 8 && perspectiveRow == null) errors.push('評価の観点の行が見つかりません。A8の案内を残し、新しいテンプレートを使ってください。');
     const labels = ['テスト名', '教科', '満点', '実施学年', '実施日', 'テスト種類', '比較系列'];
     const read = (label, value) => {
       const raw = text(label).normalize('NFKC').replace(/\s*\*$/, '').replace(/→$/, '');
@@ -142,7 +153,7 @@
       }
     }
     return { errors, metadata, automaticMax: !!settingsRows, headerIdx, scoreStart: splitRoster ? 5 : 3,
-      domainRow: headerIdx - 2, maxRow: headerIdx - 1,
+      domainRow: headerIdx - (perspectiveRow == null ? 2 : 3), perspectiveRow, maxRow: headerIdx - 1,
       identityColumns: splitRoster ? { id: 0, grade: 1, className: 2, number: 3, name: 4 } : null };
   }
 
@@ -179,14 +190,22 @@
     };
   }
 
-  function selectSheet(wb, XLSX, preferredNames) {
+  function selectSheet(wb, XLSX, preferredNames, options = {}) {
     validateWorkbook(wb, XLSX);
+    const read = name => {
+      const sheet = wb.Sheets[name];
+      if (options.rejectCellErrors) {
+        const address = Object.keys(sheet).find(key => !key.startsWith('!') && sheet[key]?.t === 'e');
+        if (address) throw new Error(`「${name}」の${address}セルがExcelのエラー値です。数式や入力を修正してください。取込は反映していません。`);
+      }
+      return { name, rows: XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) };
+    };
     for (const name of preferredNames) {
-      if (wb.SheetNames.includes(name)) return { name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }) };
+      if (wb.SheetNames.includes(name)) return read(name);
     }
     const candidates = wb.SheetNames.filter((n) => !/(記入例|書き方|説明|使い方)/.test(n)).map((name) => ({ name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }) })).filter((s) => findHeader(s.rows) >= 0 || s.rows.some(splitRosterHeader));
     if (candidates.length !== 1) throw new Error(candidates.length ? '取込対象のシートが複数あります。対象シート名を「' + preferredNames[0] + '」にしてください。' : '取込用シートが見つかりません。アプリが発行したテンプレートを使ってください。');
-    return candidates[0];
+    return options.rejectCellErrors ? read(candidates[0].name) : candidates[0];
   }
 
   function numeric(value) {
@@ -257,5 +276,5 @@
     if (!plans.length && !errors.length) errors.push('指標の数値がまだ入力されていません。' + help);
     return { errors, plans };
   }
-  root.GD_IMPORT = { limits, validateWorkbook, inspectZip, readWorkbook, createMatcher, selectSheet, findHeader, idColumn, isIdHeader, isPlaceholder, numeric, matchedRows, parseMetricRows, inputHelp, splitClassName, testLayout, parseTestKind };
+  root.GD_IMPORT = { limits, validateWorkbook, inspectZip, readWorkbook, createMatcher, selectSheet, findHeader, idColumn, isIdHeader, isPlaceholder, numeric, matchedRows, parseMetricRows, inputHelp, splitClassName, testLayout, parseTestKind, parsePerspective };
 })(typeof window !== 'undefined' ? window : globalThis);
