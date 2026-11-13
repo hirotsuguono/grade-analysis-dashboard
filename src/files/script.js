@@ -1539,18 +1539,69 @@ function handleCellPaste(e, input) {
 }
 
 /* ---- テスト追加ダイアログ ---- */
+function domainKeySet(tests, draftKeys = []) {
+  const keys = new Set(draftKeys);
+  for (const test of tests) {
+    for (const domain of test.domains || []) if (typeof domain.key === 'string') keys.add(domain.key);
+    for (const question of test.questions || []) if (typeof question.domain === 'string') keys.add(question.domain);
+  }
+  return keys;
+}
+
+function uniqueDomainKey(tests, draftKeys = []) {
+  const used = domainKeySet(tests, draftKeys);
+  let i = 1; while (used.has('classification-domain-' + i)) i++;
+  return 'classification-domain-' + i;
+}
+
+function domainIdentityFingerprint(tests) {
+  return JSON.stringify(tests.map(test => ({ id: test.id, subject: test.subject, domains: test.domains || [],
+    implicitDomains: (test.questions || []).map(q => q.domain || '') })));
+}
+
+function domainKeyForNewTest(subject, label, tests, draftKeys = [], preferredKey = '') {
+  const name = label.trim(), matches = new Set();
+  for (const test of tests) if (test.subject === subject) {
+    const defined = new Set();
+    for (const domain of test.domains || []) {
+      defined.add(domain.key);
+      if (domain.label.trim() === name) matches.add(domain.key);
+    }
+    for (const question of test.questions || []) {
+      if (question.domain && !defined.has(question.domain) && question.domain.trim() === name) matches.add(question.domain);
+    }
+  }
+  if (matches.size > 1) throw new Error(`同じ教科に「${name}」という名前の別々の分野があります。分野名を区別してから登録してください。`);
+  if (matches.size === 1) return [...matches][0];
+  const used = domainKeySet(tests, draftKeys);
+  if (preferredKey && !used.has(preferredKey)) return preferredKey;
+  if (name && !used.has(name)) return name;
+  return uniqueDomainKey(tests, draftKeys);
+}
+
 function builderDomainKeys() {
-  // 分野キー＝分野名。テストが違っても同じ分野名なら同じ分野として扱われ、
-  // 分野別の推移が年をまたいでつながる
-  return [...$('tfDomains').querySelectorAll('.builder-row')].map((row) => {
+  const rows = [...$('tfDomains').querySelectorAll('.builder-row')];
+  return rows.map((row) => {
     const label = row.querySelector('.bd-label').value.trim();
-    return { key: label, label, max: Number(row.querySelector('.bd-max').value) || 0 };
+    const previous = row.dataset.domainKey || '';
+    let key = previous;
+    if (!row.dataset.explicitDomainKey && label) {
+      try {
+        key = domainKeyForNewTest($('tfSubject').value.trim(), label, data.tests,
+          rows.filter(other => other !== row).map(other => other.dataset.domainKey).filter(Boolean), previous);
+        delete row.dataset.domainError;
+      } catch (error) { row.dataset.domainError = error.message; key = previous || uniqueDomainKey(data.tests, rows.map(other => other.dataset.domainKey)); }
+    }
+    if (!label) delete row.dataset.domainError;
+    row.dataset.domainKey = key;
+    return { key, label, max: Number(row.querySelector('.bd-max').value) || 0 };
   });
 }
 
-function addDomainRow(label = '', max = '') {
+function addDomainRow(label = '', max = '', key = '') {
   const div = document.createElement('div');
   div.className = 'builder-row';
+  if (key) { div.dataset.domainKey = key; div.dataset.explicitDomainKey = 'true'; }
   div.innerHTML = `
     <input type="text" class="bd-label" placeholder="分野名（例：読解）" value="${esc(label)}">
     <input type="number" class="bd-max" placeholder="満点" min="1" value="${esc(max)}">
@@ -1583,12 +1634,14 @@ function addQuestionRow(label = '', max = '', perspective = '') {
 }
 
 function refreshQuestionDomainSelects() {
+  const previous = new Map([...$('tfDomains').querySelectorAll('.builder-row')].filter(row => row.dataset.domainKey).map(row => [row.dataset.domainKey, row]));
   const domains = builderDomainKeys();
   for (const sel of $('tfQuestions').querySelectorAll('.bq-domain')) {
     const cur = sel.value;
     sel.replaceChildren(new Option('分野なし', ''),
       ...domains.map(d => new Option(d.label || '(無名)', d.key)));
-    if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+    const updated = previous.get(cur)?.dataset.domainKey || cur;
+    if ([...sel.options].some((o) => o.value === updated)) sel.value = updated;
   }
 }
 
@@ -1601,13 +1654,11 @@ function copyPrevStructure() {
   if (!prev) { alert(`「${subj}」のテストはまだ登録されていません。`); return; }
   $('tfDomains').innerHTML = '';
   $('tfQuestions').innerHTML = '';
-  for (const d of (prev.domains || [])) addDomainRow(d.label, d.max);
-  const dLabelOf = new Map((prev.domains || []).map((d) => [d.key, d.label]));
+  for (const d of (prev.domains || [])) addDomainRow(d.label, d.max, d.key);
   for (const q of (prev.questions || [])) {
     addQuestionRow(q.label, q.max, q.perspective || '');
     const sel = $('tfQuestions').lastElementChild.querySelector('.bq-domain');
-    const label = dLabelOf.get(q.domain) || q.domain || '';
-    if ([...sel.options].some((o) => o.value === label)) sel.value = label;
+    if ([...sel.options].some((o) => o.value === q.domain)) sel.value = q.domain;
   }
   $('tfMax').value = prev.maxScore || 100;
 }
@@ -1628,9 +1679,13 @@ function openTestDialog() {
 
 function submitTestDialog(e) {
   e.preventDefault();
-  // 分野名の重複は1つにまとめる（キー＝分野名）
+  refreshQuestionDomainSelects();
+  // 同じ表示名は1つにまとめ、既存の分野identityは保持する。
   const seenD = new Set();
   const domains = builderDomainKeys().filter((d) => d.label && !seenD.has(d.label) && seenD.add(d.label));
+  const domainError = [...$('tfDomains').querySelectorAll('.builder-row')].find(row => row.dataset.domainError);
+  if (domainError) { alert(domainError.dataset.domainError); return; }
+  if (new Set(domains.map(d => d.key)).size !== domains.length) { alert('同じ分野の別名が含まれています。分野名を統一してください。'); return; }
   const questions = [...$('tfQuestions').querySelectorAll('.builder-row')].map((row, i) => ({
     key: 'q' + (i + 1),
     label: row.querySelector('.bq-label').value.trim() || `問${i + 1}`,
@@ -1638,6 +1693,7 @@ function submitTestDialog(e) {
     domain: row.querySelector('.bq-domain').value || undefined,
     perspective: row.querySelector('.bq-perspective').value || undefined,
   })).filter((q) => q.max > 0);
+  if (questions.some(q => q.domain && !domains.some(d => d.key === q.domain))) { alert('問題に設定した分野の名前を入力するか、分野を選び直してください。'); return; }
   const maxScore = Number($('tfMax').value) || 100;
   const questionMaxSum = questions.reduce((sum, q) => sum + q.max, 0);
   if (questions.length && questionMaxSum !== maxScore) {
@@ -3801,15 +3857,22 @@ async function importTestTemplate(file) {
   }
   if (!qCols.length) { alert(`問題の列が見つかりません。${headerIdx + 1}行目の問題名と${maxRow + 1}行目の配点を確認してください。`); return; }
 
-  // 分野キー＝分野名（テスト間で同じ分野名なら同じ分野として推移がつながる）
   const domainNames = [...new Set(qCols.map((q) => q.domain).filter(Boolean))];
+  const domainKeys = new Map();
+  try {
+    for (const label of domainNames) {
+      const key = domainKeyForNewTest(subject, label, data.tests, [...domainKeys.values()]);
+      if ([...domainKeys.values()].includes(key)) throw new Error('同じ分野の別名が含まれています。Excelの分野名を統一してください。');
+      domainKeys.set(label, key);
+    }
+  } catch (error) { alert(error.message + '\n取込は反映していません。'); return; }
   const domains = domainNames.map((label) => ({
-    key: label, label,
+    key: domainKeys.get(label), label,
     max: qCols.filter((q) => q.domain === label).reduce((a, q) => a + q.max, 0),
   }));
   const questions = qCols.map((q, i) => ({
     key: 'q' + (i + 1), label: q.label, max: q.max,
-    domain: q.domain || undefined, perspective: q.perspective || undefined,
+    domain: domainKeys.get(q.domain) || undefined, perspective: q.perspective || undefined,
   }));
   const declaredMax = Number(metadata['満点']);
   const questionMaxSum = qCols.reduce((a, q) => a + q.max, 0);
