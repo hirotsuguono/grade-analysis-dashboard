@@ -73,11 +73,7 @@
     if (yearErrors.length) throw new Error(yearErrors[0]);
     const grade = Number(gradeOf(student));
     if (![1, 2, 3].includes(grade)) throw new Error(`「${text(student.name)}」の現在の学年を判別できません。名簿を確認してから発行してください。`);
-    if (grade === 3) return { action: 'graduate', grade: null, className: student.className || '', number: student.number ?? '' };
-    const parts = root.GD_IMPORT.splitClassName(normalized(student.className));
-    const group = /^\d+$/.test(parts.className) ? String(Number(parts.className)) : parts.className.toUpperCase();
-    const className = `${grade + 1}年${group}組`;
-    return { action: 'promote', grade: grade + 1, className: destinationsForGrade(c, grade + 1).includes(className) ? className : '', number: number(student.number) ?? '' };
+    return grade === 3 ? { action: 'graduate', grade: null } : { action: 'promote', grade: grade + 1 };
   }
   function metadata(c, name) {
     if (isWhole(c)) {

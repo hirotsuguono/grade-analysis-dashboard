@@ -187,7 +187,7 @@ test('遅れて完了した旧ファイルの読込で新しいプレビュー�
 
 const wholeConfig = () => ({ operation: 'whole', sourceType: 'all', sourceValue: '', mode: 'all', kind: 'move', schoolYear: 2026, naming2: 'letters', count2: 1, naming3: 'letters', count3: 1, date: '2026-06-24' });
 function wholeFixture() { const d = fixture(); d.students[1].className = '2年A組'; d.students[1].number = 1; d.students[2].className = '3年A組'; return d; }
-async function readyWhole(h) { const d = wholeFixture(); h.api.setData(d); const wb = h.excel.reassignTemplate(XLSX, d, wholeConfig()); await h.api.importReassignWorkbook(await file(h, wb)); assert.ok(h.api.plan()); return d; }
+async function readyWhole(h) { const d = wholeFixture(); h.api.setData(d); const wb = h.excel.reassignTemplate(XLSX, d, wholeConfig()); put(wb, 'F10', '2年A組'); put(wb, 'G10', 1); put(wb, 'F11', '3年A組'); put(wb, 'G11', 1); await h.api.importReassignWorkbook(await file(h, wb)); assert.ok(h.api.plan()); return d; }
 test('全名簿の反映は卒業生のIDと記録を残し、通常の名簿・候補から外す。JSON保存・再読込にも保持する', async () => {
   const h = harness(), original = await readyWhole(h); backed(h); h.api.applyReassign();
   const after = h.api.getData();

@@ -24,25 +24,39 @@ function fixture() {
     metrics: [{ id: 'm', values: { s0: 0, s4: 4 } }], interventions: [{ id: 'iv', studentId: 's4', title: '架空支援', status: 'active' }], settings: {} };
 }
 function put(wb, address, value, sheet = 'クラス替え') { XLSX.utils.sheet_add_aoa(wb.Sheets[sheet], [[value]], { origin: address }); }
-const make = (h, d, c = config()) => h.excel.reassignTemplate(XLSX, d, c);
+// Build a completed fictional form; the issued application template itself stays blank.
+function make(h, d, c = config()) {
+  const wb = h.excel.reassignTemplate(XLSX, d, c);
+  h.core.selectedStudents(d.students, c).forEach((student, i) => {
+    const grade = Number(h.core.gradeOf(student)) + 1;
+    if (grade > 3) return;
+    const group = i % c['count' + grade];
+    put(wb, 'F' + (10 + i), `${grade}年${c['naming' + grade] === 'letters' ? String.fromCharCode(65 + group) : group + 1}組`);
+    put(wb, 'G' + (10 + i), student.number);
+  });
+  return wb;
+}
 const plan = (h, wb, d, today = '2027-04-01') => h.core.planWorkbook(wb, XLSX, d, today);
 
 test('whole roster XLSX records each original pupil once and stores grade-specific validations and explicit school year', async () => {
-  const h = harness(), d = fixture(), before = JSON.stringify(d), wb = make(h, d);
+  const h = harness(), d = fixture(), before = JSON.stringify(d), wb = h.excel.reassignTemplate(XLSX, d, config());
   const bytes = await h.excel.writeBuffer(wb), read = new ExcelJS.Workbook(); await read.xlsx.load(bytes);
   const ws = read.getWorksheet('クラス替え'), settings = read.getWorksheet('発行設定');
   assert.deepEqual(read.worksheets.map(s => s.name), ['クラス替え', '発行設定']);
   assert.equal(settings.getCell('B7').value, 'gd-roster-promotion-v1'); assert.equal(settings.getCell('B9').value, 2027);
   assert.match(ws.getCell('A2').value, /2027年度/);
   assert.equal(ws.getCell('A10').value, 's0'); assert.equal(ws.getCell('A15').value, 's5'); assert.equal(ws.getCell('A16').value, null);
-  assert.equal(ws.getCell('E10').value, '進級'); assert.equal(ws.getCell('F10').value, '2年A組'); assert.equal(ws.getCell('G10').value, 1);
+  assert.equal(ws.getCell('E10').value, '進級');
+  for (const row of [10, 11, 12, 13]) { assert.equal(ws.getCell('F' + row).value, ''); assert.equal(ws.getCell('G' + row).value, ''); }
+  assert.equal(ws.getCell('C12').value, '2年A組'); assert.equal(ws.getCell('D12').value, 1);
   assert.equal(ws.getCell('F10').dataValidation.formulae[0], 'ReassignGrade2Classes');
   assert.equal(ws.getCell('F12').dataValidation.formulae[0], 'ReassignGrade3Classes');
   assert.equal(ws.getCell('G10').dataValidation.type, 'whole'); assert.equal(ws.views[0].topLeftCell, 'F10');
   assert.equal(ws.getCell('E14').value, '卒業'); assert.equal(ws.getCell('F14').value, ''); assert.equal(ws.getCell('G14').value, '');
   assert.equal(ws.getCell('F10').fill.fgColor.argb, 'FFFFF5D6'); assert.equal(ws.getCell('F14').fill.fgColor.argb, 'FFF1F4F8');
   assert.equal(ws.getCell('E10').fill.fgColor.argb, 'FFF1F4F8'); assert.equal(read.definedNames.model.length, 2);
-  const imported = await h.imports.readWorkbook(new Blob([bytes]), XLSX), result = plan(h, imported, d);
+  const blank = await h.imports.readWorkbook(new Blob([bytes]), XLSX); assert.ok(plan(h, blank, d).errors.length); assert.equal(plan(h, blank, d).changes.length, 0);
+  const imported = await h.imports.readWorkbook(new Blob([await h.excel.writeBuffer(make(h, d))]), XLSX), result = plan(h, imported, d);
   assert.deepEqual(plain(result.errors), []); assert.equal(result.changes.length, 6); assert.equal(result.targetCount, 6);
   assert.equal(result.config.schoolYear, 2027); assert.equal(JSON.stringify(d), before);
 });
@@ -121,11 +135,11 @@ test('reimporting old templates and newly issuing the same or earlier promotion 
   assert.doesNotThrow(() => make(h, { ...after, students: plain(d.students) }));
 });
 
-test('prefill recognizes class spelling variants and refuses malformed year markers or oversized exports', () => {
+test('current grade spelling variants are recognized without suggesting a new class or number; bad years and oversized exports are refused', () => {
   const h = harness(), c = config({ naming2: 'numbers', count2: 2 });
   const s = { id: 'x', name: '架空の表記ゆれ', className: '１年０１組', number: '０２' };
-  assert.deepEqual(plain(h.core.promotionTarget(s, c)), { action: 'promote', grade: 2, className: '2年1組', number: 2 });
-  assert.equal(h.core.promotionTarget({ ...s, className: '1b' }, config()).className, '2年B組');
+  assert.deepEqual(plain(h.core.promotionTarget(s, c)), { action: 'promote', grade: 2 });
+  assert.deepEqual(plain(h.core.promotionTarget({ ...s, className: '1b' }, config())), { action: 'promote', grade: 2 });
   for (const value of ['2026', {}, 0, 2026.5]) assert.throws(() => h.core.promotionTarget({ ...s, lastPromotionYear: value }, c), /進級年度/);
   const d = fixture(); d.students = Array.from({ length: 9992 }, (_, i) => ({ id: 's' + i, name: '架空生徒', className: '1年A組', number: i + 1 }));
   assert.throws(() => make(h, d), /行数上限/);
@@ -169,4 +183,12 @@ test('invalid new classes identify the typed value, valid class examples and how
   assert.equal(result.changes.length, 0); assert.equal(JSON.stringify(d), before);
   const many = make(h, d, config({ count3: 26 })); put(many, 'F12', '3年AA組');
   const message = plan(h, many, d).errors.join(); assert.match(message, /3年A組、3年B組、3年C組 ほか23クラス/); assert.doesNotMatch(message, /3年Z組/);
+});
+
+test('missing new class or new number refuses the entire promotion batch without keeping old assignments', () => {
+  const h = harness(), d = fixture(), before = JSON.stringify(d);
+  for (const address of ['F12', 'G12']) {
+    const wb = make(h, d); put(wb, address, ''); const result = plan(h, wb, d);
+    assert.ok(result.errors.some(message => message.includes('12行目・' + address[0] + '列'))); assert.equal(result.changes.length, 0); assert.equal(JSON.stringify(d), before);
+  }
 });

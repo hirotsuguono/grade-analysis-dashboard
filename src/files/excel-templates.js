@@ -131,7 +131,7 @@
     const wb = X.utils.book_new(), lastRow = 8 + students.length;
     const ws = makeSheet(X, wb, 'クラス替え', [22, 24, 19, 13, 13, 19, 13], lastRow, true);
     header(X, ws, 6, '全名簿の進級・卒業', `${config.schoolYear}年度へ ／ 在籍中の名簿全員を、変更前の状態からまとめて更新します。`,
-      '1 新クラス・新番号を確認　→　2 全員分を読込・確認　→　3 控えを保存して一括反映',
+      '1 新クラス・新番号を入力　→　2 全員分を読込・確認　→　3 控えを保存して一括反映',
       '現1年→新2年、現2年→新3年、現3年→卒業。灰色の欄と生徒の行は変更しません。');
     band(X, ws, 5, 0, 4, '現在の名簿・新しい扱い　｜　編集不要', style.section, 28);
     band(X, ws, 5, 5, 6, '新しい所属　｜　入力する欄', style.section, 28);
@@ -140,8 +140,7 @@
     root.GD_ROSTER.wholeHeaders.forEach((value, col) => cell(X, ws, 8, col, value, style.header));
     students.forEach((student, i) => {
       const target = targets[i], row = i + 9;
-      [student.id, student.name, student.className || '', student.number ?? '', target.action === 'graduate' ? '卒業' : '進級',
-        target.action === 'graduate' ? '' : target.className, target.action === 'graduate' ? '' : target.number].forEach((value, col) =>
+      [student.id, student.name, student.className || '', student.number ?? '', target.action === 'graduate' ? '卒業' : '進級', '', ''].forEach((value, col) =>
         cell(X, ws, row, col, value, col >= 5 && target.action === 'promote' ? style.inputCenter : col === 0 ? style.autoSmall : col === 1 ? style.auto : style.autoCenter));
       if (target.action === 'promote') {
         validation(ws, 'F' + (row + 1), { type: 'list', formulae: [`ReassignGrade${target.grade}Classes`], promptTitle: `新${target.grade}年のクラス`, prompt: '発行時に設定した候補から選択します。', error: `新${target.grade}年の候補から選んでください。` });
