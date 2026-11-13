@@ -41,27 +41,27 @@ module.exports = async (page, original) => {
     const ids = await page.evaluate(() => data.students.map(s => s.id));
     const test = await workbookDownload('#prepareTestTemplateBtn');
     const settings = test.getWorksheet('① テスト設定'), scores = test.getWorksheet('② 点数入力');
-    assert.equal(settings.getCell('B12').value.formula, "SUM('② 点数入力'!8:8)");
-    assert.equal(scores.getCell('A10').fill.fgColor.argb, 'FFF1F4F8');
-    assert.equal(scores.getCell('F10').fill.fgColor.argb, 'FFFFF5D6');
-    assert.equal(scores.getCell('F10').dataValidation.type, 'custom');
-    assert.equal(scores.views[0].topLeftCell, 'F10');
+    assert.equal(settings.getCell('B12').value.formula, "SUM('② 点数入力'!9:9)");
+    assert.equal(scores.getCell('A11').fill.fgColor.argb, 'FFF1F4F8');
+    assert.equal(scores.getCell('F11').fill.fgColor.argb, 'FFFFF5D6');
+    assert.equal(scores.getCell('F11').dataValidation.type, 'custom');
+    assert.equal(scores.views[0].topLeftCell, 'F11');
     assert.equal(scores.columnCount, 55);
     for (const column of ['J', 'K', 'BC']) {
       assert.equal(scores.getColumn(column).width, scores.getColumn('F').width);
-      for (const row of [7, 8, 9, 10, 12]) {
+      for (const row of [7, 8, 9, 10, 11, 13]) {
         assert.deepEqual(scores.getCell(column + row).style, scores.getCell('F' + row).style);
         assert.equal(scores.getCell(column + row).value, '');
       }
-      assert.equal(scores.getCell(column + '10').dataValidation.type, 'custom');
+      assert.equal(scores.getCell(column + '11').dataValidation.type, 'custom');
     }
     for (const [key, value] of Object.entries({ B8: '英語', B10: '架空の書式付きテスト', B14: new Date(Date.UTC(2026, 5, 24)), B16: 1, B18: '期末テスト', B20: '架空シリーズ' })) settings.getCell(key).value = value;
-    settings.getCell('B12').value = { formula: "SUM('② 点数入力'!8:8)", result: 1 };
-    scores.getCell('K7').value = '文法'; scores.getCell('K8').value = 10; scores.getCell('K9').value = '追加設問';
-    scores.getCell('BC7').value = '架空の追加分野'; scores.getCell('BC8').value = 5; scores.getCell('BC9').value = '問50';
-    ['F', 'G', 'H', 'I'].forEach(c => { scores.getCell(c + '10').value = 20; scores.getCell(c + '11').value = 0; });
-    scores.getCell('K10').value = 0; scores.getCell('K11').value = 0; scores.getCell('F12').value = '欠';
-    scores.getCell('BC10').value = 5; scores.getCell('BC11').value = 0;
+    settings.getCell('B12').value = { formula: "SUM('② 点数入力'!9:9)", result: 1 };
+    scores.getCell('K7').value = '文法'; scores.getCell('K9').value = 10; scores.getCell('K10').value = '追加設問';
+    scores.getCell('BC7').value = '架空の追加分野'; scores.getCell('BC9').value = 5; scores.getCell('BC10').value = '問50';
+    ['F', 'G', 'H', 'I'].forEach(c => { scores.getCell(c + '11').value = 20; scores.getCell(c + '12').value = 0; });
+    scores.getCell('K11').value = 0; scores.getCell('K12').value = 0; scores.getCell('F13').value = '欠';
+    scores.getCell('BC11').value = 5; scores.getCell('BC12').value = 0;
     await upload('#testXlsxInput', test, 'fictional-styled-test.xlsx');
     await page.waitForFunction(() => data.tests.some(t => t.name === '架空の書式付きテスト'));
     const actual = await page.evaluate(() => ({ test: data.tests[0], scores: data.scores, valid: validateDataset(data).length === 0 }));

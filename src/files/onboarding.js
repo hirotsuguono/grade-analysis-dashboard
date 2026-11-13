@@ -141,7 +141,8 @@
   if (document.documentElement.dataset.dashboardInitialized === 'true'
       && document.documentElement.dataset.accessibilityInitialized === 'true'
       && window.echarts && window.XLSX && window.ExcelJS && window.GD_EXCEL && window.GD_IMPORT && window.GD_INITIAL
-      && window.GRADE_DASHBOARD_SAMPLE && window.GD_TEACHING && window.GD_PAIRED
+      && window.GRADE_DASHBOARD_SAMPLE && window.GD_TEACHING && window.GD_PAIRED && window.GD_CLASSIFICATION
+      && window.GD_CLASSIFICATION_EDITOR && document.documentElement.dataset.classificationEditorInitialized === 'true'
       && document.documentElement.dataset.teachingNotesInitialized === 'true'
       && getComputedStyle(document.documentElement).getPropertyValue('--dashboard-style-loaded').trim() === '1') {
     byId('startupHelp').hidden = true;

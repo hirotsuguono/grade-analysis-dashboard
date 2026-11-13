@@ -215,7 +215,7 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     let wb = XLSX.read(fs.readFileSync(tplPath), { type: 'buffer' });
     const rows = XLSX.utils.sheet_to_json(wb.Sheets['② 点数入力'], { header: 1, defval: '' });
     for (const [key,value] of Object.entries({B8:'国語',B10:'架空Excel取込',B16:1,B14:'2026-10-15'})) wb.Sheets['① テスト設定'][key]={t:typeof value==='number'?'n':'s',v:value};
-    rows[9][5] = 4; rows[9][6] = 5; rows[9][7] = 6; rows[9][8] = 0;
+    rows[10][5] = 4; rows[10][6] = 5; rows[10][7] = 6; rows[10][8] = 0;
     wb.Sheets['② 点数入力'] = XLSX.utils.aoa_to_sheet(rows);
     const buf = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
     await page.locator('#testXlsxInput').setInputFiles({ name: 'synthetic-test.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: buf });
@@ -297,7 +297,7 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     check('タグ入りクラス名の安全な表示・開始時基準値の境界値と不正入力拒否・現在データ保持');
     await require('./intervention-validation.cjs')(page, fixture);
     check('支援記録の日付・状態・メモの検証・不正入力時の未保存データ保持・日付順表示と保存再開');
-    for (const file of fs.readdirSync(__dirname).filter(name => /^regression-(?:issue-\d+|v041|pin-compat|roster-reassign|whole-roster-promotion|teaching-notes|group-comparison|effect-guidance|individual-comparison|individual-reference|individual-position|trend-support|update-check)\.browser\.cjs$/.test(name)).sort()) {
+    for (const file of fs.readdirSync(__dirname).filter(name => /^regression-(?:issue-\d+|v041|pin-compat|roster-reassign|whole-roster-promotion|promotion-classification|teaching-notes|group-comparison|effect-guidance|individual-comparison|individual-reference|individual-position|trend-support|update-check|assessment-classification|assessment-excel|assessment-editor)\.browser\.cjs$/.test(name)).sort()) {
       await require(path.join(__dirname, file))(page, fixture);
       check(file);
     }

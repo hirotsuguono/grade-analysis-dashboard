@@ -27,7 +27,7 @@ const ui = {
   tab: 'overview',
   ovClass: 'all', ovTest: '', ovSubject: 'all',
   inClass: 'all', inTest: '', inSubject: 'all',
-  anClass: 'all', anTest: '', anSubject: 'all',
+  anClass: 'all', anTest: '', anSubject: 'all', anAxis: 'domain',
   trendClass: 'all', trendSearch: '', trendSubject: '', trendKind: 'all',
   trendSelected: new Set(), trendIncludeGraduated: false,
   trendCompareTest: '', trendCompareFrom: null, trendComparisonStarted: false,
@@ -348,7 +348,7 @@ function questionScoreState(rec, test) {
     answered++;
     partialTotal += value;
   }
-  const domains = {};
+  const domains = Object.create(null);
   for (const [key, qs] of byDomain) {
     if (qs.every(q => Number.isFinite(rec?.questions?.[q.key]))) {
       domains[key] = qs.reduce((sum, q) => sum + rec.questions[q.key], 0);
@@ -569,6 +569,7 @@ function validateDataset(parsed) {
         if (!q || typeof q.key !== 'string' || !q.key || qKeys.has(q.key)) add(`テスト「${t.name || t.id || i}」の問題キーが空、または重複しています。`);
         else qKeys.add(q.key);
         if (!optionalText(q.label) || !optionalText(q.domain)) add('問題名・分野キーは文字列にしてください。');
+        if (q.perspective != null && q.perspective !== '' && !['knowledge', 'thinking'].includes(q.perspective)) add('評価の観点は知識・技能、思考・判断・表現、未設定から選んでください。');
         if (!Number.isFinite(q.max) || q.max <= 0) add(`テスト「${t.name || t.id || i}」の問題配点が不正です。`);
         else qMaxSum += q.max;
       }
@@ -714,6 +715,7 @@ function applyJsonText(text, name, handle) {
 
     // 選択状態を初期化
     ui.ovClass = ui.inClass = ui.anClass = ui.trendClass = ui.metClass = 'all';
+    ui.anAxis = 'domain';
     ui.inSubject = ui.ovSubject = ui.anSubject = ui.listSubject = 'all';
     ui.listClass = 'all'; ui.listMode = 'total'; ui.listSort = null; ui.listPivot = 60;
     ui.listGrade = 'all'; ui.listTerm = 'all';
@@ -1251,9 +1253,10 @@ function renderHistogram(test, totals) {
 }
 
 // 分野別平均得点率の棒グラフ（概要・分析共用）
-function renderDomainBar(chartId, test, students, highlightWeakest) {
-  const domains = testDomains(test);
-  const rates = domains.map((d) => {
+function renderDomainBar(chartId, test, students, highlightWeakest, axis = 'domain') {
+  const summary = test.questions?.length ? window.GD_CLASSIFICATION.summarize(test, students.map(s => getAttendedScore(s.id, test.id)), axis).filter(g => axis !== 'perspective' || g.key) : (axis === 'perspective' ? [] : null);
+  const domains = summary || testDomains(test);
+  const rates = summary ? summary.map(d => d.rate == null ? null : round1(d.rate)) : domains.map((d) => {
     const vals = students
       .map((s) => getAttendedScore(s.id, test.id))
       .filter((r) => r && r.domains && r.domains[d.key] != null)
@@ -1264,7 +1267,7 @@ function renderDomainBar(chartId, test, students, highlightWeakest) {
   chart(chartId).setOption({
     grid: BASE_GRID,
     tooltip: { trigger: 'axis', valueFormatter: (v) => v + '%' },
-    xAxis: { type: 'category', data: domains.map((d) => d.label) },
+    xAxis: { type: 'category', data: domains.map((d) => d.label), axisLabel: axis === 'perspective' ? { interval: 0, formatter: value => value === '思考・判断・表現' ? '思考・判断\n・表現' : value } : {} },
     yAxis: { type: 'value', max: 100, name: '得点率%' },
     series: [{
       type: 'bar',
@@ -1546,18 +1549,69 @@ function handleCellPaste(e, input) {
 }
 
 /* ---- テスト追加ダイアログ ---- */
+function domainKeySet(tests, draftKeys = []) {
+  const keys = new Set(draftKeys);
+  for (const test of tests) {
+    for (const domain of test.domains || []) if (typeof domain.key === 'string') keys.add(domain.key);
+    for (const question of test.questions || []) if (typeof question.domain === 'string') keys.add(question.domain);
+  }
+  return keys;
+}
+
+function uniqueDomainKey(tests, draftKeys = []) {
+  const used = domainKeySet(tests, draftKeys);
+  let i = 1; while (used.has('classification-domain-' + i)) i++;
+  return 'classification-domain-' + i;
+}
+
+function domainIdentityFingerprint(tests) {
+  return JSON.stringify(tests.map(test => ({ id: test.id, subject: test.subject, domains: test.domains || [],
+    implicitDomains: (test.questions || []).map(q => q.domain || '') })));
+}
+
+function domainKeyForNewTest(subject, label, tests, draftKeys = [], preferredKey = '') {
+  const name = label.trim(), matches = new Set();
+  for (const test of tests) if (test.subject === subject) {
+    const defined = new Set();
+    for (const domain of test.domains || []) {
+      defined.add(domain.key);
+      if (domain.label.trim() === name) matches.add(domain.key);
+    }
+    for (const question of test.questions || []) {
+      if (question.domain && !defined.has(question.domain) && question.domain.trim() === name) matches.add(question.domain);
+    }
+  }
+  if (matches.size > 1) throw new Error(`同じ教科に「${name}」という名前の別々の分野があります。分野名を区別してから登録してください。`);
+  if (matches.size === 1) return [...matches][0];
+  const used = domainKeySet(tests, draftKeys);
+  if (preferredKey && !used.has(preferredKey)) return preferredKey;
+  if (name && !used.has(name)) return name;
+  return uniqueDomainKey(tests, draftKeys);
+}
+
 function builderDomainKeys() {
-  // 分野キー＝分野名。テストが違っても同じ分野名なら同じ分野として扱われ、
-  // 分野別の推移が年をまたいでつながる
-  return [...$('tfDomains').querySelectorAll('.builder-row')].map((row) => {
+  const rows = [...$('tfDomains').querySelectorAll('.builder-row')];
+  return rows.map((row) => {
     const label = row.querySelector('.bd-label').value.trim();
-    return { key: label, label, max: Number(row.querySelector('.bd-max').value) || 0 };
+    const previous = row.dataset.domainKey || '';
+    let key = previous;
+    if (!row.dataset.explicitDomainKey && label) {
+      try {
+        key = domainKeyForNewTest($('tfSubject').value.trim(), label, data.tests,
+          rows.filter(other => other !== row).map(other => other.dataset.domainKey).filter(Boolean), previous);
+        delete row.dataset.domainError;
+      } catch (error) { row.dataset.domainError = error.message; key = previous || uniqueDomainKey(data.tests, rows.map(other => other.dataset.domainKey)); }
+    }
+    if (!label) delete row.dataset.domainError;
+    row.dataset.domainKey = key;
+    return { key, label, max: Number(row.querySelector('.bd-max').value) || 0 };
   });
 }
 
-function addDomainRow(label = '', max = '') {
+function addDomainRow(label = '', max = '', key = '') {
   const div = document.createElement('div');
   div.className = 'builder-row';
+  if (key) { div.dataset.domainKey = key; div.dataset.explicitDomainKey = 'true'; }
   div.innerHTML = `
     <input type="text" class="bd-label" placeholder="分野名（例：読解）" value="${esc(label)}">
     <input type="number" class="bd-max" placeholder="満点" min="1" value="${esc(max)}">
@@ -1567,26 +1621,37 @@ function addDomainRow(label = '', max = '') {
   $('tfDomains').appendChild(div);
 }
 
-function addQuestionRow(label = '', max = '') {
+function addQuestionRow(label = '', max = '', perspective = '') {
   const div = document.createElement('div');
-  div.className = 'builder-row';
+  div.className = 'builder-row question-builder-row';
   div.innerHTML = `
-    <input type="text" class="bq-label" placeholder="問題名（例：問1）" value="${esc(label)}">
-    <input type="number" class="bq-max" placeholder="配点" min="1" value="${esc(max)}">
-    <select class="bq-domain"></select>
+    <label>問題・採点する内訳<input type="text" class="bq-label" placeholder="例：大問1-(1)" value="${esc(label)}"></label>
+    <label>配点<input type="number" class="bq-max" placeholder="配点" min="1" value="${esc(max)}"></label>
+    <label>分野<select class="bq-domain"></select></label>
+    <label>評価の観点<select class="bq-perspective"></select></label>
     <button type="button" class="row-del" title="削除">✕</button>`;
-  div.querySelector('.row-del').onclick = () => div.remove();
+  const remove = div.querySelector('.row-del');
+  const nameRemoval = () => remove.setAttribute('aria-label', (div.querySelector('.bq-label').value || 'この問題') + 'を削除');
+  nameRemoval();
+  div.querySelector('.bq-label').addEventListener('input', nameRemoval);
+  remove.onclick = () => {
+    const target = div.nextElementSibling?.querySelector('.bq-label') || div.previousElementSibling?.querySelector('.bq-label') || $('tfAddQuestion');
+    div.remove(); target.focus();
+  };
+  div.querySelector('.bq-perspective').replaceChildren(...window.GD_CLASSIFICATION.perspectives.map(p => new Option(p.label, p.key, false, p.key === perspective)));
   $('tfQuestions').appendChild(div);
   refreshQuestionDomainSelects();
 }
 
 function refreshQuestionDomainSelects() {
+  const previous = new Map([...$('tfDomains').querySelectorAll('.builder-row')].filter(row => row.dataset.domainKey).map(row => [row.dataset.domainKey, row]));
   const domains = builderDomainKeys();
   for (const sel of $('tfQuestions').querySelectorAll('.bq-domain')) {
     const cur = sel.value;
     sel.replaceChildren(new Option('分野なし', ''),
       ...domains.map(d => new Option(d.label || '(無名)', d.key)));
-    if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+    const updated = previous.get(cur)?.dataset.domainKey || cur;
+    if ([...sel.options].some((o) => o.value === updated)) sel.value = updated;
   }
 }
 
@@ -1599,13 +1664,11 @@ function copyPrevStructure() {
   if (!prev) { alert(`「${subj}」のテストはまだ登録されていません。`); return; }
   $('tfDomains').innerHTML = '';
   $('tfQuestions').innerHTML = '';
-  for (const d of (prev.domains || [])) addDomainRow(d.label, d.max);
-  const dLabelOf = new Map((prev.domains || []).map((d) => [d.key, d.label]));
+  for (const d of (prev.domains || [])) addDomainRow(d.label, d.max, d.key);
   for (const q of (prev.questions || [])) {
-    addQuestionRow(q.label, q.max);
+    addQuestionRow(q.label, q.max, q.perspective || '');
     const sel = $('tfQuestions').lastElementChild.querySelector('.bq-domain');
-    const label = dLabelOf.get(q.domain) || q.domain || '';
-    if ([...sel.options].some((o) => o.value === label)) sel.value = label;
+    if ([...sel.options].some((o) => o.value === q.domain)) sel.value = q.domain;
   }
   $('tfMax').value = prev.maxScore || 100;
 }
@@ -1626,19 +1689,25 @@ function openTestDialog() {
 
 function submitTestDialog(e) {
   e.preventDefault();
-  // 分野名の重複は1つにまとめる（キー＝分野名）
+  refreshQuestionDomainSelects();
+  // 同じ表示名は1つにまとめ、既存の分野identityは保持する。
   const seenD = new Set();
   const domains = builderDomainKeys().filter((d) => d.label && !seenD.has(d.label) && seenD.add(d.label));
+  const domainError = [...$('tfDomains').querySelectorAll('.builder-row')].find(row => row.dataset.domainError);
+  if (domainError) { alert(domainError.dataset.domainError); return; }
+  if (new Set(domains.map(d => d.key)).size !== domains.length) { alert('同じ分野の別名が含まれています。分野名を統一してください。'); return; }
   const questions = [...$('tfQuestions').querySelectorAll('.builder-row')].map((row, i) => ({
     key: 'q' + (i + 1),
     label: row.querySelector('.bq-label').value.trim() || `問${i + 1}`,
     max: Number(row.querySelector('.bq-max').value) || 0,
     domain: row.querySelector('.bq-domain').value || undefined,
+    perspective: row.querySelector('.bq-perspective').value || undefined,
   })).filter((q) => q.max > 0);
+  if (questions.some(q => q.domain && !domains.some(d => d.key === q.domain))) { alert('問題に設定した分野の名前を入力するか、分野を選び直してください。'); return; }
   const maxScore = Number($('tfMax').value) || 100;
   const questionMaxSum = questions.reduce((sum, q) => sum + q.max, 0);
-  if (questionMaxSum > maxScore) {
-    alert(`問題の配点合計（${questionMaxSum}点）がテストの満点（${maxScore}点）を超えています。配点を修正してください。`);
+  if (questions.length && questionMaxSum !== maxScore) {
+    alert(`問題の配点合計（${questionMaxSum}点）とテストの満点（${maxScore}点）を一致させてください。`);
     return;
   }
   const domainMismatch = domains.find((d) => {
@@ -2092,7 +2161,16 @@ function renderAnalysis() {
   }
   const students = studentsOf(ui.anClass);
 
-  const { domains, rates } = renderDomainBar('anDomainChart', test, students, true);
+  const axis = ui.anAxis || 'domain';
+  $('anClassificationAxis').value = axis;
+  $('anClassificationTitle').textContent = (axis === 'perspective' ? '評価の観点別' : '分野別') + ' 平均得点率';
+  const summary = window.GD_CLASSIFICATION.summarize(test, students.map(s => getAttendedScore(s.id, test.id)), axis).filter(g => axis !== 'perspective' || g.key);
+  const unassigned = (test.questions || []).filter(q => axis === 'perspective' ? !q.perspective : !q.domain).length;
+  $('anClassificationSummary').textContent = !test.questions?.length
+    ? '問題ごとの点数がないため、観点別は集計できません。小問または採点する内訳ごとの点数が必要です。'
+    : `${test.questions.length}項目 ／ ${axis === 'perspective' ? '観点' : '分野'}未設定 ${unassigned}項目・${(test.questions || []).filter(q => axis === 'perspective' ? !q.perspective : !q.domain).reduce((sum, q) => sum + q.max, 0)}点分。${axis === 'perspective' ? '観点未設定の項目は観点別の得点率に含めません。' : ''}総合点は重複して加算しません。`;
+  const { domains, rates } = renderDomainBar('anDomainChart', test, students, true, axis);
+  $('anClassificationTable').innerHTML = summary.length ? `<table class="data-table classification-table"><caption>${axis === 'perspective' ? '評価の観点' : '分野'}ごとの集計</caption><thead><tr><th>分類</th><th>項目数</th><th>満点</th><th>集計人数</th><th>平均得点率</th></tr></thead><tbody>${summary.map(g => `<tr><th scope="row">${esc(g.label)}</th><td>${g.count}</td><td>${esc(g.max)}点</td><td>${g.n}名</td><td>${g.rate == null ? '—' : round1(g.rate) + '%'}</td></tr>`).join('')}</tbody></table>` : '';
   const qResult = renderQuestionBar(test, students);
   renderQuestionBox(test, students);
 
@@ -2103,7 +2181,7 @@ function renderAnalysis() {
     let msg = '';
     if (validD.length) {
       const weak = validD.reduce((a, b) => (a.r <= b.r ? a : b));
-      msg += `最も弱い分野は <strong>${esc(weak.d.label)}</strong>（平均得点率 ${weak.r}%）`;
+      msg += `得点率が最も低い${axis === 'perspective' ? '観点' : '分野'}は <strong>${esc(weak.d.label)}</strong>（平均得点率 ${weak.r}%）`;
     }
     if (validQ.length) {
       const weakQ = validQ.reduce((a, b) => (a.rate <= b.rate ? a : b));
@@ -2113,7 +2191,7 @@ function renderAnalysis() {
 
     // 前回テスト比：分野ごとの伸びを効果量で（同じ分野キーを持つ直前テストと比較）
     const prev = comparisonTarget(test);
-    if (prev) {
+    if (prev && axis === 'domain') {
       const moves = [];
       for (const d of testDomains(test)) {
         const prevMax = domainMax(prev, d.key);
@@ -3813,7 +3891,7 @@ async function issueNewTestTemplate() {
   try {
     const wb = window.GD_EXCEL.testTemplate(XLSX, sortedStudents());
     await window.GD_EXCEL.download(wb, '新規テスト取込テンプレート.xlsx');
-    alert('テスト用Excelをダウンロードしました。\n\n1) 「① テスト設定」の黄色い欄に教科・テスト名・実施日などを入力します。\n2) 「② 点数入力」の7行目に分野、8行目に配点、9行目に問題名、10行目以降に点数を入力します。満点は配点合計から自動計算します。\n3) 灰色のA〜E列は名簿です。変更せず、F列以降に点数を入力します。列を増やすときは直前の列全体をコピーして追加してください。\n4) 空欄は未入力、0は0点。欠席は1か所に「欠」、他の点数は空欄にします。\n5) 保存して「記入後に取込」で選びます。その後アプリでもJSONを保存してください。');
+    alert('テスト用Excelをダウンロードしました。\n\n1) 「① テスト設定」の黄色い欄に教科・テスト名・実施日などを入力します。\n2) 「② 点数入力」の7行目に分野、8行目に評価の観点、9行目に配点、10行目に問題名、11行目以降に点数を入力します。1列に1つの点数を入力し、大問合計と内訳を両方入れないでください。満点は配点合計から自動計算します。\n3) 灰色のA〜E列は名簿です。変更せず、F列以降に点数を入力します。列を増やすときは直前の列全体をコピーして追加してください。\n4) 空欄は未入力、0は0点。欠席は1か所に「欠」、他の点数は空欄にします。\n5) 保存して「記入後に取込」で選びます。その後アプリでもJSONを保存してください。');
   } catch (error) {
     alert('Excelを発行できませんでした。配布ZIPを展開し直してからお試しください。\n' + error.message);
   }
@@ -3822,14 +3900,14 @@ async function issueNewTestTemplate() {
 // テンプレートからテストを取込
 async function importTestTemplate(file) {
   const wb = await window.GD_IMPORT.readWorkbook(file, XLSX);
-  const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['② 点数入力', '新規テスト']);
+  const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['② 点数入力', '新規テスト'], { rejectCellErrors: true });
   const settingsNames = wb.SheetNames.filter(n => ['① テスト設定', 'テスト設定'].includes(n));
   if (settingsNames.length > 1) { alert('テスト設定のシートが複数あります。1枚にしてください。'); return; }
   if (wb.SheetNames.includes('② 点数入力') && !settingsNames.length) { alert('「① テスト設定」シートが見つかりません。シート名を戻すか、新しいテンプレートを発行してください。'); return; }
-  const settingsRows = settingsNames.length ? XLSX.utils.sheet_to_json(wb.Sheets[settingsNames[0]], { header: 1, defval: '' }) : null;
+  const settingsRows = settingsNames.length ? window.GD_IMPORT.selectSheet(wb, XLSX, settingsNames, { rejectCellErrors: true }).rows : null;
   const layout = window.GD_IMPORT.testLayout(rows, settingsRows);
   if (layout.errors.length) { alert(layout.errors.join('\n')); return; }
-  const { metadata, headerIdx, scoreStart, domainRow, maxRow, identityColumns } = layout;
+  const { metadata, headerIdx, scoreStart, domainRow, perspectiveRow, maxRow, identityColumns } = layout;
 
   const name = String(metadata['テスト名'] || '').trim();
   const subject = String(metadata['教科'] || '').trim();
@@ -3840,26 +3918,37 @@ async function importTestTemplate(file) {
 
   const header = rows[headerIdx] || [];
   const qCols = [];
-  const dataWidth = Math.max(header.length, ...rows.slice(headerIdx + 1).map((r) => r.length));
+  const dataWidth = Math.max(header.length, rows[domainRow]?.length || 0, rows[maxRow]?.length || 0, perspectiveRow == null ? 0 : rows[perspectiveRow]?.length || 0, ...rows.slice(headerIdx + 1).map((r) => r.length));
   for (let c = scoreStart; c < dataWidth; c++) {
     const label = String(header[c] || '').trim();
-    if (!label && (String(rows[maxRow]?.[c] ?? '').trim() || String(rows[domainRow]?.[c] ?? '').trim() || rows.slice(headerIdx + 1).some((r) => String(r[c] ?? '').trim()))) { alert(`問題名が空欄の列に分野・配点・点数があります。${headerIdx + 1}行目の問題名を入力してください。`); return; }
+    if (!label && (String(rows[maxRow]?.[c] ?? '').trim() || String(rows[domainRow]?.[c] ?? '').trim() || (perspectiveRow != null && String(rows[perspectiveRow]?.[c] ?? '').trim()) || rows.slice(headerIdx + 1).some((r) => String(r[c] ?? '').trim()))) { alert(`問題名が空欄の列に分野・評価の観点・配点・点数があります。${headerIdx + 1}行目の問題名を入力してください。`); return; }
     const max = Number(rows[maxRow] ? rows[maxRow][c] : 0);
     if (window.GD_IMPORT.isIdHeader(label)) continue;
     if (label && (!Number.isFinite(max) || max <= 0)) { alert(`問題「${label}」の配点は0より大きい数字で入力してください。`); return; }
-    if (label) qCols.push({ c, label, max, domain: String(rows[domainRow] ? rows[domainRow][c] : '').trim() });
+    if (label) {
+      const perspective = window.GD_IMPORT.parsePerspective(perspectiveRow == null ? '' : rows[perspectiveRow]?.[c]);
+      if (perspective === null) { alert(`${perspectiveRow + 1}行目・${XLSX.utils.encode_col(c)}列の評価の観点は、知識・技能、思考・判断・表現、未設定から選んでください。取込は反映していません。`); return; }
+      qCols.push({ c, label, max, domain: String(rows[domainRow] ? rows[domainRow][c] : '').trim(), perspective });
+    }
   }
   if (!qCols.length) { alert(`問題の列が見つかりません。${headerIdx + 1}行目の問題名と${maxRow + 1}行目の配点を確認してください。`); return; }
 
-  // 分野キー＝分野名（テスト間で同じ分野名なら同じ分野として推移がつながる）
   const domainNames = [...new Set(qCols.map((q) => q.domain).filter(Boolean))];
+  const domainKeys = new Map();
+  try {
+    for (const label of domainNames) {
+      const key = domainKeyForNewTest(subject, label, data.tests, [...domainKeys.values()]);
+      if ([...domainKeys.values()].includes(key)) throw new Error('同じ分野の別名が含まれています。Excelの分野名を統一してください。');
+      domainKeys.set(label, key);
+    }
+  } catch (error) { alert(error.message + '\n取込は反映していません。'); return; }
   const domains = domainNames.map((label) => ({
-    key: label, label,
+    key: domainKeys.get(label), label,
     max: qCols.filter((q) => q.domain === label).reduce((a, q) => a + q.max, 0),
   }));
   const questions = qCols.map((q, i) => ({
     key: 'q' + (i + 1), label: q.label, max: q.max,
-    domain: q.domain || undefined,
+    domain: domainKeys.get(q.domain) || undefined, perspective: q.perspective || undefined,
   }));
   const declaredMax = Number(metadata['満点']);
   const questionMaxSum = qCols.reduce((a, q) => a + q.max, 0);
@@ -4061,6 +4150,7 @@ function init() {
   $('inTest').onchange = (e) => { ui.inTest = e.target.value; renderInput(); };
   $('inSubject').onchange = (e) => { ui.inSubject = e.target.value; fillScopedTestSelect('inTest', 'inSubject', 'inTest'); renderInput(); };
   $('anClass').onchange = (e) => { ui.anClass = e.target.value; renderAnalysis(); resizeCharts(); };
+  $('anClassificationAxis').onchange = e => { ui.anAxis = e.target.value; renderAnalysis(); resizeCharts(); };
   $('anSubject').onchange = (e) => { ui.anSubject = e.target.value; fillScopedTestSelect('anTest', 'anSubject', 'anTest'); renderAnalysis(); resizeCharts(); };
   $('anTest').onchange = (e) => { ui.anTest = e.target.value; renderAnalysis(); resizeCharts(); };
   $('trendIncludeGraduated').onchange = event => { ui.trendIncludeGraduated = event.target.checked; ui.trendClass = 'all'; fillClassSelect($('trendClass'), ui.trendClass); renderTrend(); resizeCharts(); };

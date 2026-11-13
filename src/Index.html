@@ -220,6 +220,7 @@
         <span class="toolbar-spacer"></span>
         <button class="btn btn-ghost" id="pasteHelpBtn">Excel貼り付けについて</button>
         <button class="btn btn-ghost" id="exportTemplateBtn">今のテストを Excel出力</button>
+        <button type="button" class="btn btn-ghost" id="editClassificationBtn">問題の分類を編集</button>
         <span class="btn-group" title="新しいテストをExcelでまとめて登録する場合はこちら">
           <span class="btn-group-label">新しいテストをExcelで登録</span>
           <button class="btn btn-ghost btn-sm" id="newTestTplBtn">① テンプレを発行</button>
@@ -323,8 +324,11 @@
 
       <div class="card-grid two-col">
         <div class="card">
-          <h3>分野別 平均得点率</h3>
+          <h3 id="anClassificationTitle">分野別 平均得点率</h3>
+          <label class="classification-axis">集計する分類<select id="anClassificationAxis"><option value="domain">分野別（リスニング・読解など）</option><option value="perspective">評価の観点別</option></select></label>
+          <p id="anClassificationSummary" class="card-note"></p>
           <div class="chart" id="anDomainChart"></div>
+          <div id="anClassificationTable" class="table-wrap"></div>
         </div>
         <div class="card">
           <h3>問題別 平均得点率</h3>
@@ -784,6 +788,47 @@
     </div>
   </dialog>
 
+  <dialog id="classificationDialog" class="classification-editor-dialog" aria-labelledby="ceTitle">
+    <form id="classificationForm" class="dialog-form">
+      <h2 id="ceTitle">問題の分類を編集</h2>
+      <p id="ceTestName" class="ce-test-name"></p>
+      <p class="form-note">生徒の点数・欠席状態・問題の名前と配点を保持して、分類だけを変更します。変更後は右上の「保存」でJSONへ保存してください。</p>
+      <div id="ceEditPane">
+        <fieldset class="ce-domains-fieldset">
+          <legend>このテストの分野名</legend>
+          <p class="form-note">名前の変更は、このテストの同じ分野に属する問題へまとめて反映します。過去のテストの分野名は変わりません。</p>
+          <div id="ceDomains"></div>
+          <p id="ceDomainStatus" role="status" class="ce-status"></p>
+          <button id="ceAddDomain" type="button" class="btn btn-ghost btn-sm">＋ 分野を追加</button>
+        </fieldset>
+        <details id="ceBulk" class="ce-bulk">
+          <summary>まとめて変更</summary>
+          <p class="form-note">下の問題にチェックを入れ、変更する分類を選びます。「変更しない」の欄は保持します。</p>
+          <div class="ce-bulk-controls">
+            <label>分野<select id="ceBulkDomain"></select></label>
+            <label>評価の観点<select id="ceBulkPerspective"><option value="__keep__">変更しない</option><option value="">未設定</option><option value="knowledge">知識・技能</option><option value="thinking">思考・判断・表現</option></select></label>
+            <button id="ceBulkApply" type="button" class="btn btn-ghost">選んだ問題の編集欄へ反映</button>
+          </div>
+          <p id="ceBulkStatus" role="status" class="ce-status"></p>
+        </details>
+        <label class="ce-select-all"><input id="ceSelectAll" type="checkbox">すべての問題を選ぶ</label>
+        <div id="ceQuestions"></div>
+        <button id="cePreview" type="submit" class="btn btn-primary">変更を確認</button>
+      </div>
+      <div id="cePreviewPane" hidden>
+        <h3 id="cePreviewHeading" tabindex="-1">変更内容の確認</h3>
+        <p id="cePreviewSummary"></p>
+        <ul id="ceChanges" class="ce-changes"></ul>
+        <div class="dialog-actions">
+          <button id="ceBack" type="button" class="btn btn-ghost">修正に戻る</button>
+          <button id="ceApply" type="button" class="btn btn-primary">分類を反映</button>
+        </div>
+      </div>
+      <p id="ceStatus" role="alert" class="ce-status"></p>
+      <div class="dialog-actions"><button id="ceClose" type="button" class="btn btn-ghost">キャンセルして閉じる</button></div>
+    </form>
+  </dialog>
+
   <!-- テスト追加ダイアログ -->
   <dialog id="testDialog">
     <form class="dialog-form" id="testForm">
@@ -814,6 +859,7 @@
       <div class="builder-rows" id="tfDomains"></div>
 
       <h4>問題 <button type="button" class="btn btn-ghost btn-sm" id="tfAddQuestion">＋ 追加</button></h4>
+      <p class="form-note">各問題に「分野」と「評価の観点」をそれぞれ設定します。1行は小問、または別々に採点する内訳1つです。</p>
       <div class="builder-rows" id="tfQuestions"></div>
 
       <p class="form-note">問題を登録すると、合計点・分野別点は問題の得点から自動計算されます。問題なし（合計点のみ）でも作成できます。</p>
@@ -865,12 +911,15 @@
   <script src="files/roster-reassign.js"></script>
   <script src="files/teaching-notes.js"></script>
   <script src="files/paired-comparison.js"></script>
+  <script src="files/assessment-classification.js"></script>
   <script src="files/vendor/exceljs.min.js"></script>
   <script src="files/excel-templates.js"></script>
   <script src="files/initial-import.js"></script>
   <script src="files/script.js"></script>
   <script src="files/teaching-notes-ui.js"></script>
   <script src="files/accessibility.js"></script>
+  <script src="files/classification-editor-core.js"></script>
+  <script src="files/classification-editor.js"></script>
   <script src="files/onboarding.js"></script>
   <script src="files/update-check.js"></script>
 </body>

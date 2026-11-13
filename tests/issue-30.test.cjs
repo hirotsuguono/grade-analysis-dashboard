@@ -127,17 +127,17 @@ test('#30 テスト実ファイルの書式・配点数式・日付・選択欄�
   const h = harness(), { book, bytes } = await written(h.excel, configured(h));
   assert.deepEqual(book.worksheets.map(s => s.name), ['① テスト設定', '② 点数入力', '記入例']);
   const settings = book.worksheets[0], scores = book.worksheets[1];
-  assert.equal(settings.getCell('B12').value.formula, "SUM('② 点数入力'!8:8)");
+  assert.equal(settings.getCell('B12').value.formula, "SUM('② 点数入力'!9:9)");
   assert.equal(settings.getCell('B12').fill.fgColor.argb, 'FFF1F4F8');
   assert.equal(settings.getCell('B14').numFmt, 'yyyy/mm/dd');
   assert.ok(settings.getCell('B14').dataValidation.formulae.every(d => Number.isFinite(d.getTime())));
   assert.match(settings.getCell('B18').dataValidation.formulae[0], /期末テスト/);
-  assert.equal(scores.getCell('A10').fill.fgColor.argb, 'FFF1F4F8');
-  assert.equal(scores.getCell('F10').fill.fgColor.argb, 'FFFFF5D6');
-  assert.equal(scores.getCell('F10').dataValidation.type, 'custom');
-  assert.equal(scores.views[0].topLeftCell, 'F10');
-  assert.equal(scores.getCell('A10').value, 'a');
-  assert.equal(scores.getCell('F10').value, '');
+  assert.equal(scores.getCell('A11').fill.fgColor.argb, 'FFF1F4F8');
+  assert.equal(scores.getCell('F11').fill.fgColor.argb, 'FFFFF5D6');
+  assert.equal(scores.getCell('F11').dataValidation.type, 'custom');
+  assert.equal(scores.views[0].topLeftCell, 'F11');
+  assert.equal(scores.getCell('A11').value, 'a');
+  assert.equal(scores.getCell('F11').value, '');
   assert.equal(XLSX.read(bytes, { type: 'array' }).Workbook.CalcPr.fullCalcOnLoad, '1');
 });
 test('テストExcelの50問分に同じ列幅・書式・入力規則を保存し、未使用欄は空欄にする', async () => {
@@ -147,27 +147,27 @@ test('テストExcelの50問分に同じ列幅・書式・入力規則を保存�
   assert.equal(book.getWorksheet('記入例').columnCount, 10);
   for (const column of ['F', 'J', 'K', 'T', 'BC']) {
     assert.equal(scores.getColumn(column).width, 16, column);
-    for (const row of [7, 8, 9, 10, 12]) {
+    for (const row of [7, 8, 9, 10, 11, 13]) {
       assert.deepEqual(scores.getCell(column + row).style, scores.getCell('F' + row).style, column + row);
     }
-    assert.equal(scores.getCell(column + '8').dataValidation.type, 'decimal');
-    const rule = scores.getCell(column + '10').dataValidation;
+    assert.equal(scores.getCell(column + '9').dataValidation.type, 'decimal');
+    const rule = scores.getCell(column + '11').dataValidation;
     assert.equal(rule.type, 'custom');
-    assert.equal(rule.formulae[0], `OR(${column}10="",${column}10="欠",AND(ISNUMBER(${column}10),ISNUMBER(${column}$8),${column}$8>0,${column}10>=0,${column}10<=${column}$8))`);
+    assert.equal(rule.formulae[0], `OR(${column}11="",${column}11="欠",AND(ISNUMBER(${column}11),ISNUMBER(${column}$9),${column}$9>0,${column}11>=0,${column}11<=${column}$9))`);
   }
   for (const column of ['J', 'K', 'T', 'BC']) {
-    for (const row of [7, 8, 9, 10, 12]) assert.equal(scores.getCell(column + row).value, '', column + row);
+    for (const row of [7, 8, 9, 10, 11, 13]) assert.equal(scores.getCell(column + row).value, '', column + row);
   }
-  assert.equal(scores.views[0].topLeftCell, 'F10');
-  assert.equal(scores.pageSetup.printArea, 'A1:J12');
-  assert.equal(scores.pageSetup.printTitlesRow, '6:9');
+  assert.equal(scores.views[0].topLeftCell, 'F11');
+  assert.equal(scores.pageSetup.printArea, 'A1:J13');
+  assert.equal(scores.pageSetup.printTitlesRow, '6:10');
 });
 test('50問目の欄まで実ファイルで取り込み、途中の空き列を無視して0点も保持する', async () => {
   const h = harness(), wb = configured(h), roster = JSON.stringify(h.api.getData().students);
   for (const [address, value] of Object.entries({
-    F10: 20, G10: 10, H10: 10, I10: 10,
-    K7: '架空の追加分野', K8: 10, K9: '問6', K10: 0,
-    BC7: '架空の最終分野', BC8: 5, BC9: '問50', BC10: 5,
+    F11: 20, G11: 10, H11: 10, I11: 10,
+    K7: '架空の追加分野', K9: 10, K10: '問6', K11: 0,
+    BC7: '架空の最終分野', BC9: 5, BC10: '問50', BC11: 5,
   })) set(wb, '② 点数入力', address, value);
   await importWorkbook(h, wb);
   const d = h.api.getData();
@@ -217,7 +217,7 @@ test('#30 列を追加し満点のキャッシュが古い・未計算でも配�
   for (const cache of [0, 100, 9999, undefined]) {
     const h = harness(), wb = configured(h);
     wb.Sheets['① テスト設定'].B12.v = cache;
-    for (const [address, value] of Object.entries({ F10: 20, G10: 10, H10: 10, I10: 10, K7: '読解', K8: 10, K9: '追加問題', K10: 0 })) set(wb, '② 点数入力', address, value);
+    for (const [address, value] of Object.entries({ F11: 20, G11: 10, H11: 10, I11: 10, K7: '読解', K9: 10, K10: '追加問題', K11: 0 })) set(wb, '② 点数入力', address, value);
     await importWorkbook(h, wb);
     const d = h.api.getData(); assert.equal(d.tests.length, 1, h.alerts.join('\n'));
     assert.equal(d.tests[0].maxScore, 110); assert.equal(d.tests[0].questions.length, 5);
@@ -228,7 +228,7 @@ test('#30 列を追加し満点のキャッシュが古い・未計算でも配�
 });
 test('#30 書式付きの新形式でも途中入力・0点・欠席・未入力を区別する', async () => {
   const h = harness(), wb = configured(h);
-  for (const [address, value] of Object.entries({ F10: 25, F11: 0, G11: 0, H11: 0, I11: 0, F12: '欠' })) set(wb, '② 点数入力', address, value);
+  for (const [address, value] of Object.entries({ F11: 25, F12: 0, G12: 0, H12: 0, I12: 0, F13: '欠' })) set(wb, '② 点数入力', address, value);
   await importWorkbook(h, wb);
   const d = h.api.getData();
   assert.equal(d.tests.length, 1, h.alerts.join('\n'));
@@ -238,9 +238,9 @@ test('#30 書式付きの新形式でも途中入力・0点・欠席・未入力
 test('#30 新形式の必須日付・種類・照合・得点の不正値で一部反映しない', async () => {
   for (const edit of [wb => set(wb,'① テスト設定','B14',''), wb => set(wb,'① テスト設定','B14','2026-02-30'),
     wb => set(wb,'① テスト設定','B14',60), wb => set(wb,'① テスト設定','B18','unknown'),
-    wb => set(wb,'② 点数入力','A10','missing'), wb => set(wb,'② 点数入力','F10',26)]) {
+    wb => set(wb,'② 点数入力','A11','missing'), wb => set(wb,'② 点数入力','F11',26)]) {
     const h = harness(), wb = configured(h), before = JSON.stringify(h.api.getData());
-    set(wb, '② 点数入力', 'F11', 1); edit(wb); await importWorkbook(h, wb);
+    set(wb, '② 点数入力', 'F12', 1); edit(wb); await importWorkbook(h, wb);
     assert.equal(JSON.stringify(h.api.getData()), before); assert.ok(h.alerts.length); assert.equal(h.confirms.length, 0);
   }
 });
@@ -256,6 +256,6 @@ test('#30 設定シートの重複・消失と取込の取消を安全に扱う'
 test('#30 生徒名の先頭の等号をExcelの数式として書き出さない', async () => {
   const h = harness(), wb = h.excel.testTemplate(XLSX, [{ id: 'a', name: '=1+1', className: '1年1組', number: 1 }]);
   const { book } = await written(h.excel, wb);
-  assert.equal(book.worksheets[1].getCell('E10').value, '=1+1');
-  assert.notEqual(book.worksheets[1].getCell('E10').type, ExcelJS.ValueType.Formula);
+  assert.equal(book.worksheets[1].getCell('E11').value, '=1+1');
+  assert.notEqual(book.worksheets[1].getCell('E11').type, ExcelJS.ValueType.Formula);
 });

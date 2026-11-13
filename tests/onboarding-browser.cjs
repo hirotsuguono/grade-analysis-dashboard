@@ -198,11 +198,11 @@ const buffer = wb => Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xls
     const testPath = await download('#prepareTestTemplateBtn');
     const twb = XLSX.read(fs.readFileSync(testPath), { type: 'buffer' });
     const sheet = '② 点数入力', tr = rowsOf(twb, sheet);
-    assert.deepEqual(tr[8].slice(0, 5), ['生徒ID', '学年', 'クラス', '出席番号', '氏名']);
-    assert.equal(tr.slice(9).filter(r => r[4]).length, 4);
-    const laterId = tr[9][0];
+    assert.deepEqual(tr[9].slice(0, 5), ['生徒ID', '学年', 'クラス', '出席番号', '氏名']);
+    assert.equal(tr.slice(10).filter(r => r[4]).length, 4);
+    const laterId = tr[10][0];
     for (const [key,value] of Object.entries({B8:'英語',B10:'架空の追加テスト',B16:2,B14:'2026-05-20'})) twb.Sheets['① テスト設定'][key]={t:typeof value==='number'?'n':'s',v:value};
-    tr[9][5] = 4; tr[9][6] = 5; tr[9][7] = 6; tr[9][8] = 0;
+    tr[10][5] = 4; tr[10][6] = 5; tr[10][7] = 6; tr[10][8] = 0;
     twb.Sheets[sheet] = XLSX.utils.aoa_to_sheet(tr);
     await upload('#testXlsxInput', twb);
     await page.waitForFunction(() => data.tests.length === 2);

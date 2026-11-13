@@ -1022,6 +1022,7 @@ dialog::backdrop {
 
 .builder-row input[type="text"] {
   flex: 1;
+  min-width:0;
 }
 
 .builder-row input[type="number"] {
@@ -1030,6 +1031,31 @@ dialog::backdrop {
 
 .builder-row select {
   width: 130px;
+}
+.question-builder-row { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); padding:12px; border:1px solid #dce2eb; border-radius:8px; align-items:end; }
+.question-builder-row label { display:flex; flex-direction:column; gap:4px; min-width:0; font-size:12px; }
+.question-builder-row label:nth-child(1) { grid-column:1 / 9; grid-row:1; }
+.question-builder-row label:nth-child(2) { grid-column:9 / 11; grid-row:1; }
+.question-builder-row .row-del { grid-column:11 / 13; grid-row:1; min-width:44px; min-height:44px; }
+.question-builder-row label:nth-child(3) { grid-column:1 / 7; grid-row:2; }
+.question-builder-row label:nth-child(4) { grid-column:7 / 13; grid-row:2; }
+.question-builder-row input[type="text"], .question-builder-row input[type="number"], .question-builder-row select { width:100%; min-width:0; }
+.classification-axis { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; }
+.classification-axis select { min-width:0; max-width:100%; }
+.classification-table { width:100%; font-size:12px; }
+.classification-table caption { text-align:left; padding:6px 0; font-weight:600; }
+.classification-table th, .classification-table td { padding:8px; text-align:left; }
+#testDialog .form-row-4 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+#testDialog .form-row-4 label { min-width:0; }
+#testDialog .form-row-4 input, #testDialog .form-row-4 select { width:100%; min-width:0; }
+@media (max-width:480px) {
+  #testDialog .form-row-4 { grid-template-columns:minmax(0,1fr); }
+  .question-builder-row { grid-template-columns:minmax(0,1fr) 44px; }
+  .question-builder-row label:nth-child(1) { grid-column:1; grid-row:1; }
+  .question-builder-row label:nth-child(2) { grid-column:1; grid-row:2; }
+  .question-builder-row label:nth-child(3) { grid-column:1 / 3; grid-row:3; }
+  .question-builder-row label:nth-child(4) { grid-column:1 / 3; grid-row:4; }
+  .question-builder-row .row-del { grid-column:2; grid-row:1; }
 }
 
 .builder-row .row-del {
@@ -2083,4 +2109,31 @@ input[type=checkbox] { width: 20px; height:20px; accent-color: #2458a6; }
   .teaching-target { padding: 10px; }
   .teaching-target-controls { grid-template-columns: 1fr; }
   .teaching-note { padding: 12px; }
+}
+
+#anClassificationSummary { margin-top:10px; }
+.classification-editor-dialog { width:min(860px,96vw); }
+.ce-test-name { font-weight:700; overflow-wrap:anywhere; }
+.ce-domains-fieldset { border:1px solid var(--border); border-radius:8px; padding:12px; margin:16px 0; min-width:0; }
+.ce-domains-fieldset legend { padding:0 6px; font-weight:600; }
+#ceDomains { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:8px 0; }
+.ce-domain-row { display:flex; gap:8px; align-items:center; }
+.ce-domain-row input { width:100%; min-width:0; }
+.ce-domain-row button { flex:0 0 auto; min-height:44px; }
+.ce-bulk { margin:16px 0; padding:12px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; }
+.ce-bulk summary { cursor:pointer; font-weight:600; min-height:32px; }
+.ce-bulk-controls { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.ce-bulk-controls button { grid-column:1 / -1; }
+.classification-editor-dialog .ce-select-all { flex-direction:row; align-items:center; min-height:44px; }
+.ce-select-all input, .ce-question-title input { width:20px; height:20px; flex:0 0 auto; }
+.ce-question { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 16px; padding:12px; border:1px solid var(--border); border-radius:8px; margin-bottom:12px; }
+.ce-question-title { display:flex; align-items:center; gap:8px; grid-column:1 / -1; min-width:0; overflow-wrap:anywhere; }
+.ce-question-title span { white-space:nowrap; margin-left:auto; }
+.ce-question label { min-width:0; margin-bottom:0; }
+.ce-question select, .ce-bulk-controls select { width:100%; min-width:0; }
+.ce-changes { padding-left:22px; overflow-wrap:anywhere; }
+.ce-changes li { margin:12px 0; }
+.ce-status { white-space:pre-line; color:var(--warn); }
+@media(max-width:560px) {
+  #ceDomains, .ce-bulk-controls, .ce-question { grid-template-columns:minmax(0,1fr); }
 }
