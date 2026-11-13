@@ -57,9 +57,9 @@
   function target(dataset, subject, className, testId) {
     const test = testId ? dataset.tests.find(t => t.id === testId) : null;
     if (testId && !test) throw new Error('参考テストを選び直してください。');
-    if (className !== null && !dataset.students.some(s => s.className === className)) throw new Error('現在の名簿にあるクラスを選んでください。');
+    if (className !== null && !dataset.students.some(s => s.enrollmentStatus !== 'graduated' && s.className === className)) throw new Error('現在の名簿にあるクラスを選んでください。');
     return { subject, className, testId: test?.id || null, testName: test ? test.name || '（名前未設定のテスト）' : null,
-      studentIds: dataset.students.filter(s => className === null || s.className === className).map(s => s.id).sort() };
+      studentIds: dataset.students.filter(s => s.enrollmentStatus !== 'graduated' && (className === null || s.className === className)).map(s => s.id).sort() };
   }
   function key(t) { return JSON.stringify([t.subject, t.className, t.testId, [...t.studentIds].sort()]); }
   function find(dataset, id) {

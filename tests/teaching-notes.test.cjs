@@ -106,3 +106,12 @@ test('不正な指導メモの読込失敗で元データ・保存先・未保�
   d.teachingNotes[0].plan={result:3}; api.applyJsonText(JSON.stringify(d),'invalid.json',null);
   const after=api.state(); assert.equal(after.data,before.data); assert.equal(after.fileHandle,file); assert.equal(after.fileName,file.name); assert.equal(after.dirty,true);
 });
+
+test('新しい指導メモは在籍者だけを対象にし、卒業前の記録対象は保持する', () => {
+  const d=dataset(), note=draft(d), snapshot=structuredClone(note.target);
+  d.students[0].enrollmentStatus='graduated';d.students.push({id:'s2',name:'架空の在籍者',className:'2年A組',number:1});
+  assert.deepEqual(core.target(d,null,null,null).studentIds,['s2']);
+  assert.deepEqual(core.target(d,'英語','2年A組','t1').studentIds,['s2']);
+  assert.deepEqual(note.target,snapshot);assert.deepEqual(core.validate(d.teachingNotes),[]);
+  d.students.pop();assert.throws(()=>core.target(d,'英語','2年A組','t1'),/現在の名簿/);
+});

@@ -248,6 +248,7 @@
               <select id="trendClass"></select>
             </label>
             <label class="side-field">テストの種類<select id="trendKind"></select></label>
+            <label class="roster-check"><input type="checkbox" id="trendIncludeGraduated" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">卒業生も表示</label>
             <label class="sr-only" for="trendSearch">生徒名で検索</label><input type="search" id="trendSearch" placeholder="生徒名で検索" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
             <div class="side-actions">
               <button class="btn btn-ghost btn-sm" id="trendClearBtn">選択をクリア</button>
@@ -265,12 +266,12 @@
             <div id="trendSupportBody" hidden>
               <p class="card-note">教科・テストの選択にかかわらず、この生徒の支援記録をすべて表示します。RTIと同じ記録です。</p>
               <div id="trendSupportRecords"></div>
-              <p class="card-note">追加・完了・再開した内容は、右上の「保存」でJSONへ保存してください。</p>
+              <p class="card-note" id="trendSupportSaveHint">追加・完了・再開した内容は、右上の「保存」でJSONへ保存してください。</p>
               <p id="trendSupportStatus" role="status" aria-live="polite"></p>
             </div>
           </div>
           <div class="card individual-comparison" id="trendComparisonCard">
-            <div class="individual-comparison-heading"><h3>本人の2回の変化</h3>
+            <div class="individual-comparison-heading"><h3 id="trendComparisonTitle" tabindex="-1">本人の2回の変化</h3>
               <button type="button" class="btn btn-ghost btn-sm" id="trendUseOverview">概要と同じ比較にする</button>
             </div>
             <p id="trendComparisonScope" class="comparison-scope"></p>
@@ -725,13 +726,14 @@
 
       <div class="roster-tabs">
         <button class="rtab is-active" data-rtab="edit">名簿を編集</button>
-        <button class="rtab" data-rtab="reassign">クラス替え一括取込</button>
+        <button class="rtab" data-rtab="reassign">進級・クラス替え一括取込</button>
+        <button class="rtab" data-rtab="graduates">卒業生の記録</button>
       </div>
 
       <!-- 編集 -->
       <div class="rpane is-active" id="rpane-edit">
         <div class="roster-toolbar">
-          <span id="rosterCount"></span>
+          <span id="rosterCount" tabindex="-1"></span>
           <span class="toolbar-spacer"></span>
           <button class="btn btn-ghost btn-sm" id="rosterAddBtn">＋ 生徒を追加（転入）</button>
         </div>
@@ -740,17 +742,27 @@
 
       <!-- クラス替え一括取込 -->
       <div class="rpane" id="rpane-reassign">
-        <p>対象と移動先を選び、名簿入りExcelへ<strong>新クラス・新番号</strong>だけを記入します。生徒IDで照合し、点数・指標・支援記録を引き継ぎます。</p>
-        <div class="form-row form-row-2">
+        <label>行う操作<select id="reassignOperation"><option value="whole">全名簿の進級・卒業</option><option value="partial">一部の所属変更・入力ミス訂正</option></select></label>
+        <p id="reassignOperationHelp" class="form-note"></p>
+        <div id="reassignWholeFields" class="form-row form-row-2">
+          <label>進級後の年度<input id="reassignSchoolYear" type="number" min="1900" max="9999" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+          <p id="reassignWholeSummary" class="form-note" role="status"></p>
+          <label>新2年生の組名<select id="reassignNaming2"><option value="numbers">1・2・3組</option><option value="letters">A・B・C組</option></select></label>
+          <label>新2年生のクラス数<input id="reassignCount2" type="number" min="1" max="50" value="3" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+          <label>新3年生の組名<select id="reassignNaming3"><option value="numbers">1・2・3組</option><option value="letters">A・B・C組</option></select></label>
+          <label>新3年生のクラス数<input id="reassignCount3" type="number" min="1" max="50" value="3" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+          <p class="form-note">新クラス・新番号は空欄で発行します。現在のクラス・番号を確認し、進級する全員分をExcelへ入力してください。卒業する生徒は空欄のままです。</p>
+        </div>
+        <div id="reassignPartialFields" class="form-row form-row-2" hidden>
           <label>変更する名簿<select id="reassignScope"></select></label>
           <label>移動先の学年<select id="reassignGrade"><option value="1">1年</option><option value="2">2年</option><option value="3">3年</option></select></label>
           <label>組名<select id="reassignNaming"><option value="numbers">1・2・3組</option><option value="letters">A・B・C組</option></select></label>
           <label>移動先のクラス数<input id="reassignCount" type="number" min="1" max="50" value="3" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
           <label>変更対象<select id="reassignMode"><option value="all">対象全員を記入</option><option value="partial">一部だけ変更</option></select></label>
           <label>変更の種類<select id="reassignKind"><option value="move">クラス替え・所属変更</option><option value="correction">入力ミスの訂正（履歴を増やさない）</option></select></label>
-          <label>変更日<input id="reassignDate" type="date" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
         </div>
-        <p class="form-note">反映するとすぐに所属が変わります。未来の日付での予約、年度の作成、卒業・転入の処理は行いません。一部変更では、変更しない人の新クラス・新番号を両方空欄にします。</p>
+        <label>変更日<input id="reassignDate" type="date" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+        <p class="form-note">変更日は履歴に記録する日付です。反映するとすぐに所属が変わります。未来の日付での予約や新入生の追加は行いません。</p>
         <div class="dialog-actions">
           <button type="button" class="btn btn-ghost" id="reassignTemplateBtn">① 名簿入りExcelを発行</button>
           <button type="button" class="btn btn-ghost" id="reassignImportBtn">② 記入後に読み込み</button>
@@ -764,6 +776,10 @@
         </div>
         <p class="form-note" id="reassignUndoNote">直前の一括変更は、この画面を閉じた後も同じ利用中なら取り消せます。その後に名簿を編集した場合やJSONを開き直した場合は、控えJSONから戻してください。</p>
         <button type="button" class="btn btn-ghost" id="reassignUndoBtn" disabled>直前の一括変更を取り消す</button>
+      </div>
+      <div class="rpane" id="rpane-graduates">
+        <p>卒業生の点数・指標・支援記録はJSONに残ります。通常の名簿・集計には含めません。「個人推移」で記録を確認できます。</p>
+        <div id="graduateTableWrap" class="table-wrap"></div>
       </div>
 
       <div class="dialog-actions roster-close-row">

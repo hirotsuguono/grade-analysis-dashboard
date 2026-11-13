@@ -29,7 +29,7 @@ const ui = {
   inClass: 'all', inTest: '', inSubject: 'all',
   anClass: 'all', anTest: '', anSubject: 'all', anAxis: 'domain',
   trendClass: 'all', trendSearch: '', trendSubject: '', trendKind: 'all',
-  trendSelected: new Set(),
+  trendSelected: new Set(), trendIncludeGraduated: false,
   trendCompareTest: '', trendCompareFrom: null, trendComparisonStarted: false,
   metClass: 'all', metricId: '',
   corrX: '', corrY: '',
@@ -190,16 +190,19 @@ function studentNumber(s) {
   return parseInt(n, 10) || 0;
 }
 
-function sortedStudents() {
-  return [...data.students].sort((a, b) => {
+function isActiveStudent(student) { return student.enrollmentStatus !== 'graduated'; }
+function activeStudents() { return (data?.students || []).filter(isActiveStudent); }
+
+function sortedStudents(includeGraduated = false) {
+  return [...(includeGraduated ? data.students : activeStudents())].sort((a, b) => {
     const c = (a.className || '').localeCompare(b.className || '', 'ja');
     if (c !== 0) return c;
     return studentNumber(a) - studentNumber(b);
   });
 }
 
-function classList() {
-  return [...new Set(data.students.map((s) => s.className).filter(Boolean))].sort();
+function classList(includeGraduated = false) {
+  return [...new Set((includeGraduated ? data.students : activeStudents()).map((s) => s.className).filter(Boolean))].sort();
 }
 
 function studentsOf(klass) {
@@ -534,6 +537,11 @@ function validateDataset(parsed) {
     if (typeof s.name !== 'string' || !s.name.trim()) add(`students[${i}].name が空です。`);
     if (s.className != null && typeof s.className !== 'string') add(`students[${i}].className は文字列にしてください。`);
     if (!number(s.number)) add(`students[${i}].number は正の整数・数字の文字列・未設定にしてください。`);
+    if (s.lastPromotionYear != null && (!Number.isInteger(s.lastPromotionYear) || s.lastPromotionYear < 1900 || s.lastPromotionYear > 9999)) add(`students[${i}].lastPromotionYear は年度の整数にしてください。`);
+    if (s.enrollmentStatus != null && !['active', 'graduated'].includes(s.enrollmentStatus)) add(`students[${i}].enrollmentStatus が不正です。`);
+    if (s.graduatedAt != null && (typeof s.graduatedAt !== 'string' || normalizeDateValue(s.graduatedAt) !== s.graduatedAt)) add(`students[${i}].graduatedAt は実在する日付にしてください。`);
+    if (s.enrollmentStatus === 'graduated' && !s.graduatedAt) add('卒業生には卒業日が必要です。');
+    if (s.enrollmentStatus !== 'graduated' && s.graduatedAt != null) add('在籍中の生徒に卒業日は設定できません。');
     if (s.classHistory != null && (!Array.isArray(s.classHistory) || s.classHistory.some(h => !object(h) || !optionalText(h.className) || !number(h.number) || !optionalText(h.at) || (h.at && normalizeDateValue(h.at) !== h.at)))) add(`students[${i}].classHistory が不正です。`);
   });
 
@@ -717,7 +725,8 @@ function applyJsonText(text, name, handle) {
     ui.trendSubject = data.tests.length ? data.tests[0].subject : '';
     const lastTest = data.tests.length ? data.tests[data.tests.length - 1].id : '';
     ui.ovTest = ui.inTest = ui.anTest = lastTest;
-    ui.trendSelected = new Set();
+    ui.trendSelected = new Set(); ui.trendIncludeGraduated = false;
+    if ($('trendIncludeGraduated')) $('trendIncludeGraduated').checked = false;
     ui.trendCompareTest = ''; ui.trendCompareFrom = null; ui.trendComparisonStarted = false;
     ui.trendSearch = '';
     ui.metricId = data.metrics.length ? data.metrics[0].id : '';
@@ -743,6 +752,7 @@ function applyJsonText(text, name, handle) {
       ({ data, fileHandle, fileName, dirty, lastDiskText, activeDataToken,
         pendingDownload, isAdmin, scoreIndex } = previous);
       Object.assign(ui, previous.ui);
+      if ($('trendIncludeGraduated')) $('trendIncludeGraduated').checked = ui.trendIncludeGraduated;
       window.GD_TEACHING_UI?.restore(previous.teachingUi);
       // Repaint the previous dataset where possible; restoring the model must not depend on rendering.
       try {
@@ -887,7 +897,7 @@ document.addEventListener('keydown', (e) => {
 /* ========== セレクト構築 ========== */
 function fillClassSelect(sel, value) {
   sel.innerHTML = `<option value="all">全クラス</option>` +
-    classList().map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    classList(sel.id === 'trendClass' && ui.trendIncludeGraduated).map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
   sel.value = value;
 }
 
@@ -1314,7 +1324,7 @@ function renderOverviewTrend() {
       itemStyle: { color: AVG_COLOR },
       connectNulls: true,
       data: subjectTests.map((t) => {
-        const vals = data.students.map((s) => getAttendedScore(s.id, t.id))
+        const vals = activeStudents().map((s) => getAttendedScore(s.id, t.id))
           .filter((r) => r && r.total != null).map((r) => r.total);
         return vals.length ? round1(mean(vals)) : null;
       }),
@@ -1752,9 +1762,14 @@ function deleteCurrentTest() {
 }
 
 /* ========== 個人推移タブ ========== */
+function trendStudents() {
+  return sortedStudents(ui.trendIncludeGraduated).filter(s => ui.trendClass === 'all' || s.className === ui.trendClass);
+}
+
 function renderTrend() {
+  $('trendIncludeGraduated').checked = ui.trendIncludeGraduated;
   if (!ui.trendComparisonStarted) useOverviewComparison();
-  const ids = new Set(data.students.map(s => s.id));
+  const ids = new Set(sortedStudents(ui.trendIncludeGraduated).map(s => s.id));
   for (const sid of ui.trendSelected) if (!ids.has(sid)) ui.trendSelected.delete(sid);
   renderStudentList();
   renderTrendSupport();
@@ -1799,6 +1814,7 @@ function useOverviewComparison() {
 function individualComparisonContext(student, before, after, from, to) {
   const context = { row: null, gap: null, position: null, reason: '', positionReason: '' };
   const scope = studentsOf(ui.trendClass);
+  if (!isActiveStudent(student)) { context.reason = '卒業生の記録です。現在の所属グループとの比較は表示しません。'; return context; }
   if (!scope.some(s => s.id === student.id)) {
     context.reason = '選択中のクラスに本人が含まれていません。本人を含むクラス、または全クラスを選んでください。';
     return context;
@@ -1877,7 +1893,7 @@ function renderTrendComparison() {
   }
   const student = data.students.find(s => s.id === [...ui.trendSelected][0]);
   if (!student) { scope.textContent = '名簿から生徒を選び直してください。'; return; }
-  scope.textContent = [student.name + 'さん', student.className || '', student.number == null || student.number === '' ? '' : student.number + '番', ui.trendSubject === SUM_KEY ? '全教科合計' : ui.trendSubject].filter(Boolean).join(' ／ ');
+  scope.textContent = [student.name + 'さん' + (isActiveStudent(student) ? '' : '（卒業生）'), student.className || '', student.number == null || student.number === '' ? '' : student.number + '番', ui.trendSubject === SUM_KEY ? '全教科合計' : ui.trendSubject].filter(Boolean).join(' ／ ');
   if (ui.trendSubject === SUM_KEY) {
     result.textContent = '2回の比較は、教科を選ぶと表示できます。全教科合計の推移は下のグラフで確認できます。';
     return;
@@ -1927,19 +1943,19 @@ function renderTrendComparison() {
     ${context.reason || context.positionReason ? `<p class="individual-metrics-note">${esc(context.reason || context.positionReason)}</p>` : ''}
     ${differentType ? '<p class="individual-type-note">種類・シリーズが異なります。比較に適した2回か確認してください。</p>' : ''}
     <p class="comparison-caution">相対位置はグループ内での比較用の参考値です。テストの範囲・難しさも変わるため、個人の有意差や指導効果を判定するものではありません。</p>`;
-  renderIndividualGroupReference(before, after, to, context);
+  if (isActiveStudent(student)) renderIndividualGroupReference(before, after, to, context);
 }
 
 function renderStudentList() {
   const listEl = $('studentList');
   const kw = ui.trendSearch.trim();
-  const students = studentsOf(ui.trendClass).filter((s) => !kw || s.name.includes(kw));
+  const students = trendStudents().filter((s) => !kw || s.name.includes(kw));
   listEl.innerHTML = students.map((s) => `
     <li data-sid="${esc(s.id)}" class="${ui.trendSelected.has(s.id) ? 'is-checked' : ''}">
       <input type="checkbox" ${ui.trendSelected.has(s.id) ? 'checked' : ''} tabindex="-1">
       <span class="sl-num">${esc(s.number != null && s.number !== '' ? s.number : '')}</span>
       <span>${esc(s.name)}</span>
-      <span class="sl-class">${esc(s.className || '')}</span>
+      <span class="sl-class">${esc(s.className || '')}${isActiveStudent(s) ? '' : '・卒業'}</span>
     </li>`).join('');
 }
 
@@ -1965,22 +1981,24 @@ function renderTrendSupport() {
     return;
   }
   const keepHistoryOpen = records.dataset.sid === student.id && previousHistoryOpen;
+  const archived = !isActiveStudent(student);
   records.dataset.sid = student.id;
   const ivs = sortedInterventions(data.interventions.filter(iv => iv.studentId === student.id));
   const active = ivs.filter(iv => iv.status === 'active');
   const done = ivs.filter(iv => iv.status !== 'active');
   const number = student.number == null || student.number === '' ? '' : ' ／ ' + student.number + '番';
-  summary.textContent = `${student.name}さん ／ ${student.className || 'クラス未設定'}${number} ／ 実施中 ${active.length}件・完了 ${done.length}件`;
+  summary.textContent = `${student.name}さん${archived ? '（卒業生・閲覧のみ）' : ''} ／ ${student.className || 'クラス未設定'}${number} ／ 実施中 ${active.length}件・完了 ${done.length}件`;
   $('trendSupportBody').hidden = false;
-  $('trendAddSupport').disabled = false;
+  $('trendAddSupport').disabled = archived;
+  $('trendSupportSaveHint').hidden = archived;
   const recordHtml = iv => `<article class="individual-support-record" data-iv="${esc(iv.id)}">
     <div class="individual-support-record-heading"><h4>${esc(iv.title)}</h4><span class="iv-status ${iv.status === 'active' ? 'active' : 'done'}">${iv.status === 'active' ? '実施中' : '完了'}</span></div>
     <p class="individual-support-meta">${esc(iv.subject === 'all' ? '全教科' : iv.subject)} ／ ${esc(TEST_KINDS[iv.kind] || '全種類')} ／ 開始 ${esc(iv.startDate || '未設定')}${iv.endDate ? ' ／ 完了 ' + esc(iv.endDate) : ''}</p>
     ${iv.note ? `<p class="individual-support-note">${esc(iv.note)}</p>` : ''}
-    <div class="individual-support-actions">
+    ${archived ? '' : `<div class="individual-support-actions">
       ${iv.status === 'active' ? `<button type="button" class="btn btn-ghost btn-sm iv-done-btn" data-iv="${esc(iv.id)}">完了にする</button>` : `<button type="button" class="btn btn-ghost btn-sm iv-reopen-btn" data-iv="${esc(iv.id)}">再開</button>`}
       <button type="button" class="btn btn-ghost btn-sm iv-progress-btn" data-iv="${esc(iv.id)}">RTIで推移を見る</button>
-    </div></article>`;
+    </div>`}</article>`;
   records.innerHTML = `<h4 class="individual-support-list-title">実施中の支援</h4>${active.length ? active.map(recordHtml).join('') : '<p class="card-note">実施中の支援はありません。</p>'}
     ${done.length ? `<details class="individual-support-history" ${keepHistoryOpen ? 'open' : ''}><summary>完了した支援（${done.length}件）</summary>${done.map(recordHtml).join('')}</details>` : ''}`;
 }
@@ -2042,7 +2060,8 @@ function renderTrendChart() {
   // クラス平均（フィルタ中のクラス範囲）
   const scope = studentsOf(ui.trendClass);
   const scopeVals = scope.map((s) => axis.valueOf(s.id));
-  series.push({
+  const hasGraduated = selected.some(student => !isActiveStudent(student));
+  if (!hasGraduated) series.push({
     name: ui.trendClass === 'all' ? '全体平均' : `${ui.trendClass}平均`,
     type: 'line',
     symbol: 'none',
@@ -2075,7 +2094,7 @@ function renderTrendChart() {
   const card = $('trendChart').closest('.card');
   const subjLabel = ui.trendSubject === SUM_KEY ? '全教科合計' : ui.trendSubject;
   card.querySelector('h3').textContent = selected.length
-    ? `得点の推移：${subjLabel}（クラス平均と比較）`
+    ? `得点の推移：${subjLabel}${hasGraduated ? '（卒業生を含む記録・現在の平均は表示しません）' : '（クラス平均と比較）'}`
     : `得点の推移：${subjLabel} — 左の名簿から生徒を選択してください`;
 }
 
@@ -2645,7 +2664,7 @@ function gradeOf(s) {
 }
 
 function gradeList() {
-  return [...new Set(data.students.map(gradeOf).filter(Boolean))].sort();
+  return [...new Set(activeStudents().map(gradeOf).filter(Boolean))].sort();
 }
 
 function listScopedTests() {
@@ -3097,7 +3116,7 @@ function renderRti() {
 /* ---- 支援記録 ---- */
 function openIvDialog(sid, context = {}) {
   const s = data.students.find((x) => x.id === sid);
-  if (!s) return;
+  if (!s || !isActiveStudent(s)) return;
   $('ivDialogTitle').textContent = `支援の記録：${s.name}`;
   $('ivTitle').value = '';
   $('ivNote').value = '';
@@ -3132,7 +3151,7 @@ function refreshInterventionViews(message = '') {
 function submitIvDialog(e) {
   e.preventDefault();
   const sid = $('ivForm').dataset.sid;
-  if ($('ivForm').dataset.dataToken !== String(activeDataToken) || !data.students.some(s => s.id === sid)) {
+  if ($('ivForm').dataset.dataToken !== String(activeDataToken) || !data.students.some(s => s.id === sid && isActiveStudent(s))) {
     alert('開いているデータが変わりました。記録先の生徒を選び直してください。');
     $('ivDialog').close();
     return;
@@ -3181,7 +3200,7 @@ function handleInterventionClick(e) {
   const action = done || reopen || del || progress;
   if (action) {
     const iv = data.interventions.find(x => x.id === action.dataset.iv);
-    if (!iv) return;
+    if (!iv || !data.students.some(s => s.id === iv.studentId && isActiveStudent(s))) return;
     if (e.currentTarget.id === 'trendSupportRecords' && (ui.trendSelected.size !== 1 || !ui.trendSelected.has(iv.studentId))) return;
     if (progress) {
       ui.rtiSelectedIv = iv.id;
@@ -3201,12 +3220,16 @@ function handleInterventionClick(e) {
     return;
   }
   const row = e.target.closest('.iv-row');
-  if (row) { ui.rtiSelectedIv = row.dataset.iv; renderRti(); resizeCharts(); }
+  if (row) {
+    const iv = data.interventions.find(x => x.id === row.dataset.iv);
+    if (!iv || !data.students.some(s => s.id === iv.studentId && isActiveStudent(s))) return;
+    ui.rtiSelectedIv = row.dataset.iv; renderRti(); resizeCharts();
+  }
 }
 
 function renderRtiLog() {
   const wrap = $('rtiLogWrap');
-  const ivs = sortedInterventions();
+  const ivs = sortedInterventions().filter(iv => data.students.some(s => s.id === iv.studentId && isActiveStudent(s)));
   if (!ivs.length) {
     wrap.innerHTML = '<div class="table-empty">支援の記録はまだありません。上の生徒カードをクリックして追加します。</div>';
     return;
@@ -3243,7 +3266,7 @@ function renderRtiProgress() {
   const iv = data.interventions.find((x) => x.id === ui.rtiSelectedIv);
   if (!iv) { card.hidden = true; return; }
   const s = data.students.find((x) => x.id === iv.studentId);
-  if (!s) { card.hidden = true; return; }
+  if (!s || !isActiveStudent(s)) { ui.rtiSelectedIv = null; card.hidden = true; return; }
   card.hidden = false;
   $('rtiProgressTitle').textContent =
     `${s.name}さんの推移（${iv.subject === 'all' ? '全教科' : iv.subject}・${iv.kind && iv.kind !== 'all' ? TEST_KINDS[iv.kind] : '全種類'}）— 支援「${iv.title}」開始 ${iv.startDate || ''}`;
@@ -3253,7 +3276,7 @@ function renderRtiProgress() {
   let labels = stuSeries.labels;
   let rates = stuSeries.rates.map((v) => (v != null ? round1(v) : null));
   // クラス平均（各生徒の回ごとの値を平均）
-  const scope = s.className ? data.students.filter((x) => x.className === s.className) : data.students;
+  const scope = isActiveStudent(s) ? studentsOf(s.className || 'all') : [];
   let scopeSeries = scope.map((x) => termSeriesFor(x.id, iv.subject, iv.kind || 'all').rates);
   let avg = labels.map((_, i) => {
     const vals = scopeSeries.map((r) => r[i]).filter((v) => v != null);
@@ -3349,7 +3372,8 @@ function openRosterDialog() {
   clearReassignPreview();
   fillReassignScope();
   $('reassignDate').value = localDateString();
-  renderRosterTable();
+  $('reassignSchoolYear').value = String(new Date().getFullYear());
+  updateReassignOperation(); renderRosterTable(); renderGraduateTable();
   $('rosterDialog').showModal();
 }
 
@@ -3363,7 +3387,7 @@ function classTrail(s) {
   const hist = Array.isArray(s.classHistory) ? s.classHistory : [];
   if (!hist.length) return '';
   const past = hist.map((h) => h.className || '（空）');
-  return [...past, `${s.className || '（空）'}（現在）`].join(' → ');
+  return [...past, `${s.className || '（空）'}（${isActiveStudent(s) ? '現在' : '卒業時'}）`].join(' → ');
 }
 
 function renderRosterTable() {
@@ -3387,6 +3411,11 @@ function renderRosterTable() {
   if (!students.length) html = '<div class="table-empty">生徒がいません。</div>';
   $('rosterTableWrap').innerHTML = html;
   updateReassignUndo();
+}
+
+function renderGraduateTable() {
+  const graduates = sortedStudents(true).filter(s => !isActiveStudent(s));
+  $('graduateTableWrap').innerHTML = graduates.length ? '<table class="roster-table"><thead><tr><th>氏名</th><th>最終所属</th><th>卒業日</th><th>記録</th></tr></thead><tbody>' + graduates.map(s => `<tr><th scope="row">${esc(s.name)}</th><td>${esc(s.className || '')}・${esc(s.number ?? '')}番</td><td>${esc(s.graduatedAt || '')}</td><td><button type="button" class="btn btn-ghost btn-sm" data-graduate-sid="${esc(s.id)}">個人推移を見る</button></td></tr>`).join('') + '</tbody></table>' : '<p class="table-empty">卒業生の記録はありません。</p>';
 }
 
 function handleRosterEdit(input) {
@@ -3460,17 +3489,30 @@ function fillReassignScope() {
   const select = $('reassignScope'), previous = select.value;
   const options = [['all', '', '名簿全員']];
   for (const grade of [1, 2, 3]) {
-    if (data.students.some(s => window.GD_IMPORT.splitClassName(s.className).grade === String(grade))) options.push(['grade', String(grade), `${grade}年生`]);
+    if (activeStudents().some(s => window.GD_ROSTER.gradeOf(s) === String(grade))) options.push(['grade', String(grade), `${grade}年生`]);
   }
   for (const klass of classList()) options.push(['class', klass, klass]);
   select.innerHTML = options.map(([type, value, label]) => `<option value="${esc(JSON.stringify([type, value]))}">${esc(label)}</option>`).join('');
   if ([...select.options].some(o => o.value === previous)) select.value = previous;
 }
 
+function updateReassignOperation() {
+  const whole = $('reassignOperation').value === 'whole';
+  $('reassignWholeFields').hidden = !whole; $('reassignPartialFields').hidden = whole;
+  $('reassignOperationHelp').textContent = whole
+    ? '在籍する全員を対象に、1年生→新2年生、2年生→新3年生、3年生→卒業をまとめて反映します。卒業済みの生徒は対象外です。'
+    : '同じ年度内の一部の所属変更や入力ミスの訂正に使います。進級は「全名簿の進級・卒業」を選んでください。「変更対象」で「一部だけ変更」を選んだ場合は、変更しない人の新クラス・新番号を両方空欄にします。';
+  const counts = [1, 2, 3].map(g => activeStudents().filter(s => window.GD_ROSTER.gradeOf(s) === String(g)).length);
+  $('reassignWholeSummary').textContent = `現在1年 ${counts[0]}名→新2年 ／ 現在2年 ${counts[1]}名→新3年 ／ 現在3年 ${counts[2]}名→卒業`;
+  for (const grade of [2, 3]) $('reassignCount' + grade).max = $('reassignNaming' + grade).value === 'letters' ? '26' : '50';
+  $('reassignApplyBtn').textContent = whole ? '④ 進級・卒業を反映' : '④ 確認した変更を反映';
+}
+
 function reassignConfig() {
+  if ($('reassignOperation').value === 'whole') return { operation: 'whole', sourceType: 'all', sourceValue: '', mode: 'all', kind: 'move', schoolYear: Number($('reassignSchoolYear').value), naming2: $('reassignNaming2').value, count2: Number($('reassignCount2').value), naming3: $('reassignNaming3').value, count3: Number($('reassignCount3').value), date: $('reassignDate').value };
   const [sourceType, sourceValue] = JSON.parse($('reassignScope').value);
   return { sourceType, sourceValue, grade: Number($('reassignGrade').value), naming: $('reassignNaming').value,
-    count: Number($('reassignCount').value), mode: $('reassignMode').value, kind: $('reassignKind').value, date: $('reassignDate').value };
+    count: Number($('reassignCount').value), operation: 'partial', mode: $('reassignMode').value, kind: $('reassignKind').value, date: $('reassignDate').value };
 }
 
 async function issueReassignTemplate() {
@@ -3479,8 +3521,8 @@ async function issueReassignTemplate() {
   try {
     const errors = validateDataset(data);
     if (errors.length) throw new Error('現在のデータを修正してから発行してください。\n' + errors.join('\n'));
-    const wb = window.GD_EXCEL.reassignTemplate(XLSX, { ...data, students: sortedStudents() }, reassignConfig());
-    await window.GD_EXCEL.download(wb, 'クラス替え入力用.xlsx');
+    const wb = window.GD_EXCEL.reassignTemplate(XLSX, { ...data, students: sortedStudents(true) }, reassignConfig());
+    await window.GD_EXCEL.download(wb, reassignConfig().operation === 'whole' ? '全名簿の進級・卒業入力用.xlsx' : 'クラス替え入力用.xlsx');
   } catch (e) { alert('クラス替え用Excelを発行できませんでした。\n' + e.message); }
 }
 
@@ -3502,16 +3544,26 @@ async function importReassignWorkbook(file) {
     const plan = window.GD_ROSTER.planWorkbook(wb, XLSX, data, localDateString());
     if (plan.errors.length) { showReassignErrors(plan.errors); return; }
     const c = plan.config;
-    $('reassignScope').value = JSON.stringify([c.sourceType, c.sourceValue]);
-    $('reassignGrade').value = String(c.grade); $('reassignNaming').value = c.naming; $('reassignCount').value = String(c.count);
-    $('reassignCount').max = c.naming === 'letters' ? '26' : '50';
-    $('reassignMode').value = c.mode; $('reassignKind').value = c.kind; $('reassignDate').value = c.date;
-    const rows = plan.changes.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(s.fromClass || '未設定')}・${esc(s.fromNumber || '未設定')}番</td><td>${esc(s.className)}・${esc(s.number)}番</td></tr>`).join('');
+    if ($('reassignOperation')) $('reassignOperation').value = c.operation === 'whole' ? 'whole' : 'partial';
+    if (c.operation === 'whole') {
+      for (const [id, value] of [['reassignSchoolYear', c.schoolYear], ['reassignNaming2', c.naming2], ['reassignCount2', c.count2], ['reassignNaming3', c.naming3], ['reassignCount3', c.count3]]) if ($(id)) $(id).value = String(value);
+    } else {
+      $('reassignScope').value = JSON.stringify([c.sourceType, c.sourceValue]);
+      $('reassignGrade').value = String(c.grade); $('reassignNaming').value = c.naming; $('reassignCount').value = String(c.count);
+      $('reassignCount').max = c.naming === 'letters' ? '26' : '50';
+      $('reassignMode').value = c.mode; $('reassignKind').value = c.kind;
+    }
+    $('reassignDate').value = c.date;
+    if ($('reassignOperation')) updateReassignOperation();
+    const rows = plan.changes.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(s.fromClass || '未設定')}・${esc(s.fromNumber || '未設定')}番</td><td>${s.action === 'graduate' ? '卒業（記録を保持）' : `${esc(s.className)}・${esc(s.number)}番`}</td></tr>`).join('');
     const el = $('reassignPreview');
+    const wholeCounts = [1, 2].map(grade => plan.changes.filter(change => change.action === 'promote' && window.GD_ROSTER.gradeOf({ className: change.fromClass }) === String(grade)).length);
+    const graduates = plan.changes.filter(change => change.action === 'graduate').length;
     el.innerHTML = `<p><strong>変更 ${plan.changes.length}名</strong> ／ 変更なし ${plan.unchanged}名 ／ 対象 ${plan.targetCount}名<br>` +
+      (c.operation === 'whole' ? `${esc(c.schoolYear)}年度 ／ 新2年 ${wholeCounts[0]}名・新3年 ${wholeCounts[1]}名・卒業 ${graduates}名<br>卒業生の記録は残り、通常の名簿・集計対象から外れます。<br>` : '') +
       `${c.kind === 'move' ? '所属変更・旧所属を履歴に記録' : '入力ミスの訂正・履歴は増やしません'} ／ 変更日 ${esc(c.date)}</p>` +
       (rows ? '<div class="table-wrap"><table><thead><tr><th>氏名</th><th>変更前</th><th>変更後</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<p>反映する変更はありません。</p>');
-    el.hidden = false;
+    el.hidden = false; el.setAttribute?.('tabindex', '-1'); el.focus?.();
     if (plan.changes.length) { reassignPlan = { ...plan, before, token }; $('reassignCommit').hidden = false; }
   } catch (e) {
     if (serial === reassignImportSerial && token === activeDataToken) showReassignErrors([e.message]);
@@ -3535,6 +3587,37 @@ function saveReassignBackup() {
   } catch { alert('控えJSONをダウンロードできませんでした。もう一度お試しください。変更は反映していません。'); }
 }
 
+function rosterUiSnapshot() { return { ...ui, trendSelected: new Set(ui.trendSelected), listSort: ui.listSort ? { ...ui.listSort } : null }; }
+function normalizeRosterFilters() {
+  const classes = classList();
+  for (const key of ['ovClass', 'inClass', 'anClass', 'metClass', 'listClass', 'rtiClass']) if (ui[key] !== 'all' && !classes.includes(ui[key])) ui[key] = 'all';
+  if (ui.trendClass !== 'all' && !classList(ui.trendIncludeGraduated).includes(ui.trendClass)) ui.trendClass = 'all';
+  if (ui.listGrade !== 'all' && !gradeList().includes(ui.listGrade)) ui.listGrade = 'all';
+}
+function rosterTransaction(next, nextUndo) {
+  const previous = { data, scoreIndex, dirty, pendingDownload, undo: reassignUndo, plan: reassignPlan, backup: reassignBackupText, serial: reassignImportSerial,
+    ui: rosterUiSnapshot(), teaching: window.GD_TEACHING_UI?.snapshot(),
+    pane: document.querySelector?.('.rtab.is-active')?.dataset.rtab || 'reassign', preview: $('reassignPreview').innerHTML, commitHidden: $('reassignCommit').hidden,
+    checked: $('reassignBackupConfirmed').checked, checkDisabled: $('reassignBackupConfirmed').disabled, applyDisabled: $('reassignApplyBtn').disabled };
+  try {
+    data = { ...data, students: next }; rebuildIndex(); reassignUndo = nextUndo;
+    normalizeRosterFilters(); renderAll(); renderRosterTable();
+    if ($('graduateTableWrap')) renderGraduateTable();
+    markDirty(); clearReassignPreview(); fillReassignScope(); switchRosterPane('edit');
+    $('rosterCount')?.focus();
+    return true;
+  } catch (error) {
+    data = previous.data; scoreIndex = previous.scoreIndex; dirty = previous.dirty; pendingDownload = previous.pendingDownload;
+    reassignUndo = previous.undo; reassignPlan = previous.plan; reassignBackupText = previous.backup; reassignImportSerial = previous.serial;
+    Object.assign(ui, previous.ui); window.GD_TEACHING_UI?.restore(previous.teaching);
+    try { renderAll(); renderRosterTable(); if ($('graduateTableWrap')) renderGraduateTable(); updateSaveStatus(); } catch (_) { /* Keep the original model even if rendering remains unavailable. */ }
+    $('reassignBackupConfirmed').checked = previous.checked; $('reassignBackupConfirmed').disabled = previous.checkDisabled; $('reassignApplyBtn').disabled = previous.applyDisabled;
+    $('reassignCommit').hidden = previous.commitHidden; switchRosterPane(previous.pane);
+    showReassignErrors(['画面の更新に失敗したため、変更は反映していません。' + error.message]);
+    if (previous.plan) $('reassignPreview').innerHTML += previous.preview;
+    return false;
+  }
+}
 function applyReassign() {
   if (!requireAdmin() || !reassignPlan) return;
   if (reassignPlan.token !== activeDataToken || reassignPlan.before !== JSON.stringify(data.students)) { clearReassignPreview(); showReassignErrors(['名簿が変わっています。変更は反映していません。Excelを発行し直してください。']); return; }
@@ -3542,27 +3625,20 @@ function applyReassign() {
   const next = window.GD_ROSTER.changedStudents(data.students, reassignPlan);
   const errors = validateDataset({ ...data, students: next });
   if (errors.length) { showReassignErrors(errors); return; }
-  if (!confirm(`確認した ${reassignPlan.changes.length}名の所属・番号を反映しますか？\n点数・指標・支援記録は引き継がれます。`)) return;
-  reassignUndo = { before: JSON.parse(reassignPlan.before), after: JSON.stringify(next), token: activeDataToken };
-  data.students = next;
-  markDirty();
-  clearReassignPreview();
-  fillReassignScope();
-  switchRosterPane('edit');
-  renderRosterTable();
-  renderAll();
-  alert('所属の変更を反映しました。内容を確認してJSONを保存してください。通常のクラス別集計は現在の所属で行います。');
+  const whole = reassignPlan.config.operation === 'whole';
+  if (!confirm(`確認した ${reassignPlan.changes.length}名の${whole ? '進級・卒業' : '所属・番号'}を反映しますか？\n点数・指標・支援記録は引き継がれます。`)) return;
+  const undo = { before: JSON.parse(reassignPlan.before), after: JSON.stringify(next), token: activeDataToken };
+  if (rosterTransaction(next, undo)) alert('所属の変更を反映しました。内容を確認してJSONを保存してください。通常の集計は在籍中の生徒が対象です。');
 }
-
 function undoReassign() {
   if (!requireAdmin()) return;
   updateReassignUndo();
   if (!reassignUndo) { alert('その後に名簿を編集したか、JSONを開き直したため取り消せません。必要なら控えJSONから戻してください。'); return; }
-  if (!confirm('直前の一括変更を取り消して、所属・番号・所属履歴を反映前に戻しますか？\nその後に入力した点数・支援記録は保持します。')) return;
-  data.students = reassignUndo.before;
-  reassignUndo = null; clearReassignPreview(); markDirty();
-  fillReassignScope(); renderRosterTable(); renderAll();
-  alert('直前の一括変更を取り消しました。必要に応じてJSONを保存してください。');
+  if (!confirm('直前の一括変更を取り消して、所属・番号・卒業状態・進級の記録を反映前に戻しますか？\nその後に入力した点数・支援記録は保持します。')) return;
+  const next = JSON.parse(JSON.stringify(reassignUndo.before));
+  const errors = validateDataset({ ...data, students: next });
+  if (errors.length) { showReassignErrors(errors); return; }
+  if (rosterTransaction(next, null)) alert('直前の一括変更を取り消しました。必要に応じてJSONを保存してください。');
 }
 
 /* ========== バックアップ（日付つき控えのダウンロード） ========== */
@@ -3617,7 +3693,7 @@ function buildKarteHtml(selected = defaultKarteOptions) {
   if (opts.score) columns.push({ label: '得点', cell: (t, r) => `${r.total} / ${t.maxScore}` });
   if (opts.rate) columns.push({ label: '得点率', cell: (t, r) => `${round1(r.total / t.maxScore * 100)}%` });
   if (opts.average) columns.push({ label: 'クラス平均', cell: t => {
-    const scope = student.className ? data.students.filter(s => s.className === student.className) : data.students;
+    const scope = isActiveStudent(student) ? studentsOf(student.className || 'all') : [];
     const values = scope.map(s => getAttendedScore(s.id, t.id)).filter(r => r && r.total != null).map(r => r.total);
     return values.length ? round1(mean(values)) : '—';
   }});
@@ -4077,6 +4153,7 @@ function init() {
   $('anClassificationAxis').onchange = e => { ui.anAxis = e.target.value; renderAnalysis(); resizeCharts(); };
   $('anSubject').onchange = (e) => { ui.anSubject = e.target.value; fillScopedTestSelect('anTest', 'anSubject', 'anTest'); renderAnalysis(); resizeCharts(); };
   $('anTest').onchange = (e) => { ui.anTest = e.target.value; renderAnalysis(); resizeCharts(); };
+  $('trendIncludeGraduated').onchange = event => { ui.trendIncludeGraduated = event.target.checked; ui.trendClass = 'all'; fillClassSelect($('trendClass'), ui.trendClass); renderTrend(); resizeCharts(); };
   $('trendClass').onchange = (e) => { ui.trendClass = e.target.value; renderTrend(); resizeCharts(); };
   $('trendSubject').onchange = (e) => { ui.trendSubject = e.target.value; ui.trendCompareTest = ''; ui.trendCompareFrom = null; renderTrend(); resizeCharts(); };
   $('trendCompareTest').onchange = e => { ui.trendCompareTest = e.target.value; ui.trendCompareFrom = null; renderTrendComparison(); };
@@ -4215,6 +4292,21 @@ function init() {
     const btn = e.target.closest('.row-del');
     if (btn) handleRosterDelete(btn.closest('tr').dataset.sid);
   });
+  $('graduateTableWrap').onclick = event => {
+    const button = event.target.closest('[data-graduate-sid]');
+    if (!button) return;
+    const student = data.students.find(s => s.id === button.dataset.graduateSid && !isActiveStudent(s));
+    if (!student) return;
+    $('rosterDialog').close();
+    ui.trendIncludeGraduated = true; ui.trendClass = 'all'; ui.trendSearch = '';
+    $('trendSearch').value = '';
+    ui.trendSelected = new Set([student.id]); ui.trendComparisonStarted = true;
+    fillClassSelect($('trendClass'), 'all');
+    document.querySelector('[data-tab="trend"]').click();
+    $('trendComparisonTitle').focus();
+  };
+  $('reassignOperation').onchange = () => { clearReassignPreview(); updateReassignOperation(); };
+  for (const id of ['reassignSchoolYear', 'reassignNaming2', 'reassignCount2', 'reassignNaming3', 'reassignCount3']) $(id).oninput = () => { clearReassignPreview(); updateReassignOperation(); };
   $('reassignTemplateBtn').onclick = issueReassignTemplate;
   $('reassignImportBtn').onclick = () => $('reassignXlsxInput').click();
   $('reassignXlsxInput').onchange = e => { const file = e.target.files[0]; e.target.value = ''; if (file) importReassignWorkbook(file); };
