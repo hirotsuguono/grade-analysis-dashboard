@@ -31,6 +31,11 @@
     const values = latest(wave);
     return selection ? values.find(r => key(r) === key(selection)) || null : values;
   }
+  function getAvailableReferences(data) {
+    data = input(data);
+    const replaced = new Set(data.references.map(r => r.supersedes).filter(Boolean));
+    return data.references.filter(r => !replaced.has(r.id));
+  }
   function context(data, wave) {
     const { results, responseSets, ...definition } = wave;
     return canonical({ definition, instruments: data.instruments.filter(i => wave.instrumentIds.includes(i.id)),
@@ -51,31 +56,96 @@
   function mergeReferences(data, candidate) {
     valid(candidate); requireValue(!candidate.waves.length, '公式取込候補には自校の調査回を含めないでください。');
     requireValue(candidate.sources.every(s => s.kind === 'official'), '公式取込候補の出典区分が不正です。');
-    const next = copy(data), added = { sources: [], instruments: [], references: [] }, sourceMap = new Map(), instrumentMap = new Map();
+    const next = copy(data), added = { sources: [], instruments: [], references: [] }, sourceMap = new Map(), instrumentMap = new Map(), completedInputs = new Set();
     const instrumentIdentity = i => { const { id, sourceIds, ...rest } = i; return canonical(rest); };
     const referenceIdentity = r => { const { id, ...rest } = r; return canonical(rest); };
+    const definitionMeaning = i => { const { id, version, supersedes, sourceIds, locations, ...rest } = i; return canonical(rest); };
+    const questionIdentity = i => { const { id, version, supersedes, sourceIds, locations, definitionStatus, options, ...rest } = i; return canonical(rest); };
     const instrumentsById = new Map(next.instruments.map(i => [i.id, i])), instrumentIdentities = new Map(next.instruments.map(i => [instrumentIdentity(i), i]));
     const referencesById = new Map(next.references.map(r => [r.id, r])), referenceIdentities = new Map(next.references.map(r => [referenceIdentity(r), r]));
+    function addInstrument(instrument) {
+      next.instruments.push(instrument); instrumentsById.set(instrument.id, instrument); instrumentIdentities.set(instrumentIdentity(instrument), instrument); added.instruments.push(instrument.id);
+    }
+    function addReference(reference) {
+      next.references.push(reference); referencesById.set(reference.id, reference); referenceIdentities.set(referenceIdentity(reference), reference); added.references.push(reference.id);
+    }
     for (const source of candidate.sources) {
       const existing = next.sources.find(s => s.id === source.id) || next.sources.find(s => source.fingerprint && sameSource(s, source));
       if (existing) { requireValue(sameSource(existing, source), '出典IDが既存の別の資料と衝突しています。修正版には新しいIDが必要です。'); sourceMap.set(source.id, existing.id); }
       else { next.sources.push(copy(source)); added.sources.push(source.id); sourceMap.set(source.id, source.id); }
     }
-    for (const raw of candidate.instruments) {
-      const instrument = rewrite(raw, sourceMap, instrumentMap), sameId = instrumentsById.get(instrument.id), identity = instrumentIdentity(instrument);
+    const incoming = candidate.instruments.map(i => rewrite(i, sourceMap, instrumentMap));
+    for (const instrument of incoming) {
+      const sameId = instrumentsById.get(instrument.id), identity = instrumentIdentity(instrument);
       const existing = sameId || instrumentIdentities.get(identity);
-      if (sameId) requireValue(canonical(sameId) === canonical(instrument), '設問・尺度IDの内容が変わっています。過去の定義を更新せず新しい版のIDにしてください。');
+      if (sameId && canonical(sameId) !== canonical(instrument)) {
+        const completion = core.isDefinitionCompletion(sameId, instrument) || core.isDefinitionCompletion(instrument, sameId);
+        const sameComplete = sameId.definitionStatus === 'complete' && instrument.definitionStatus === 'complete' && definitionMeaning(sameId) === definitionMeaning(instrument);
+        requireValue(sameId.version === instrument.version && sameId.supersedes === instrument.supersedes && (completion || sameComplete),
+          '設問・尺度IDの内容が変わっています。過去の定義を更新せず新しい版のIDにしてください。');
+        if (completion) completedInputs.add(sameId.id);
+      }
       if (existing) instrumentMap.set(instrument.id, existing.id);
-      else { next.instruments.push(instrument); instrumentsById.set(instrument.id, instrument); instrumentIdentities.set(identity, instrument); added.instruments.push(instrument.id); instrumentMap.set(instrument.id, instrument.id); }
+      else { addInstrument(instrument); instrumentMap.set(instrument.id, instrument.id); }
     }
+    // The workbook reader annotates a combined 402 import. Accept only that
+    // exact annotation transition; the stored reference itself stays unchanged.
+    const missingNote = '選択肢の文言はこの資料に掲載されていません。';
+    const completedNote = '年度・学校段階・質問番号・質問文が完全一致した別資料から選択肢の文言だけを補完しました。統計値・設置者区分は変更していません。';
+    function sameCompletedReference(a, b) {
+      if (!completedInputs.has(a.instrumentId)) return false;
+      const { notes: aNotes, ...aValue } = a, { notes: bNotes, ...bValue } = b;
+      const annotates = (before, after) => before.includes(missingNote) && canonical(before.filter(note => note !== missingNote).concat(completedNote)) === canonical(after);
+      return canonical(aValue) === canonical(bValue) && (annotates(aNotes, bNotes) || annotates(bNotes, aNotes));
+    }
+    let unchanged = 0, promoted = 0;
     for (const raw of candidate.references) {
       const reference = rewrite(raw, sourceMap, instrumentMap), sameId = referencesById.get(reference.id), identity = referenceIdentity(reference);
       const existing = sameId || referenceIdentities.get(identity);
-      if (sameId) requireValue(canonical(sameId) === canonical(reference), '公式統計IDの内容が変わっています。訂正資料は新しい版として追加してください。');
-      if (!existing) { next.references.push(reference); referencesById.set(reference.id, reference); referenceIdentities.set(identity, reference); added.references.push(reference.id); }
+      if (sameId) requireValue(canonical(sameId) === canonical(reference) || sameCompletedReference(sameId, reference), '公式統計IDの内容が変わっています。訂正資料は新しい版として追加してください。');
+      if (existing) unchanged++;
+      else addReference(reference);
+    }
+
+    const donors = new Map();
+    for (const instrument of next.instruments.concat(incoming)) {
+      if (instrument.kind !== 'question' || instrument.definitionStatus !== 'complete') continue;
+      const identity = questionIdentity(instrument);
+      if (!donors.has(identity)) donors.set(identity, []);
+      donors.get(identity).push(instrument);
+    }
+    const successors = new Map(next.instruments.filter(i => i.supersedes).map(i => [i.supersedes, i]));
+    const distinct = values => [...new Map(values.map(v => [canonical(v), v])).values()];
+    for (const previous of [...next.instruments]) {
+      if (previous.definitionStatus !== 'codesOnly' || previous.kind !== 'question' || previous.year === null || previous.grade === null ||
+          previous.schoolLevel === 'unknown' || previous.respondent === 'unknown') continue;
+      const definitions = donors.get(questionIdentity(previous)) || [], answered = previous.options.filter(o => o.responseStatus === 'answered');
+      if (!definitions.length || !answered.length) continue;
+      for (const definition of definitions) {
+        requireValue(definition.options.filter(o => o.responseStatus === 'answered').length === answered.length &&
+          answered.every(o => definition.options.some(other => other.code === o.code && other.responseStatus === o.responseStatus)) &&
+          definition.options.every(o => previous.options.some(other => other.code === o.code && other.responseStatus === o.responseStatus &&
+            (o.responseStatus === 'answered' || o.label === other.label))), '同一設問の選択肢コード・非回答の意味が資料間で一致しないため補完できません。');
+      }
+      const labels = definition => answered.map(o => definition.options.find(other => other.code === o.code).label);
+      requireValue(new Set(definitions.map(i => canonical(labels(i)))).size === 1, '同一設問の選択肢の文言が資料間で矛盾しているため補完できません。');
+      if (successors.has(previous.id)) continue;
+      const completed = { ...copy(previous), id: identifier('survey-definition'), version: previous.version + 1, supersedes: previous.id, definitionStatus: 'complete',
+        options: previous.options.map(o => o.responseStatus === 'answered' ? { ...o, label: definitions[0].options.find(other => other.code === o.code).label } : copy(o)),
+        sourceIds: [...new Set((previous.sourceIds || []).concat(definitions.flatMap(i => i.sourceIds || [])))],
+        locations: distinct((previous.locations || []).concat(definitions.flatMap(i => i.locations || []))).map(copy) };
+      requireValue(core.isDefinitionCompletion(previous, completed), '選択肢の補完には元の定義と補完元の出典を保持してください。');
+      addInstrument(completed); successors.set(previous.id, completed);
+    }
+    const replaced = new Set(next.references.map(r => r.supersedes).filter(Boolean));
+    for (const previous of [...next.references]) {
+      const completed = successors.get(previous.instrumentId);
+      if (!completed || replaced.has(previous.id)) continue;
+      addReference({ ...copy(previous), id: identifier('survey-reference'), version: previous.version + 1, supersedes: previous.id, instrumentId: completed.id });
+      promoted++;
     }
     valid(next);
-    return { surveys: next, added, summary: { added: added.references.length, updated: 0, unchanged: candidate.references.length - added.references.length, modeChanges: [] } };
+    return { surveys: next, added, summary: { added: added.references.length, promoted, updated: 0, unchanged, modeChanges: [] } };
   }
   function prepareReferences(data, candidate) {
     data = input(data); const merged = mergeReferences(data, candidate);
@@ -251,5 +321,5 @@
     }
     return { results, warnings };
   }
-  return Object.freeze({ prepareReferences, prepareSchool, apply, createWave, getLatest, undo, aggregateResponses });
+  return Object.freeze({ prepareReferences, prepareSchool, apply, createWave, getLatest, getAvailableReferences, undo, aggregateResponses });
 });

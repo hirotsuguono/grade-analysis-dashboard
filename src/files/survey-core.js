@@ -13,11 +13,29 @@
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const text = v => typeof v === 'string' && v.trim().length > 0;
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const canonical = value => JSON.stringify(value, function (_, v) {
+    return object(v) ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]])) : v;
+  });
   const sorted = a => [...a].sort();
   const empty = () => ({ schemaVersion: 1, sources: [], instruments: [], references: [], waves: [] });
   const resultKey = r => JSON.stringify([r.instrumentId, r.type, r.subjectInstrumentId || null]);
   const date = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) &&
     Number.isFinite(Date.parse(v + 'T00:00:00Z')) && new Date(v + 'T00:00:00Z').toISOString().slice(0, 10) === v;
+
+  // Completion changes only the previously unpublished answered labels. The
+  // original question, non-answer meanings and evidence remain available.
+  function isDefinitionCompletion(previous, next) {
+    if (!previous || !next || previous.kind !== 'question' || previous.definitionStatus !== 'codesOnly' || next.definitionStatus !== 'complete') return false;
+    const content = v => {
+      const { id, version, supersedes, definitionStatus, sourceIds, locations, options, ...rest } = v;
+      return canonical({ ...rest, options: options.map(o => o.responseStatus === 'answered' ? { code: o.code, responseStatus: o.responseStatus } : o)
+        .sort((a, b) => a.code.localeCompare(b.code)) });
+    };
+    if (content(previous) !== content(next)) return false;
+    const oldSources = previous.sourceIds || [], newSources = next.sourceIds || [];
+    return oldSources.every(id => newSources.includes(id)) && newSources.some(id => !oldSources.includes(id)) &&
+      (previous.locations || []).every(loc => (next.locations || []).some(other => canonical(other) === canonical(loc)));
+  }
 
   // Check the whole JSON tree before schema traversal. Accessors, cycles, sparse arrays,
   // non-JSON values and excessive nesting cannot bypass the aggregate-storage limits.
@@ -174,7 +192,8 @@
     });
     instruments.forEach((v, i) => {
       const p = 'instruments[' + i + ']';
-      if (!shape(v, ['id', 'version', 'year', 'schoolLevel', 'grade', 'respondent', 'kind', 'code', 'text', 'options', 'subject', 'skills', 'formId', 'scale'], p, ['definitionStatus', 'sourceIds', 'rawScoreMaximum', 'schoolAvailability', 'locations'])) return;
+      if (!shape(v, ['id', 'version', 'year', 'schoolLevel', 'grade', 'respondent', 'kind', 'code', 'text', 'options', 'subject', 'skills', 'formId', 'scale'], p, ['definitionStatus', 'sourceIds', 'rawScoreMaximum', 'schoolAvailability', 'locations', 'supersedes'])) return;
+      if (Object.hasOwn(v, 'supersedes')) id(v.supersedes, p + '.supersedes');
       if (Object.hasOwn(v, 'definitionStatus')) choice(v.definitionStatus, ['complete', 'codesOnly'], p + '.definitionStatus');
       if (Object.hasOwn(v, 'schoolAvailability')) choice(v.schoolAvailability, ['notReturned', 'returned', 'unknown'], p + '.schoolAvailability');
       if (Object.hasOwn(v, 'locations')) array(v.locations, p + '.locations', 256).forEach((loc, j) => {
@@ -257,6 +276,17 @@
     });
     if (errors.length) return errors;
 
+    const replacedInstruments = new Set();
+    instruments.forEach((v, i) => {
+      if (!Object.hasOwn(v, 'supersedes')) return;
+      const p = 'instruments[' + i + '].supersedes', previous = instrumentById.get(v.supersedes);
+      if (!previous || previous.id === v.id || v.version !== previous.version + 1 || !isDefinitionCompletion(previous, v))
+        add(p, '元の設問・出典を保持し、コードのみの定義を選択肢原文で補完した直後の版を指定してください。');
+      if (replacedInstruments.has(v.supersedes)) add(p, '同じ定義版を複数の定義が補完しています。');
+      replacedInstruments.add(v.supersedes);
+    });
+    if (errors.length) return errors;
+
     function distributionValues(items, codes, basis, partition, n, p) {
       const values = array(items, p, Math.max(limits.categories, codes.length)), seen = new Set();
       choice(basis, ['count', 'percent'], p + '.basis');
@@ -300,7 +330,7 @@
         conditionalMean: ['subjectInstrumentId', 'values'], crossTab: ['subjectInstrumentId', 'basis', 'normalization', 'grouping', 'groups', 'rows'] };
       const variant = typeof v?.type === 'string' && Object.hasOwn(variants, v.type) ? variants[v.type] : [];
       if (!shape(v, common.concat(official ? ['version'] : ['revision', 'supersedes'], variant), p,
-        (official ? [] : ['responseSetId']).concat(v?.type === 'conditionalMean' ? ['total'] : []))) return;
+        (official ? ['supersedes'] : ['responseSetId']).concat(v?.type === 'conditionalMean' ? ['total'] : []))) return;
       if (!Object.hasOwn(variants, typeof v.type === 'string' ? v.type : '')) { add(p + '.type', '未対応の統計型です。'); return; }
       id(v.instrumentId, p + '.instrumentId'); id(v.sourceId, p + '.sourceId');
       const instrument = instrumentById.get(v.instrumentId), source = sourceById.get(v.sourceId);
@@ -310,6 +340,7 @@
       if (!official && source?.kind === 'schoolIndividual' && !Object.hasOwn(v, 'responseSetId')) add(p + '.responseSetId', '個票から作成した結果には採用した個票版を固定してください。');
       integer(v[official ? 'version' : 'revision'], p + (official ? '.version' : '.revision'), 1, 1000000);
       if (!official && v.supersedes !== null) id(v.supersedes, p + '.supersedes');
+      if (official && Object.hasOwn(v, 'supersedes')) id(v.supersedes, p + '.supersedes');
       choice(v.observationUnit, ['student', 'school', 'unknown'], p + '.observationUnit');
       if (instrument && instrument.respondent !== 'unknown' && v.observationUnit !== 'unknown' && instrument.respondent !== v.observationUnit) add(p + '.observationUnit', '回答者と観測単位が一致しません。');
       choice(v.ownership, ['public', 'national', 'private', 'all', 'unknown'], p + '.ownership');
@@ -423,6 +454,17 @@
       } else average(v, instrument, n, p);
     }
     references.forEach((v, i) => statistic(v, 'references[' + i + ']', true));
+    if (errors.length) return errors;
+    const replacedReferences = new Set();
+    references.forEach((v, i) => {
+      if (!Object.hasOwn(v, 'supersedes')) return;
+      const p = 'references[' + i + '].supersedes', previous = referenceById.get(v.supersedes), instrument = instrumentById.get(v.instrumentId);
+      const content = r => { const { id, version, supersedes, instrumentId, ...rest } = r; return canonical(rest); };
+      if (!previous || previous.id === v.id || v.version !== previous.version + 1 || instrument?.supersedes !== previous.instrumentId || content(previous) !== content(v))
+        add(p, '統計値・掲載精度・出典・対象条件を変えず、補完した設問定義だけを参照する直後の公式統計版を指定してください。');
+      if (replacedReferences.has(v.supersedes)) add(p, '同じ公式統計版を複数の統計が補完しています。');
+      replacedReferences.add(v.supersedes);
+    });
     if (errors.length) return errors;
     waves.forEach((w, i) => {
       const p = 'waves[' + i + ']';
@@ -649,5 +691,5 @@
     }
     return answer;
   }
-  return Object.freeze({ limits, statuses, empty, validate, compare, resultKey });
+  return Object.freeze({ limits, statuses, empty, validate, compare, resultKey, isDefinitionCompletion });
 });

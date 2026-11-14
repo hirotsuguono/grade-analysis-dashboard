@@ -43,6 +43,19 @@ function splitInstrument(data) {
   data.references[0].instrumentId = instrument.id;
   return instrument;
 }
+function completionFixture() {
+  const data = fixture(), previous = data.instruments[0];
+  data.sources.push({ ...clone(data.sources[0]), id: 'source-labels' });
+  previous.definitionStatus = 'codesOnly'; previous.sourceIds = ['source-official'];
+  previous.locations = [{ sourceId: 'source-official', sheet: '架空の設問', range: 'A1:B2' }];
+  previous.options[0].label = 'コードa（文言未掲載）';
+  previous.options[1].responseStatus = 'noResponse'; previous.options[1].label = '架空の無回答';
+  const completed = { ...clone(previous), id: 'question-complete', version: 2, supersedes: previous.id, definitionStatus: 'complete',
+    sourceIds: [...previous.sourceIds, 'source-labels'], locations: [...clone(previous.locations), { sourceId: 'source-labels', sheet: '架空の原文', range: 'A1:B2' }] };
+  completed.options[0].label = '架空の選択肢原文'; data.instruments.push(completed);
+  data.references.push({ ...clone(data.references[0]), id: 'reference-complete', version: 2, supersedes: data.references[0].id, instrumentId: completed.id });
+  return data;
+}
 function summaryFixture(scale = 'irtScore') {
   const data = fixture(), instrument = data.instruments[0];
   Object.assign(instrument, { kind: 'subject', code: 'fictional-english', text: '架空の英語試験', options: [], subject: 'english',
@@ -326,6 +339,72 @@ test('discrete IRT bands preserve inclusive integer endpoints without assuming r
   decision(d => { splitInstrument(d).scale.step = 0.5; }, 'blocked', 'scaleStepMismatch', bandFixture);
   const fractionalMean = summaryFixture(); fractionalMean.instruments[0].scale.step = 1; valid(fractionalMean);
   assert.equal(core.compare(fractionalMean, selection).status, 'comparable', 'a mean need not be on the individual-score lattice');
+});
+test('definition completion stores strict version links while the original wave keeps its incomplete comparison', () => {
+  const data = completionFixture(), before = JSON.stringify(data);
+  assert.deepEqual(core.validate(data), []); assert.deepEqual(core.validate(clone(data)), []);
+  assert.equal(core.compare(data, selection).status, 'referenceOnly');
+  assert.ok(core.compare(data, selection).reasons.some(r => r.code === 'definitionIncomplete'));
+  assert.deepEqual(data.waves[0].referenceIds, ['reference-1']);
+  assert.equal(JSON.stringify(data), before);
+  const reordered = clone(data); reordered.instruments[1].options.reverse();
+  assert.deepEqual(core.validate(reordered), [], 'option order cannot alter code/meaning compatibility');
+});
+test('definition completion rejects changed identity, category meaning, missing evidence and invalid or branching links', () => {
+  for (const change of [
+    d => { d.instruments[1].supersedes = 'missing-definition'; },
+    d => { d.instruments[1].supersedes = d.instruments[1].id; },
+    d => { d.instruments[1].supersedes = null; },
+    d => { d.instruments[1].version = 3; },
+    d => { d.instruments[0].definitionStatus = 'complete'; },
+    d => { d.instruments[1].definitionStatus = 'codesOnly'; },
+    d => { d.instruments[1].year++; },
+    d => { d.instruments[1].schoolLevel = 'upperSecondary'; },
+    d => { d.instruments[1].grade = 2; },
+    d => { d.instruments[1].respondent = 'school'; },
+    d => { d.instruments[1].code += '-different'; },
+    d => { d.instruments[1].text += '別文'; },
+    d => { d.instruments[1].options[0].code = 'c'; },
+    d => { d.instruments[1].options[0].responseStatus = 'invalid'; },
+    d => { d.instruments[1].options[1].label = '別の非回答の意味'; },
+    d => { d.instruments[1].options.pop(); },
+    d => { d.instruments[1].scale.version = 'different'; },
+    d => { d.instruments[1].sourceIds = ['source-labels']; },
+    d => { d.instruments[1].sourceIds = ['source-official']; },
+    d => { d.instruments[1].locations.shift(); },
+    d => { d.instruments.push({ ...clone(d.instruments[1]), id: 'branched-completion' }); },
+  ]) {
+    const data = completionFixture(); change(data);
+    assert.match(core.validate(data).join('\n'), /supersedes|補完/, change.toString());
+  }
+});
+test('completed reference links preserve every statistic, precision, provenance and comparison condition', () => {
+  for (const change of [
+    r => { r.supersedes = 'missing-reference'; },
+    r => { r.supersedes = r.id; },
+    r => { r.supersedes = null; },
+    r => { r.version = 3; },
+    r => { r.instrumentId = 'question-1'; },
+    r => { r.sourceId = 'source-labels'; },
+    r => { r.ownership = 'all'; },
+    r => { r.observationUnit = 'unknown'; },
+    r => { r.population.participation = 'joint'; },
+    r => { r.population.definition = '別の対象'; },
+    r => { r.denominator.basis = 'jointParticipants'; },
+    r => { r.denominator.definition = '別の分母'; },
+    r => { r.denominator.count.value++; },
+    r => { r.values[0].value.value = 41; r.values[1].value.value = 59; },
+    r => { r.values[0].value.decimals = 2; },
+    r => { r.values[0].value.provenance = { sourceId: 'source-labels', sheet: '架空', range: 'A1', raw: 40 }; },
+    r => { r.notes.push('統計の注記も変更不可'); },
+    r => { r.geography.label = '別の地域'; },
+    r => { r.partition = false; },
+  ]) {
+    const data = completionFixture(); change(data.references[1]);
+    assert.match(core.validate(data).join('\n'), /supersedes|公式統計版/, change.toString());
+  }
+  const branched = completionFixture(); branched.references.push({ ...clone(branched.references[1]), id: 'branched-reference' });
+  assert.match(core.validate(branched).join('\n'), /複数の統計/);
 });
 test('source identities, definitions, fixed selections and result history have valid references', () => {
   invalid(d => { d.sources.push(clone(d.sources[0])); }, /重複/);

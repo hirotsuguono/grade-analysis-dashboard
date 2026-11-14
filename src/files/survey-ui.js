@@ -156,6 +156,7 @@
       const preview = byId('surveyOfficialPreview'); preview.replaceChildren(); preview.hidden = false; preview.classList.remove('is-error');
       preview.append(element('h4', '読み取った資料を確認してください'));
       paragraph(preview, summaryText(plan.summary));
+      if (plan.summary.promoted) paragraph(preview, '追加分のうち' + plan.summary.promoted + '件は、選択肢の文言を確認した新しい版です。作成済みの調査回は、元の版を使い続けます。');
       const wrap = element('div', undefined, 'table-wrap');
       dataTable(wrap, ['ファイル・資料', '年度・学校段階', '地域・設置者', '読み取った表'], parsed.candidate.sources.map(item => {
         const refs = parsed.candidate.references.filter(ref => ref.sourceId === item.id);
@@ -164,7 +165,9 @@
           [...new Set(refs.map(ref => ref.geography.label + '・' + display(ref.ownership)))].join('、'),
           [...new Set(refs.map(ref => display(ref.type)))].join('、') + '（' + refs.length + '件）'];
       }));
-      preview.append(wrap); messages(preview, parsed.warnings);
+      preview.append(wrap); messages(preview, parsed.warnings.map(warning => warning.code === 'codesOnly'
+        ? { ...warning, message: '回答結果集計のExcelには、選択肢の文言が掲載されていません。取込済みの対応資料も含めて定義を確認します。文言を確認できない質問が残る場合は、同年度のクロス集計または選択肢別平均の公式Excelを追加してください。' }
+        : warning));
       const details = element('details'); details.append(element('summary', '利用できる質問・教科を確認（' + parsed.candidate.references.length + '件）'));
       const items = element('div', undefined, 'table-wrap');
       dataTable(items, ['質問・教科', '表の種類', '対象'], parsed.candidate.references.map(ref => [instrument(parsed.candidate, ref.instrumentId)?.text || ref.instrumentId, display(ref.type), ref.geography.label + '・' + display(ref.ownership)]));
@@ -181,19 +184,21 @@
     if (!officialPending || !stillCurrent(officialPending.ticket)) { clearPreviews(); notify('表示が切り替わったため、公式Excelを選び直してください。', true); return; }
     try {
       const result = root.GD_SURVEY_STATE.apply(surveys(), officialPending.plan);
+      const promoted = result.summary.promoted || 0;
       commit(result.surveys, result.undo);
       byId('surveyPreparation').open = true; byId('surveyWaveBuilder').open = true;
-      notify('公式資料を追加しました。学校用Excelを作る場合は、使う質問・教科と実施日を選んでください。');
+      notify('公式資料を追加しました。' + (promoted ? '選択肢を確認した新しい版' + promoted + '件を、新しい調査回の候補に表示しています。' : '') + '学校用Excelを作る場合は、使う質問・教科と実施日を選んでください。');
     } catch (error) { notify(error.message, true); }
   }
-  function filteredWaveReferences() {
+  function filteredWaveReferences(available) {
     const data = surveys(), query = byId('surveyWaveSearch').value.trim().toLocaleLowerCase('ja-JP');
-    return data.references.filter(ref => !query || labelForReference(data, ref).toLocaleLowerCase('ja-JP').includes(query));
+    return (available || root.GD_SURVEY_STATE.getAvailableReferences(data)).filter(ref => !query || labelForReference(data, ref).toLocaleLowerCase('ja-JP').includes(query));
   }
   function renderWaveItems() {
     const data = surveys(), list = byId('surveyWaveItems'); list.replaceChildren();
-    selectedReferences = new Set([...selectedReferences].filter(id => data.references.some(ref => ref.id === id)));
-    const refs = filteredWaveReferences();
+    const available = root.GD_SURVEY_STATE.getAvailableReferences(data), availableIds = new Set(available.map(ref => ref.id));
+    selectedReferences = new Set([...selectedReferences].filter(id => availableIds.has(id)));
+    const refs = filteredWaveReferences(available);
     refs.forEach(ref => {
       const item = instrument(data, ref.instrumentId), label = element('label'), check = element('input'); check.type = 'checkbox';
       check.value = ref.id; check.checked = selectedReferences.has(ref.id);
@@ -272,7 +277,7 @@
     try {
       const incomplete = [...selectedReferences].map(id => surveys().references.find(ref => ref.id === id))
         .some(ref => instrument(surveys(), ref.instrumentId)?.definitionStatus === 'codesOnly');
-      if (incomplete) throw new Error('選択肢の意味が未確認の質問が含まれています。生徒質問の資料と、質問文・選択肢を含むクロス集計または選択肢別平均の資料をまとめて読み込み、定義を確認してから調査回を作成してください。');
+      if (incomplete) throw new Error('選択肢の文言が未確認の質問が含まれています。同年度のクロス集計または選択肢別平均の公式Excelを追加してください。定義を確認できた質問は、新しい版を選んで調査回を作成できます。');
       const mode = byId('surveyInputMode').value;
       const input = { id: freshId('survey-wave'), label: byId('surveyWaveLabel').value.trim(), administeredOn: byId('surveyWaveDate').value,
         administration: byId('surveyAdministration').value, referenceIds: [...selectedReferences],
@@ -304,6 +309,10 @@
     try {
       const scope = byId('surveyTemplateScope').value === 'selected' ? [referenceId].filter(id => wave.referenceIds.includes(id)) : wave.referenceIds.slice();
       if (!scope.length) throw new Error('Excelへ入れる質問・教科を下の一覧から選択してください。');
+      if (scope.some(id => {
+        const ref = surveys().references.find(item => item.id === id);
+        return instrument(surveys(), ref.instrumentId)?.definitionStatus === 'codesOnly';
+      })) throw new Error('この調査回は、選択肢の文言を確認する前の版に固定されています。対応する公式資料を追加し、確認済みの版を選んだ新しい調査回を作成してください。');
       const result = await root.GD_SURVEY_TEMPLATES.buildTemplate(surveys(), wave.id, { mode: templateMode(), scope: { referenceIds: scope },
         school: { label: byId('surveySchoolLabel').value.trim() || '自校', ownership: byId('surveySchoolOwnership').value }, ExcelJS: root.ExcelJS, XLSX: root.XLSX });
       if (!stillCurrent(ticket, true)) return;
@@ -390,7 +399,7 @@
   }
   function availableReferences() {
     const data = surveys(), wave = currentWave();
-    return wave ? data.references.filter(ref => wave.referenceIds.includes(ref.id)) : data.references;
+    return wave ? data.references.filter(ref => wave.referenceIds.includes(ref.id)) : root.GD_SURVEY_STATE.getAvailableReferences(data);
   }
   const keyFor = ref => [ref.instrumentId, ref.type, ref.subjectInstrumentId || ''].join('|');
   function groups() {
@@ -610,7 +619,7 @@
   function attach(api) {
     if (host) return;
     host = api;
-    ready = !!(root.GD_SURVEY && root.GD_SURVEY_STATE && root.GD_SURVEY_IMPORT && root.GD_SURVEY_TEMPLATES && root.XLSX);
+    ready = !!(root.GD_SURVEY && root.GD_SURVEY_STATE && typeof root.GD_SURVEY_STATE.getAvailableReferences === 'function' && root.GD_SURVEY_IMPORT && root.GD_SURVEY_TEMPLATES && root.XLSX);
     byId('surveyUnavailable').hidden = ready;
     byId('surveyStartBtn').disabled = !ready;
     byId('surveyOfficialOpenBtn').disabled = !ready;

@@ -58,6 +58,17 @@ module.exports = async (page, original) => {
     const actual = await page.evaluate(() => { const { surveys, ...rest } = data; return rest; });
     assert.deepEqual(actual, expected);
   };
+  const addOfficial = async (files, sourceCount) => {
+    await page.locator('#surveyPreparation').evaluate(el => { el.open = true; });
+    const before = await text();
+    await page.locator('#surveyOfficialInput').setInputFiles(files);
+    await page.locator('#surveyOfficialApplyBtn').waitFor({ state: 'visible', timeout: 60000 });
+    assert.equal(await text(), before, 'official preview must not mutate the dataset');
+    await page.locator('#surveyOfficialApplyBtn').click();
+    await page.waitForFunction(n => data.surveys?.sources.length === n, sourceCount);
+    assert.match(await page.locator('#surveyStatus').textContent(), /公式資料を追加しました/);
+    assert.equal(await page.locator('#surveyOfficialApplyBtn').isVisible(), false);
+  };
 
   try {
     await load(original);
@@ -69,13 +80,28 @@ module.exports = async (page, original) => {
     assert.equal(await page.locator('#surveyOfficialApplyBtn').isVisible(), false);
 
     const files = [402, 424, 427].map(kind => ({ name: `fictional-${kind}.xlsx`, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from(fixtures.officialBuffer(kind)) }));
-    await page.locator('#surveyOfficialInput').setInputFiles(files);
-    await page.locator('#surveyOfficialApplyBtn').waitFor({ state: 'visible', timeout: 60000 });
-    assert.equal(await text(), untouched, 'official preview must not mutate the dataset');
-    await page.locator('#surveyOfficialApplyBtn').click();
-    await page.waitForFunction(() => data.surveys?.sources.length === 3);
+    await addOfficial([files[0]], 1);
+    const codesOnlySnapshot = JSON.parse(await text());
+    const unresolved = await page.evaluate(() => {
+      const ref = data.surveys.references.find(r => data.surveys.instruments.find(i => i.id === r.instrumentId)?.code === '1');
+      const item = data.surveys.instruments.find(i => i.id === ref.instrumentId);
+      return { refId: ref.id, instrumentId: item.id, ref: JSON.stringify(ref), item: JSON.stringify(item), status: item.definitionStatus };
+    });
+    assert.equal(unresolved.status, 'codesOnly');
+    await page.locator(`#surveyWaveItems input[value="${unresolved.refId}"]`).check();
+    assert.equal(await page.locator('#surveySelectedCount').textContent(), '1件選択');
+    await addOfficial([files[1]], 2);
+    assert.match(await page.locator('#surveyStatus').textContent(), /版|補完|選択肢/);
+    assert.equal(await page.locator(`#surveyWaveItems input[value="${unresolved.refId}"]`).count(), 0);
+    assert.equal(await page.locator('#surveySelectedCount').textContent(), '0件選択');
+    assert.equal(await page.evaluate(id => JSON.stringify(data.surveys.references.find(r => r.id === id)), unresolved.refId), unresolved.ref);
+    assert.equal(await page.evaluate(id => JSON.stringify(data.surveys.instruments.find(i => i.id === id)), unresolved.instrumentId), unresolved.item);
+    await addOfficial([files[2]], 3);
+    const beforeDuplicate = await text();
+    await addOfficial(files, 3);
+    assert.equal(await text(), beforeDuplicate, 'reimporting the bundle must reuse the definition upgrade');
     await compareFields(original);
-    const refs = await page.evaluate(() => data.surveys.references.map(ref => ({ id: ref.id, type: ref.type, ownership: ref.ownership,
+    const refs = await page.evaluate(() => window.GD_SURVEY_STATE.getAvailableReferences(data.surveys).map(ref => ({ id: ref.id, type: ref.type, ownership: ref.ownership,
       code: data.surveys.instruments.find(i => i.id === ref.instrumentId).code,
       unit: ref.observationUnit, subject: data.surveys.instruments.find(i => i.id === ref.subjectInstrumentId)?.subject })));
     const ref = refs.find(r => r.type === 'distribution' && r.ownership === 'public' && r.code === '1');
@@ -148,6 +174,25 @@ module.exports = async (page, original) => {
     assert.equal(result.values[0].value.value, 1);
     assert.equal(await page.evaluate(id => data.surveys.waves.find(w => w.id === id).participants[0].className, personal), '3A');
     assert.deepEqual((await latest(waveId))[0].values.map(v => v.value.value), [0, 8, 1, 1]);
+
+    // A saved wave must keep its original definition even after adding the missing source.
+    const pinned = await page.evaluate(({ snapshot, refId }) => {
+      snapshot.surveys = window.GD_SURVEY_STATE.createWave(snapshot.surveys, {
+        id: 'fictional-old-definition', label: '架空の旧版固定調査', administeredOn: '2026-05-20',
+        administration: 'official', referenceIds: [refId], ownership: 'public', schoolLabel: '架空校',
+      }).surveys;
+      return snapshot;
+    }, { snapshot: codesOnlySnapshot, refId: unresolved.refId });
+    await load(pinned);
+    await page.locator('#surveyWaveSelect').selectOption('fictional-old-definition');
+    const beforePinned = JSON.stringify(pinned.surveys.waves[0]);
+    await addOfficial([files[1]], 2);
+    assert.equal(await page.locator('#surveyWaveSelect').inputValue(), 'fictional-old-definition');
+    assert.equal(await page.locator(`#surveyReferenceSelect option[value="${unresolved.refId}"]`).count(), 1);
+    assert.equal(await page.evaluate(() => JSON.stringify(data.surveys.waves[0])), beforePinned);
+    await page.locator('#surveyPreparation').evaluate(el => { el.open = true; });
+    await page.locator('#surveyTemplateBtn').click();
+    assert.match(await page.locator('#surveyStatus').textContent(), /元の版|確認する前の版/);
 
     const empty = await page.context().newPage();
     try {

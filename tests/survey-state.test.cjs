@@ -5,6 +5,8 @@ const path = require('node:path');
 const root = process.env.DASHBOARD_ROOT || path.join(__dirname, '..', 'src', 'files');
 const core = require(path.join(root, 'survey-core.js'));
 const state = require(path.join(root, 'survey-state.js'));
+const importer = require(path.join(root, 'survey-import.js'));
+const fictional = require('./survey-fixtures.cjs');
 const clone = v => JSON.parse(JSON.stringify(v));
 const observed = (value, decimals = 0) => ({ value, status: 'observed', decimals });
 const missing = (status = 'notProvided') => ({ value: null, status, decimals: null });
@@ -62,6 +64,137 @@ function individualPayload(data, set = responseSet()) {
   return { waveId: 'wave', source: inputSource, responseSet: set, results: aggregated.results };
 }
 const current = data => state.getLatest(data, 'wave', { instrumentId: 'q1', type: 'distribution' });
+const officialCandidates = new Map();
+function official(kinds) {
+  const key = kinds.join(',');
+  if (!officialCandidates.has(key)) officialCandidates.set(key, importer.parseOfficialFiles(fictional.officialFiles(kinds),
+    { XLSX: fictional.XLSX, importedAt: '2026-11-14T00:00:00.000Z' }).then(result => result.candidate));
+  return officialCandidates.get(key);
+}
+const importReferences = (data, candidate) => state.apply(data, state.prepareReferences(data, candidate));
+const referenceContent = r => { const { id, version, supersedes, instrumentId, ...content } = r; return content; };
+function incompleteReferences() {
+  const data = references(); data.instruments = data.instruments.slice(0, 1); data.references = data.references.slice(0, 1);
+  data.instruments[0].definitionStatus = 'codesOnly';
+  data.instruments[0].options.forEach(o => { o.label = '未掲載コード' + o.code; });
+  data.instruments[0].locations = [{ sourceId: 'official', sheet: '架空のコード', range: 'A1:B2' }];
+  return data;
+}
+function completionDonor(data, id = 'label-source') {
+  const donor = { ...clone(data.instruments[0]), id: id + '-question', definitionStatus: 'complete', sourceIds: [id],
+    locations: [{ sourceId: id, sheet: '架空の回答原文', range: 'A1:B2' }] };
+  donor.options.forEach(o => { o.label = '架空の選択肢' + o.code; });
+  return { ...core.empty(), sources: [source(id, 'official')], instruments: [donor] };
+}
+
+test('402 then 424 then 427 adds one immutable completion and later combined reimports are no-ops', async () => {
+  const base = await official(['402']), cross = await official(['424']), means = await official(['427']);
+  const first = importReferences(core.empty(), base), before = JSON.stringify(first.surveys), candidateBefore = JSON.stringify(cross);
+  const second = importReferences(first.surveys, cross), data = second.surveys;
+  assert.equal(second.summary.promoted, base.references.length);
+  assert.equal(second.summary.added, cross.references.length + base.references.length);
+  assert.equal(second.summary.unchanged, 0);
+  assert.equal(JSON.stringify(first.surveys), before); assert.equal(JSON.stringify(cross), candidateBefore);
+  for (const previous of base.references) {
+    assert.deepEqual(data.references.find(r => r.id === previous.id), previous);
+    const completed = data.references.find(r => r.supersedes === previous.id);
+    assert.equal(completed.version, previous.version + 1); assert.deepEqual(referenceContent(completed), referenceContent(previous));
+    const definition = data.instruments.find(i => i.id === completed.instrumentId), old = base.instruments.find(i => i.id === previous.instrumentId);
+    assert.equal(definition.supersedes, old.id); assert.equal(definition.version, old.version + 1); assert.equal(definition.definitionStatus, 'complete');
+    assert.ok(old.sourceIds.every(id => definition.sourceIds.includes(id))); assert.ok(definition.sourceIds.includes(cross.sources[0].id));
+    assert.deepEqual(data.instruments.find(i => i.id === old.id), old);
+  }
+  const third = importReferences(data, means);
+  assert.equal(third.summary.promoted, 0); assert.equal(third.summary.added, means.references.length);
+  assert.deepEqual(third.surveys.instruments.filter(i => i.supersedes), data.instruments.filter(i => i.supersedes));
+  const combined = await official(['402', '424', '427']), again = importReferences(third.surveys, combined);
+  assert.equal(again.summary.added, 0); assert.equal(again.summary.promoted, 0); assert.equal(again.summary.unchanged, combined.references.length);
+  assert.deepEqual(again.surveys, third.surveys);
+  assert.equal(state.getAvailableReferences(again.surveys).length, combined.references.length);
+  assert.ok(state.getAvailableReferences(again.surveys).every(r => !base.references.some(old => old.id === r.id)));
+});
+test('402 then 427 completes only the matched answered options and keeps every original non-answer category', async () => {
+  const base = await official(['402']), means = await official(['427']), first = importReferences(core.empty(), base);
+  const second = importReferences(first.surveys, means);
+  assert.equal(second.summary.promoted, base.references.length, 'all question texts match in these fictional workbooks');
+  for (const previous of base.instruments) {
+    const completed = second.surveys.instruments.find(i => i.supersedes === previous.id);
+    assert.deepEqual(completed.options.filter(o => o.responseStatus !== 'answered'), previous.options.filter(o => o.responseStatus !== 'answered'));
+    assert.deepEqual(completed.options.filter(o => o.responseStatus === 'answered').map(o => o.label), fictional.optionLabels);
+    assert.ok(completed.sourceIds.includes(base.sources[0].id)); assert.ok(completed.sourceIds.includes(means.sources[0].id));
+    assert.equal(completed.options.length, previous.options.length);
+  }
+  const again = importReferences(second.surveys, means);
+  assert.equal(again.summary.added, 0); assert.equal(again.summary.unchanged, means.references.length); assert.deepEqual(again.surveys, second.surveys);
+});
+test('same-ID combined 402 completion, reverse arrival and bundle-first imports never downgrade or duplicate definitions', async () => {
+  const base = await official(['402']), cross = await official(['424']), combined = await official(['402', '424']);
+  const first = importReferences(core.empty(), base), completed = importReferences(first.surveys, combined);
+  assert.equal(completed.summary.promoted, base.references.length);
+  assert.equal(completed.summary.added, cross.references.length + base.references.length);
+  assert.equal(completed.summary.unchanged, base.references.length);
+  const again = importReferences(completed.surveys, combined);
+  assert.equal(again.summary.added, 0); assert.equal(again.summary.unchanged, combined.references.length); assert.deepEqual(again.surveys, completed.surveys);
+  const bundleFirst = importReferences(core.empty(), combined), aloneLater = importReferences(bundleFirst.surveys, base);
+  assert.equal(aloneLater.summary.added, 0); assert.equal(aloneLater.summary.unchanged, base.references.length); assert.deepEqual(aloneLater.surveys, bundleFirst.surveys);
+  const crossFirst = importReferences(core.empty(), cross), baseLater = importReferences(crossFirst.surveys, base);
+  assert.equal(baseLater.summary.promoted, base.references.length); assert.equal(baseLater.summary.unchanged, 0);
+  assert.equal(state.getAvailableReferences(baseLater.surveys).length, combined.references.length);
+  assert.ok(state.getAvailableReferences(baseLater.surveys).every(r => baseLater.surveys.instruments.find(i => i.id === r.instrumentId).definitionStatus === 'complete'));
+});
+test('completion preserves old school results and wave pins, restores cleanly on undo, and refuses undo after new-wave use', () => {
+  const base = incompleteReferences(), withWave = state.createWave(base, { id: 'wave', label: '架空', administeredOn: '2026-05-01', administration: 'official', referenceIds: ['r1'], ownership: 'public' }).surveys;
+  const withResult = applySchool(withWave, 'pinned').surveys, donor = completionDonor(base), before = JSON.stringify(withResult);
+  const selection = { waveId: 'wave', resultId: current(withResult).id, referenceId: 'r1' }, comparison = core.compare(withResult, selection);
+  const completed = importReferences(withResult, donor), reference = completed.surveys.references.find(r => r.supersedes === 'r1');
+  assert.equal(completed.summary.added, 1); assert.equal(completed.summary.promoted, 1); assert.equal(completed.summary.unchanged, 0, 'auto-added references must not make unchanged negative');
+  assert.deepEqual(completed.surveys.waves, withResult.waves); assert.deepEqual(current(completed.surveys), current(withResult));
+  assert.deepEqual(core.compare(completed.surveys, selection), comparison); assert.equal(comparison.status, 'referenceOnly');
+  assert.deepEqual(state.getAvailableReferences(completed.surveys).map(r => r.id), [reference.id]);
+  const used = state.createWave(completed.surveys, { id: 'new-wave', label: '架空の新しい回', administeredOn: '2026-05-02', administration: 'official', referenceIds: [reference.id] }).surveys;
+  const usedBefore = JSON.stringify(used);
+  assert.throws(() => state.undo(used, completed.undo), /参照|出典/); assert.equal(JSON.stringify(used), usedBefore);
+  const restored = state.undo(completed.surveys, completed.undo).surveys;
+  assert.deepEqual(restored, withResult); assert.equal(JSON.stringify(withResult), before);
+  assert.deepEqual(state.getAvailableReferences(restored).map(r => r.id), ['r1']);
+  assert.equal(importReferences(restored, donor).summary.promoted, 1);
+});
+test('completion refuses contradictory donors and does not guess a question match from code or similar wording', () => {
+  const base = incompleteReferences(), donor = completionDonor(base), other = completionDonor(base, 'other-labels');
+  const original = JSON.stringify(base);
+  for (const change of [
+    i => { i.options[0].label = '矛盾する原文'; },
+    i => { i.options[0].responseStatus = 'noResponse'; },
+    i => { i.options[0].code = 'different-code'; },
+  ]) {
+    const conflicting = clone(other); change(conflicting.instruments[0]);
+    const candidate = { ...core.empty(), sources: donor.sources.concat(conflicting.sources), instruments: donor.instruments.concat(conflicting.instruments) };
+    assert.throws(() => state.prepareReferences(base, candidate), /矛盾|選択肢/); assert.equal(JSON.stringify(base), original);
+  }
+  const promoted = importReferences(base, donor), conflicting = clone(other); conflicting.instruments[0].options[0].label = '後から来た矛盾';
+  assert.throws(() => state.prepareReferences(promoted.surveys, conflicting), /矛盾/);
+  for (const change of [
+    i => { i.text += '。'; }, i => { i.grade = 2; }, i => { i.year++; },
+    i => { i.schoolLevel = 'upperSecondary'; }, i => { i.respondent = 'school'; }, i => { i.scale.version = '別の尺度版'; },
+  ]) {
+    const different = clone(donor); change(different.instruments[0]);
+    const result = importReferences(base, different);
+    assert.equal(result.summary.promoted, 0); assert.equal(result.summary.added, 0);
+    assert.equal(result.surveys.instruments[0].definitionStatus, 'codesOnly');
+  }
+});
+test('combined completion accepts only the reader annotation change and rejects altered statistics, precision, and extra notes', async () => {
+  const base = await official(['402']), combined = await official(['402', '424']), first = importReferences(core.empty(), base);
+  for (const change of [
+    r => { r.values[0].value.provenance.raw = 99; },
+    r => { r.values[0].publishedPercent.decimals = 2; },
+    r => { r.population.definition = '別の対象者'; },
+    r => { r.notes.push('追加の不正注記'); },
+  ]) {
+    const candidate = clone(combined); change(candidate.references[0]);
+    assert.throws(() => state.prepareReferences(first.surveys, candidate), /公式統計ID|掲載精度/);
+  }
+});
 
 test('official import is immutable, deduplicates fingerprints and semantic IDs, and pins existing waves', () => {
   const original = core.empty(), candidate = references(), before = JSON.stringify(original);
