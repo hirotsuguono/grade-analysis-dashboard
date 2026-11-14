@@ -9,6 +9,7 @@
   <meta name="description" content="成績の入力・可視化・支援記録をブラウザ内で。登録不要で使える成績分析ダッシュボード。">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://api.github.com/repos/hirotsuguono/grade-analysis-dashboard/releases/latest; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <link rel="stylesheet" href="files/style.css">
+  <link rel="stylesheet" href="files/survey.css">
   <!-- ライブラリはローカル同梱（オフライン・閉域校務PCでも動作） -->
   <script src="files/vendor/echarts.min.js"></script>
   <script src="files/vendor/xlsx.full.min.js"></script>
@@ -82,6 +83,10 @@
         <p class="load-status" id="loadStatus" role="status" aria-live="polite"></p>
       </div>
     </div>
+    <div class="survey-start-card">
+      <div><p class="eyebrow">公開調査と自校の結果を比べる</p><h3>全国・地域比較から始める</h3><p>公式Excelと学校の集計値を使います。集計値だけなら、生徒名簿の登録は不要です。</p></div>
+      <button type="button" class="btn btn-ghost" id="surveyStartBtn">名簿なしで全国・地域比較を開く</button>
+    </div>
     <p class="start-guide"><a href="files/manual.html#start">初めて使う方へ：使い方ガイド</a></p>
   </section>
 
@@ -124,6 +129,7 @@
       <button class="tab-btn" data-tab="metrics">相関分析</button>
       <button class="tab-btn tab-btn-rti" data-tab="rti">支援（RTI）</button>
       <button class="tab-btn" data-tab="list">データ一覧</button>
+      <button class="tab-btn" data-tab="survey">全国・地域比較</button>
     </nav>
 
     <!-- ===== 概要 ===== -->
@@ -486,6 +492,104 @@
       <div class="card">
         <p class="card-note">列の見出しをクリックすると並べ替えできます。欠席は「欠」・未入力は空欄。</p>
         <div class="table-wrap" id="listTableWrap"></div>
+      </div>
+    </section>
+
+    <!-- ===== 全国・地域比較 ===== -->
+    <section class="tab-panel survey-panel" id="panel-survey">
+      <div class="survey-heading">
+        <div><p class="eyebrow">公開調査と自校の結果</p><h2 id="surveyTitle" tabindex="-1">全国・地域比較</h2><p>同じ質問・尺度・対象条件を確認して、自校の特徴を見つけます。</p></div>
+        <p class="survey-save-note">取り込み後は、右上の「保存」で<br>調査と学校結果をJSONに保存します。</p>
+      </div>
+      <p id="surveyStatus" class="survey-status" role="status" aria-live="polite"></p>
+      <div id="surveyUnavailable" class="survey-notice" hidden>比較機能のファイルを読み込めません。ZIPをすべて展開してから開き直してください。</div>
+
+      <details id="surveyPreparation" class="survey-preparation" open>
+        <summary>データの準備・追加 <span id="surveyPreparationSummary"></span></summary>
+        <div class="survey-setup-grid">
+          <section class="survey-step" aria-labelledby="surveyOfficialTitle">
+            <h3 id="surveyOfficialTitle"><span class="survey-step-number">1</span> 比較する公式資料を開く</h3>
+            <p>国立教育政策研究所の対応するExcelを、そのまま選びます。複数の資料をまとめて読み込めます。</p>
+            <p class="survey-small">令和8年度・中学校の生徒質問、質問と教科のクロス集計、選択肢別平均に対応。地域や年度の異なる形式は、読取器で確認できたものだけを受け付けます。</p>
+            <button type="button" class="btn btn-primary" id="surveyOfficialOpenBtn">公式Excelを選ぶ</button>
+            <input type="file" id="surveyOfficialInput" accept=".xlsx" multiple hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
+            <div id="surveyOfficialPreview" class="survey-preview" hidden></div>
+            <button type="button" class="btn btn-primary" id="surveyOfficialApplyBtn" hidden disabled>確認した資料を追加</button>
+          </section>
+
+          <section class="survey-step" aria-labelledby="surveyWaveTitle">
+            <h3 id="surveyWaveTitle"><span class="survey-step-number">2</span> 自校の調査回を作る</h3>
+            <p id="surveyWaveHelp">公式資料を追加すると、使う質問・教科を選べます。資料の年度と自校の実施日は別に記録します。</p>
+            <details id="surveyWaveBuilder" open>
+              <summary>調査回・質問を選ぶ</summary>
+              <form id="surveyWaveForm" class="survey-form">
+                <div class="survey-form-grid">
+                  <label>調査回の名前<input id="surveyWaveLabel" maxlength="120" required placeholder="例：3年生 4月の全国調査" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+                  <label>自校の実施日<input id="surveyWaveDate" type="date" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+                  <label>実施の区分<select id="surveyAdministration" autocomplete="off" translate="no"><option value="official">全国調査の公式実施</option><option value="local">自校で独自に実施</option></select></label>
+                  <label>学校値の入力方法<select id="surveyInputMode" autocomplete="off" translate="no"><option value="count">集計値：人数を入力</option><option value="percent">集計値：割合を入力</option><option value="individual">個人別：回答を入力</option></select></label>
+                  <label>学校の表示名<input id="surveyWaveSchoolLabel" value="自校" maxlength="120" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+                  <label>自校の設置者<select id="surveyWaveOwnership" autocomplete="off" translate="no"><option value="public">公立</option><option value="national">国立</option><option value="private">私立</option><option value="unknown">未確認（差を計算しない）</option></select></label>
+                </div>
+                <p id="surveyParticipantsNote" class="survey-small"></p>
+                <div id="surveyParticipantControls" hidden>
+                  <label>個人別入力の対象<select id="surveyParticipantScope" autocomplete="off" translate="no"></select></label>
+                  <div id="surveyParticipantPreview" class="survey-participant-preview"></div>
+                </div>
+                <label>使う質問・教科を探す<input type="search" id="surveyWaveSearch" placeholder="質問番号・質問文・教科" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+                <div class="survey-selection-actions"><button type="button" class="btn btn-ghost btn-sm" id="surveySelectVisibleBtn">表示中を選択</button><button type="button" class="btn btn-ghost btn-sm" id="surveyClearSelectionBtn">選択を解除</button><span id="surveySelectedCount"></span></div>
+                <div id="surveyWaveItems" class="survey-choice-list" role="group" aria-label="この調査回で使う質問・教科"></div>
+                <button type="submit" class="btn btn-primary" id="surveyCreateWaveBtn" disabled>選んだ内容で調査回を作成</button>
+              </form>
+            </details>
+          </section>
+
+          <section class="survey-step" aria-labelledby="surveySchoolTitle">
+            <h3 id="surveySchoolTitle"><span class="survey-step-number">3</span> 学校の結果を入れる</h3>
+            <p>選択中の調査回に合うExcelを発行します。学校の入力欄は空欄です。記入後、変更内容を確認して反映します。</p>
+            <div class="survey-form-grid">
+              <label>学校の表示名<input id="surveySchoolLabel" value="自校" maxlength="120" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no"></label>
+              <label>自校の設置者<select id="surveySchoolOwnership" autocomplete="off" translate="no"><option value="public">公立</option><option value="national">国立</option><option value="private">私立</option><option value="unknown">未確認（差を計算しない）</option></select></label>
+              <label>今回発行するExcelの入力方法<select id="surveyTemplateMode" autocomplete="off" translate="no"><option value="count">集計値：人数を入力</option><option value="percent">集計値：割合を入力</option><option value="individual">個人別：回答を入力</option></select></label>
+              <label>Excelへ入れる項目<select id="surveyTemplateScope" autocomplete="off" translate="no"><option value="all">この調査回のすべての項目</option><option value="selected">いま表示している質問・教科だけ</option></select></label>
+            </div>
+            <div class="survey-action-row"><button type="button" class="btn btn-ghost" id="surveyTemplateBtn" disabled>学校用Excelを発行</button><button type="button" class="btn btn-ghost" id="surveySchoolOpenBtn" disabled>記入したExcelを選ぶ</button></div>
+            <p id="surveyTemplateNote" class="survey-small"></p>
+            <input type="file" id="surveySchoolInput" accept=".xlsx" hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
+            <div id="surveySchoolPreview" class="survey-preview" hidden></div>
+            <label id="surveyModeSwitchLabel" class="survey-confirm" hidden><input type="checkbox" id="surveyModeSwitch" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">表示した統計の採用元を切り替えることを確認しました</label>
+            <button type="button" class="btn btn-primary" id="surveySchoolApplyBtn" hidden disabled>確認した学校結果を反映</button>
+          </section>
+        </div>
+      </details>
+
+      <div class="survey-workspace-toolbar">
+        <label>表示する調査回<select id="surveyWaveSelect" autocomplete="off" translate="no"><option value="">比較先だけを見る</option></select></label>
+        <p id="surveyWaveContext" class="survey-small"></p>
+        <button type="button" class="btn btn-ghost btn-sm" id="surveyUndoBtn" hidden>直前の取り込みを取り消す</button>
+      </div>
+      <div id="surveyNoReferences" class="survey-empty"><h3>まずは比較する資料から</h3><p>上の「公式Excelを選ぶ」で公開資料を追加してください。学校の結果がなくても、読み取った全国値を確認できます。</p></div>
+      <div id="surveyComparisonWorkspace" class="survey-comparison-workspace" hidden>
+        <aside class="survey-question-sidebar" aria-labelledby="surveyQuestionsTitle">
+          <h3 id="surveyQuestionsTitle">質問・教科を選ぶ</h3>
+          <label class="sr-only" for="surveyQuestionSearch">質問番号・質問文・教科で検索</label><input type="search" id="surveyQuestionSearch" placeholder="質問番号・質問文・教科" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
+          <label>表示する表<select id="surveyTypeFilter" autocomplete="off" translate="no"><option value="all">すべて</option><option value="distribution">回答・得点の分布</option><option value="summary">教科の平均</option><option value="conditionalMean">回答別の教科平均</option><option value="crossTab">回答と教科のクロス表</option></select></label>
+          <p id="surveyQuestionCount" class="survey-small"></p>
+          <div id="surveyQuestionList" class="survey-question-list" role="group" aria-label="表示する質問・教科"></div>
+        </aside>
+        <article class="survey-result-card" aria-labelledby="surveyResultTitle">
+          <div id="surveyResultEmpty" class="survey-empty" hidden>条件に合う質問・教科はありません。検索語や表の種類を変更してください。</div>
+          <div id="surveyResultContent">
+            <p id="surveyResultType" class="eyebrow"></p><h3 id="surveyResultTitle" tabindex="-1"></h3>
+            <label class="survey-reference-control">比較先<select id="surveyReferenceSelect" autocomplete="off" translate="no"></select></label>
+            <dl id="surveyChartContext" class="survey-chart-context"></dl>
+            <div id="surveyComparisonDecision" class="survey-decision"></div>
+            <div id="surveyChart" class="survey-chart" role="img" aria-label="選択した調査のグラフ" aria-describedby="surveyTable"></div>
+            <p id="surveyChartNote" class="survey-small"></p>
+            <div id="surveyTable" class="table-wrap survey-value-table" tabindex="0" role="region" aria-label="学校・比較先・差の表"></div>
+            <details class="survey-source-details"><summary>人数・対象条件・出典・元の掲載値</summary><div id="surveySourceDetails"></div></details>
+          </div>
+        </article>
       </div>
     </section>
 
@@ -911,6 +1015,10 @@
   <script src="files/roster-reassign.js"></script>
   <script src="files/teaching-notes.js"></script>
   <script src="files/survey-core.js"></script>
+  <script src="files/survey-state.js"></script>
+  <script src="files/survey-import.js"></script>
+  <script src="files/survey-templates.js"></script>
+  <script src="files/survey-ui.js"></script>
   <script src="files/paired-comparison.js"></script>
   <script src="files/assessment-classification.js"></script>
   <script src="files/vendor/exceljs.min.js"></script>

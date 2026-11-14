@@ -946,6 +946,7 @@ function fillTrendSubjectSelect() {
 
 /* ========== 描画：全体 ========== */
 function renderAll() {
+  window.GD_SURVEY_UI?.contextChanged();
   fillClassSelect($('ovClass'), ui.ovClass);
   fillSubjectSelect($('ovSubject'), ui.ovSubject);
   fillScopedTestSelect('ovTest', 'ovSubject', 'ovTest');
@@ -976,6 +977,8 @@ function renderAll() {
 }
 
 function renderCurrentTab() {
+  const preparation = document.querySelector('.prepare-panel');
+  if (preparation) preparation.hidden = ui.tab === 'survey';
   if (ui.tab === 'overview') renderOverview();
   else if (ui.tab === 'input') renderInput();
   else if (ui.tab === 'trend') renderTrend();
@@ -983,6 +986,7 @@ function renderCurrentTab() {
   else if (ui.tab === 'metrics') renderMetricsTab();
   else if (ui.tab === 'list') renderList();
   else if (ui.tab === 'rti') renderRti();
+  else if (ui.tab === 'survey') window.GD_SURVEY_UI?.render();
   resizeCharts();
 }
 
@@ -2939,6 +2943,7 @@ function updateRoleUI() {
   $('settingsBtn').hidden = !isAdmin;
   $('settingsBtn').disabled = !isAdmin;
   $('rosterBtn').disabled = !isAdmin || !data;
+  window.GD_SURVEY_UI?.contextChanged();
 }
 
 function requireAdmin() {
@@ -4358,6 +4363,37 @@ function init() {
   $('pasteHelpBtn').onclick = () => $('pasteDialog').showModal();
   $('pasteCloseBtn').onclick = () => $('pasteDialog').close();
 
+  window.GD_SURVEY_UI?.attach({
+    getData: () => data,
+    getDataToken: () => activeDataToken,
+    getRole: () => isAdmin,
+    markDirty,
+    renderAll,
+    commitSurveys: next => {
+      const previous = { present: Object.prototype.hasOwnProperty.call(data, 'surveys'), surveys: data.surveys, dirty };
+      try {
+        data.surveys = next;
+        markDirty();
+        renderAll();
+      } catch (error) {
+        if (previous.present) data.surveys = previous.surveys;
+        else delete data.surveys;
+        dirty = previous.dirty;
+        try { updateSaveStatus(); renderAll(); } catch { /* Preserve the model even if repainting fails. */ }
+        throw error;
+      }
+    },
+    startAggregate: () => {
+      if (data) return false;
+      const fresh = { version: 3, name: '全国・地域比較', students: [], tests: [], scores: [], metrics: [],
+        interventions: [], settings: { rti: { tier2: 60, tier3: 40 }, adminPinHash: null }, surveys: window.GD_SURVEY.empty() };
+      if (!applyJsonText(JSON.stringify(fresh), 'survey-data.json', null)) return false;
+      markDirty();
+      document.querySelector('.tab-btn[data-tab="survey"]').click();
+      $('surveyTitle').focus();
+      return true;
+    },
+  });
   document.documentElement.dataset.dashboardInitialized = 'true';
 }
 

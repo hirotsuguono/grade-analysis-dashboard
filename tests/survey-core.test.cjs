@@ -71,6 +71,30 @@ function bandFixture() {
   return data;
 }
 const school = d => d.waves[0].results[0];
+function pairedFixture(type = 'conditionalMean', knownBands = false) {
+  const data = fixture(), subject = clone(summaryFixture('percentCorrect').instruments[0]);
+  subject.id = 'subject-axis'; data.instruments.push(subject); data.waves[0].instrumentIds.push(subject.id);
+  for (const stat of [data.references[0], school(data)]) {
+    stat.type = type; stat.subjectInstrumentId = subject.id;
+    stat.population = { participation: 'joint', definition: '質問と当該教科の有効な組' };
+    stat.denominator = { basis: 'jointParticipants', definition: '質問と当該教科の有効な組数', count: type === 'crossTab' ? observed(8) : missing() };
+    delete stat.basis; delete stat.partition; delete stat.values;
+    if (type === 'conditionalMean') {
+      stat.values = [{ code: 'a', count: missing(), mean: observed(40, 1), standardDeviation: missing() }, { code: 'b', count: missing(), mean: observed(60, 1), standardDeviation: missing() }];
+    } else {
+      stat.basis = 'count'; stat.normalization = 'column';
+      stat.grouping = { kind: 'quartile', scope: 'national', definitionId: 'fictional-quartile-definition', bands: knownBands ? [
+        { code: 'A', label: '架空層A', lower: null, upper: 25, lowerInclusive: false, upperInclusive: false },
+        { code: 'B', label: '架空層B', lower: 25, upper: 50, lowerInclusive: true, upperInclusive: false },
+        { code: 'C', label: '架空層C', lower: 50, upper: 75, lowerInclusive: true, upperInclusive: false },
+        { code: 'D', label: '架空層D', lower: 75, upper: null, lowerInclusive: true, upperInclusive: false },
+      ] : null };
+      stat.groups = ['A', 'B', 'C', 'D'].map(code => ({ code, label: '架空層' + code, count: observed(2), publishedPercent: observed(25, 1) }));
+      stat.rows = ['a', 'b'].map(code => ({ code, count: observed(4), publishedPercent: observed(50, 1), values: stat.groups.map(g => ({ code: g.code, value: observed(1), publishedPercent: observed(50, 1) })) }));
+    }
+  }
+  return data;
+}
 function valid(data) { assert.deepEqual(core.validate(data), []); }
 function invalid(edit, pattern = /./, create = fixture) {
   const data = create(); edit(data);
@@ -109,8 +133,8 @@ test('fictional nonempty storage round-trips, preserves published values, and ne
 });
 test('null, newer schemas, unknown fields and unsupported statistics fail closed', () => {
   for (const value of [null, undefined, [], {}, { ...core.empty(), schemaVersion: 2 }, { ...core.empty(), future: {} }]) assert.ok(core.validate(value).length);
-  for (const type of ['crossTab', 'conditionalMean', 'individualResponses']) invalid(d => { d.references[0].type = type; }, /未対応/);
-  invalid(d => { d.waves[0].participants = []; }, /未対応/);
+  for (const type of ['individualResponses']) invalid(d => { d.references[0].type = type; }, /未対応/);
+  invalid(d => { d.waves[0].individualResponses = []; }, /未対応/);
   invalid(d => { delete d.references[0].population.definition; }, /項目がありません/);
 });
 test('numeric cells distinguish zero from each missing state and reject coercion', () => {
@@ -140,6 +164,64 @@ test('rounded percentages are retained without renormalization or inferred count
   assert.equal(result.differences.values[0].difference, -33.3);
   assert.ok(result.notices.some(n => n.code === 'countUnavailable'));
   assert.equal(JSON.stringify(data), before);
+});
+test('published percentages take precedence over calculated ratios even with missing population counts', () => {
+  const data = fixture(), reference = data.references[0]; reference.basis = 'count'; reference.denominator.count = observed(3);
+  reference.values = [{ code: 'a', value: observed(1), publishedPercent: observed(33.3, 1) }, { code: 'b', value: observed(2), publishedPercent: observed(66.7, 1) }];
+  valid(data); assert.equal(core.compare(data, selection).differences.values[0].reference, 33.3);
+  reference.denominator.count = missing(); reference.values[0].value = missing('suppressed'); valid(data);
+  const result = core.compare(data, selection);
+  assert.equal(result.status, 'comparable'); assert.equal(result.differences.values[0].reference, 33.3);
+  assert.equal(result.differences.values[0].referenceStatus, 'observed');
+  reference.values[0].publishedPercent.value = 100;
+  assert.match(core.validate(data).join('\n'), /割合合計/);
+});
+test('codes-only questions and unknown observation units remain reference information', () => {
+  decision(d => { const reference = splitInstrument(d); reference.definitionStatus = 'codesOnly'; reference.options[0].label = 'コードAのみ'; }, 'referenceOnly', 'definitionIncomplete');
+  decision(d => { d.references[0].observationUnit = 'unknown'; }, 'referenceOnly', 'observationUnitUnknown');
+});
+test('conditional means retain per-subject paired counts and validate both question and score axes', () => {
+  const data = pairedFixture(); school(data).values[0].mean.value = 0; school(data).values[0].count = observed(3); school(data).values[1].count = observed(7); school(data).denominator.count = observed(10);
+  valid(data);
+  const result = core.compare(data, selection);
+  assert.equal(result.status, 'comparable'); assert.equal(result.differences.type, 'conditionalMean');
+  assert.equal(result.differences.values[0].difference, -40); assert.equal(result.differences.unit, 'percentagePoint');
+  const alternate = { ...clone(data.instruments[1]), id: 'other-subject', skills: ['listening', 'reading', 'writing', 'speaking'] };
+  data.instruments.push(alternate); data.references[0].subjectInstrumentId = alternate.id; valid(data);
+  assert.equal(core.compare(data, selection).status, 'blocked');
+  invalid(d => { d.references[0].values[0].count = observed(0); }, /0人/, pairedFixture);
+  invalid(d => { d.references[0].values[0].code = 'not-a-choice'; }, /条件|選択肢/, pairedFixture);
+  invalid(d => { school(d).denominator.count = observed(1); school(d).values.forEach(v => { v.count = observed(1); }); }, /合計/, pairedFixture);
+});
+test('quartile cross tables preserve both margins and use explicit normalization and boundaries', () => {
+  const unknown = pairedFixture('crossTab'); valid(unknown);
+  const referenceOnly = core.compare(unknown, selection); assert.equal(referenceOnly.status, 'referenceOnly');
+  assert.ok(referenceOnly.reasons.some(r => r.code === 'groupThresholdsUnknown'));
+  const data = pairedFixture('crossTab', true), local = school(data);
+  local.rows[0].values[0].value = observed(0); local.rows[0].values[0].publishedPercent = observed(0, 1);
+  local.rows[1].values[0].value = observed(2); local.rows[1].values[0].publishedPercent = observed(100, 1);
+  local.rows[0].count = observed(3); local.rows[0].publishedPercent = observed(37.5, 1);
+  local.rows[1].count = observed(5); local.rows[1].publishedPercent = observed(62.5, 1); valid(data);
+  const result = core.compare(data, selection); assert.equal(result.status, 'comparable');
+  assert.equal(result.differences.rows[0].values[0].difference, -50); assert.equal(result.differences.normalization, 'column');
+  const ownQuartiles = pairedFixture('crossTab', true); school(ownQuartiles).grouping.scope = 'school'; valid(ownQuartiles);
+  assert.equal(core.compare(ownQuartiles, selection).status, 'blocked');
+  for (const normalization of ['row', 'total']) {
+    const other = pairedFixture('crossTab', true); school(other).normalization = normalization;
+    school(other).rows.forEach(row => row.values.forEach(v => { v.publishedPercent = observed(normalization === 'row' ? 25 : 12.5, 1); }));
+    valid(other); assert.equal(core.compare(other, selection).status, 'blocked');
+  }
+  invalid(d => { school(d).rows[0].values[0].value = observed(2); }, /合計|公表割合/, () => pairedFixture('crossTab', true));
+  invalid(d => { d.references[0].grouping.bands[1].lower = 20; }, /重なり|空白/, () => pairedFixture('crossTab', true));
+});
+test('source cells and question definitions preserve bounded lineage and raw missing markers', () => {
+  const data = fixture(); data.instruments[0].locations = [{ sourceId: 'source-official', sheet: '架空', range: 'A1:B2' }];
+  data.instruments[0].schoolAvailability = 'notReturned'; data.instruments[0].sourceIds = ['source-official'];
+  data.references[0].values[0].value = { ...missing(), provenance: { sourceId: 'source-official', sheet: '架空', range: 'B2', raw: '－', derivation: 'literal' } };
+  valid(data); valid(clone(data));
+  data.references[0].values[0].value.provenance.range = "=HYPERLINK(\"x\")";
+  assert.match(core.validate(data).join('\n'), /A1/);
+  invalid(d => { d.instruments[0].locations = [{ sourceId: 'absent', sheet: '架空', range: 'A1' }]; }, /出典/);
 });
 test('geography and sample sizes may differ; ownership remains an explicit population axis', () => {
   const data = fixture(); data.references[0].geography = { level: 'prefecture', code: 'fictional-region', label: '架空の地域' };
@@ -327,6 +409,6 @@ test('storage work is bounded before schema traversal and future fields cannot h
   const deep = core.empty(); let p = deep;
   for (let i = 0; i <= core.limits.depth; i++) p = p.child = {};
   assert.match(core.validate(deep).join('\n'), /階層/);
-  const manyNodes = core.empty(); manyNodes.future = Array.from({ length: 100 }, () => Array(2000).fill(0));
+  const manyNodes = core.empty(); manyNodes.future = Array.from({ length: Math.ceil(core.limits.nodes / 2000) + 1 }, () => Array(2000).fill(0));
   assert.match(core.validate(manyNodes).join('\n'), /項目数/);
 });
