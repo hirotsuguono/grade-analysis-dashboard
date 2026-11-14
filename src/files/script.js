@@ -659,6 +659,10 @@ function validateDataset(parsed) {
     if (typeof window.GD_TEACHING?.validate !== 'function') add('指導メモの検証機能を読み込めません。アプリをすべて展開し直してください。');
     else window.GD_TEACHING.validate(parsed.teachingNotes).forEach(add);
   }
+  if (parsed.surveys !== undefined) {
+    if (typeof window.GD_SURVEY?.validate !== 'function') add('調査データの検証機能を読み込めません。アプリをすべて展開し直してください。');
+    else window.GD_SURVEY.validate(parsed.surveys).forEach(add);
+  }
   return errors;
 }
 
