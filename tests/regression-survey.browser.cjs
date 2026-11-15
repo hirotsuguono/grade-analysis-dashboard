@@ -13,6 +13,7 @@ module.exports = async (page, original) => {
     }, value), true);
     await page.locator('[data-tab="survey"]').click();
   };
+  const go = step => page.locator('.survey-workflow [data-survey-go="' + step + '"]').click();
   const text = () => page.evaluate(() => JSON.stringify(data));
   const latest = waveId => page.evaluate(id => window.GD_SURVEY_STATE.getLatest(data.surveys, id), waveId);
   const readDownload = async event => {
@@ -21,7 +22,7 @@ module.exports = async (page, original) => {
     return Buffer.concat(chunks);
   };
   const issue = async () => {
-    await page.locator('#surveyPreparation').evaluate(el => { el.open = true; });
+    await go('school');
     const event = page.waitForEvent('download');
     await page.locator('#surveyTemplateBtn').click();
     return readDownload(event);
@@ -31,15 +32,15 @@ module.exports = async (page, original) => {
     await book.xlsx.load(buffer); change(book);
     return Buffer.from(await book.xlsx.writeBuffer());
   };
-  const upload = buffer => page.locator('#surveySchoolInput').setInputFiles({
+  const upload = async buffer => { await go('compare'); return page.locator('#surveySchoolInput').setInputFiles({
     name: 'fictional-school-survey.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer,
-  });
+  }); };
   const ready = async () => {
     await page.locator('#surveySchoolApplyBtn').waitFor({ state: 'visible' });
     await page.waitForFunction(() => !document.getElementById('surveySchoolApplyBtn').disabled);
   };
   const newWave = async (referenceIds, label, mode = 'count', scope = null) => {
-    await page.locator('#surveyPreparation').evaluate(el => { el.open = true; });
+    await go('school');
     await page.locator('#surveyWaveBuilder').evaluate(el => { el.open = true; });
     if (await page.locator('#surveyClearSelectionBtn').isEnabled()) await page.locator('#surveyClearSelectionBtn').click();
     for (const id of referenceIds) await page.locator(`#surveyWaveItems input[value="${id}"]`).check();
@@ -59,7 +60,7 @@ module.exports = async (page, original) => {
     assert.deepEqual(actual, expected);
   };
   const addOfficial = async (files, sourceCount) => {
-    await page.locator('#surveyPreparation').evaluate(el => { el.open = true; });
+    await go('official');
     const before = await text();
     await page.locator('#surveyOfficialInput').setInputFiles(files);
     await page.locator('#surveyOfficialApplyBtn').waitFor({ state: 'visible', timeout: 60000 });
@@ -72,6 +73,8 @@ module.exports = async (page, original) => {
 
   try {
     await load(original);
+    assert.equal(await page.locator('#surveyStepOfficial').isVisible(), true);
+    assert.equal(await page.locator('.survey-workflow [data-survey-go="compare"]').isDisabled(), true);
     assert.equal(await page.evaluate(() => Object.hasOwn(data, 'surveys')), false);
     const untouched = await text();
     await page.locator('#surveyOfficialInput').setInputFiles({ name: 'fictional-invalid.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('invalid') });
@@ -88,8 +91,8 @@ module.exports = async (page, original) => {
       return { refId: ref.id, instrumentId: item.id, ref: JSON.stringify(ref), item: JSON.stringify(item), status: item.definitionStatus };
     });
     assert.equal(unresolved.status, 'codesOnly');
-    await page.locator(`#surveyWaveItems input[value="${unresolved.refId}"]`).check();
-    assert.equal(await page.locator('#surveySelectedCount').textContent(), '1件選択');
+    assert.equal(await page.locator('.survey-workflow [data-survey-go="school"]').isDisabled(), true);
+    assert.equal(await page.locator('#surveyStepOfficial').isVisible(), true);
     await addOfficial([files[1]], 2);
     assert.match(await page.locator('#surveyStatus').textContent(), /版|補完|選択肢/);
     assert.equal(await page.locator(`#surveyWaveItems input[value="${unresolved.refId}"]`).count(), 0);
@@ -101,7 +104,7 @@ module.exports = async (page, original) => {
     await addOfficial(files, 3);
     assert.equal(await text(), beforeDuplicate, 'reimporting the bundle must reuse the definition upgrade');
     await compareFields(original);
-    const refs = await page.evaluate(() => window.GD_SURVEY_STATE.getAvailableReferences(data.surveys).map(ref => ({ id: ref.id, type: ref.type, ownership: ref.ownership,
+    const refs = await page.evaluate(() => window.GD_SURVEY_STATE.getAvailableReferences(data.surveys).map(ref => ({ id: ref.id, instrumentId: ref.instrumentId, type: ref.type, ownership: ref.ownership,
       code: data.surveys.instruments.find(i => i.id === ref.instrumentId).code,
       unit: ref.observationUnit, subject: data.surveys.instruments.find(i => i.id === ref.subjectInstrumentId)?.subject })));
     const ref = refs.find(r => r.type === 'distribution' && r.ownership === 'public' && r.code === '1');
@@ -115,8 +118,30 @@ module.exports = async (page, original) => {
       [10, 0, 8, 1, 1].forEach((value, i) => { sheet.getCell(i + 2, 6).value = value; });
     });
     const beforeSchool = await text();
+    // A read that finishes after leaving and returning to the step cannot revive a preview.
+    await page.evaluate(() => {
+      const original = window.GD_SURVEY_TEMPLATES;
+      window.__surveyReadGate = { original };
+      window.GD_SURVEY_TEMPLATES = { ...original, parseTemplate: async (...args) => {
+        const parsed = await original.parseTemplate(...args);
+        await new Promise(resolve => { window.__surveyReadGate.release = resolve; });
+        window.__surveyReadGate.finished = true; return parsed;
+      } };
+    });
+    await upload(filled);
+    await page.waitForFunction(() => typeof window.__surveyReadGate?.release === 'function');
+    await go('school'); await go('compare');
+    await page.evaluate(() => { window.GD_SURVEY_TEMPLATES = window.__surveyReadGate.original; window.__surveyReadGate.release(); });
+    await page.waitForFunction(() => window.__surveyReadGate.finished);
+    assert.equal(await page.locator('#surveySchoolApplyBtn').isVisible(), false);
+    assert.equal(await text(), beforeSchool);
+    await page.evaluate(() => { delete window.__surveyReadGate; });
     await upload(filled); await ready();
     assert.equal(await text(), beforeSchool, 'school preview must not mutate the dataset');
+    await go('school'); await go('compare');
+    assert.equal(await page.locator('#surveySchoolApplyBtn').isVisible(), false, 'leaving a step discards its preview');
+    assert.equal(await text(), beforeSchool);
+    await upload(filled); await ready();
     await page.locator('#surveySchoolApplyBtn').click();
     await page.waitForFunction(id => window.GD_SURVEY_STATE.getLatest(data.surveys, id).length === 1, waveId);
     let result = (await latest(waveId))[0];
@@ -137,10 +162,33 @@ module.exports = async (page, original) => {
     assert.equal((await latest(waveId)).length, 0);
     await compareFields(original);
     await load(saved);
+    assert.equal(await page.locator('#surveyStepCompare').isVisible(), true, 'saved school results reopen at comparison');
     assert.deepEqual((await latest(waveId))[0].values.map(v => v.value.value), [0, 8, 1, 1]);
+    const beforeNationalOnly = await text();
+    await go('official'); await page.locator('#surveyViewOfficialBtn').click();
+    assert.equal(await page.locator('#surveyWaveSelect').inputValue(), '', 'national-only navigation must not retain a school wave');
+    assert.equal(await text(), beforeNationalOnly);
+    await go('school');
+    assert.equal(await page.locator('#surveyWaveBuilder').getAttribute('open'), '');
+    await go('compare');
+    await page.locator('#surveyWaveSelect').selectOption(waveId);
+
+    const secondRef = refs.find(r => r.type === 'distribution' && r.ownership === 'public' && r.code === '2');
+    const partialWave = await newWave([ref.id, secondRef.id], '架空の一部再発行');
+    await page.locator('#surveyTemplateScope').selectOption('selected');
+    await page.locator('#surveyTemplateReference').selectOption(secondRef.id);
+    const partialFile = await issue();
+    const partialScope = await page.evaluate(async ({ bytes, id }) => {
+      const parsed = await window.GD_SURVEY_TEMPLATES.parseTemplate(new Uint8Array(bytes), data.surveys, id, { fileName: 'fictional-partial.xlsx', XLSX: window.XLSX });
+      return { ok: parsed.ok, instruments: parsed.payload?.results.map(r => r.instrumentId) };
+    }, { bytes: [...partialFile], id: partialWave });
+    assert.deepEqual(partialScope, { ok: true, instruments: [secondRef.instrumentId] });
+    await load(JSON.parse(await text()));
+    assert.equal(await page.locator('#surveyStepSchool').isVisible(), true, 'prepared school data reopen at Excel preparation');
+    await load(saved);
 
     const beforeStale = await text();
-    await page.locator('#surveyPreparation').evaluate(el => { el.open = true; });
+    await go('compare');
     await upload(filled);
     await page.waitForFunction(() => { const el = document.getElementById('surveySchoolPreview'); return !el.hidden && el.classList.contains('is-error'); });
     assert.equal(await text(), beforeStale);
@@ -165,7 +213,7 @@ module.exports = async (page, original) => {
     assert.equal(participants[0].grade, 3);
     const individual = await edit(await issue(), book => { const sheet = book.getWorksheet('個人入力'); assert.equal(sheet.rowCount, 2); sheet.getCell('I2').value = '1'; });
     await page.evaluate(id => { data.students.find(s => s.id === id).className = '1A'; markDirty(); renderAll(); }, mixed.students[0].id);
-    await page.locator('#surveyPreparation').evaluate(el => { el.open = true; });
+    await go('compare');
     await upload(individual); await ready();
     await page.locator('#surveySchoolApplyBtn').click();
     await page.waitForFunction(id => window.GD_SURVEY_STATE.getLatest(data.surveys, id).length === 1, personal);
@@ -187,10 +235,11 @@ module.exports = async (page, original) => {
     await page.locator('#surveyWaveSelect').selectOption('fictional-old-definition');
     const beforePinned = JSON.stringify(pinned.surveys.waves[0]);
     await addOfficial([files[1]], 2);
+    await go('compare');
     assert.equal(await page.locator('#surveyWaveSelect').inputValue(), 'fictional-old-definition');
     assert.equal(await page.locator(`#surveyReferenceSelect option[value="${unresolved.refId}"]`).count(), 1);
     assert.equal(await page.evaluate(() => JSON.stringify(data.surveys.waves[0])), beforePinned);
-    await page.locator('#surveyPreparation').evaluate(el => { el.open = true; });
+    await go('school');
     await page.locator('#surveyTemplateBtn').click();
     assert.match(await page.locator('#surveyStatus').textContent(), /元の版|確認する前の版/);
 
@@ -202,5 +251,8 @@ module.exports = async (page, original) => {
       assert.deepEqual(await empty.evaluate(() => [data.students.length, data.tests.length, data.scores.length]), [0, 0, 0]);
       assert.equal(await empty.evaluate(() => dirty && data.surveys.schemaVersion === 1), true);
     } finally { await empty.close(); }
-  } finally { await load(original); await page.locator('[data-tab="overview"]').click(); }
+  } finally {
+    await page.evaluate(() => { if (window.__surveyReadGate) { window.GD_SURVEY_TEMPLATES = window.__surveyReadGate.original; window.__surveyReadGate.release?.(); delete window.__surveyReadGate; } });
+    await load(original); await page.locator('[data-tab="overview"]').click();
+  }
 };

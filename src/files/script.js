@@ -4385,7 +4385,7 @@ function init() {
     },
     startAggregate: () => {
       if (data) return false;
-      const fresh = { version: 3, name: '全国・地域比較', students: [], tests: [], scores: [], metrics: [],
+      const fresh = { version: 3, name: '全国学力・学習状況調査', students: [], tests: [], scores: [], metrics: [],
         interventions: [], settings: { rti: { tier2: 60, tier3: 40 }, adminPinHash: null }, surveys: window.GD_SURVEY.empty() };
       if (!applyJsonText(JSON.stringify(fresh), 'survey-data.json', null)) return false;
       markDirty();
