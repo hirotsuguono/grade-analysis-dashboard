@@ -509,9 +509,23 @@
         <div class="survey-setup-grid">
           <section class="survey-step" aria-labelledby="surveyOfficialTitle">
             <h3 id="surveyOfficialTitle"><span class="survey-step-number">1</span> 比較する公式資料を開く</h3>
-            <p>国立教育政策研究所の対応するExcelを、そのまま選びます。複数の資料をまとめて読み込むほか、必要な資料を後から追加できます。</p>
-            <p class="survey-small">令和8年度・中学校の生徒質問、質問と教科のクロス集計、選択肢別平均に対応。地域や年度の異なる形式は、読取器で確認できたものだけを受け付けます。</p>
-            <button type="button" class="btn btn-primary" id="surveyOfficialOpenBtn">公式Excelを選ぶ</button>
+            <p>現在は、国立教育政策研究所の<strong>2026年度（令和8年度）・中学校の生徒質問調査（全国版）</strong>を中心に、下記の3ファイルに対応しています。都道府県別・他年度のExcelは未対応です。</p>
+            <div class="survey-download-guide">
+              <p><strong>回答割合を比べるなら、まずこの2つをダウンロード</strong></p>
+              <ol>
+                <li><a href="https://www.nier.go.jp/26chousakekkahoukoku/factsheet/data/26m_402.xlsx" target="_blank" rel="noopener noreferrer">生徒質問の回答集計（全国・公立） <span aria-hidden="true">↗</span></a><small>26m_402.xlsx — 質問ごとの回答人数・割合。</small></li>
+                <li><a href="https://www.nier.go.jp/26chousakekkahoukoku/factsheet/data/26m_424.xlsx" target="_blank" rel="noopener noreferrer">生徒質問と教科のクロス集計（全国・国公私立合計） <span aria-hidden="true">↗</span></a><small>26m_424.xlsx — 選択肢の文言を確認し、教科との関係も参照できます。</small></li>
+              </ol>
+              <p class="survey-small">リンクはオンライン・別タブで開きます。ダウンロードした2ファイルを、下のボタンからまとめて選んでください。Excelは加工せず、そのまま読み込みます。</p>
+              <details>
+                <summary>公式の掲載ページ・検索のヒント・追加資料</summary>
+                <p><a href="https://www.nier.go.jp/26chousakekkahoukoku/factsheet/middle.html" target="_blank" rel="noopener noreferrer">公式の調査結果資料（全国版／中学校） <span aria-hidden="true">↗</span></a>の「4. 質問調査の結果」に掲載されています。</p>
+                <p class="survey-small">検索のヒント：令和8年度 全国学力・学習状況調査 調査結果資料 全国版 中学校</p>
+                <p><a href="https://www.nier.go.jp/26chousakekkahoukoku/factsheet/data/26pm_427.xlsx" target="_blank" rel="noopener noreferrer">選択肢別平均正答率・平均IRTスコア［児童生徒質問］ <span aria-hidden="true">↗</span></a><small>26pm_427.xlsx（小・中学校共通）— 必要に応じて追加できます。この資料の結果は参考表示です。</small></p>
+              </details>
+            </div>
+            <p class="survey-small">必要な資料は後から追加できます。各資料の設置者区分・対象条件は、読み込み後の確認画面に表示します。</p>
+            <button type="button" class="btn btn-primary" id="surveyOfficialOpenBtn">ダウンロードしたExcelを選ぶ</button>
             <input type="file" id="surveyOfficialInput" accept=".xlsx" multiple hidden autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" translate="no">
             <div id="surveyOfficialPreview" class="survey-preview" hidden></div>
             <button type="button" class="btn btn-primary" id="surveyOfficialApplyBtn" hidden disabled>確認した資料を追加</button>

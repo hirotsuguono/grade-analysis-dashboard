@@ -23,6 +23,13 @@
 .survey-step h3 { font-size:16px; display:flex; align-items:center; gap:10px; }
 .survey-step-number { display:inline-grid; place-items:center; border:1px solid #a5b8d5; background:#eef4ff; color:#183f7b; width:28px; height:28px; border-radius:50%; flex:none; font-size:13px; }
 .survey-step p { margin:10px 0 14px; }
+.survey-download-guide { margin:12px 0 16px; padding:14px 16px; border-left:3px solid #a5b8d5; border-radius:6px; background:#f5f7fa; }
+.survey-download-guide > p:first-child { margin-top:0; }
+.survey-download-guide ol { margin:10px 0; padding-left:22px; }
+.survey-download-guide li + li { margin-top:12px; }
+.survey-download-guide a { color:var(--primary-dark); text-underline-offset:3px; overflow-wrap:anywhere; }
+.survey-download-guide small { display:block; margin-top:4px; color:var(--text-sub); font-size:12px; line-height:1.7; overflow-wrap:anywhere; }
+.survey-download-guide details { border-top:1px solid var(--border); padding-top:4px; }
 .survey-small { color:var(--text-sub); font-size:12px; line-height:1.7; }
 .survey-step details > summary { cursor:pointer; padding:8px 0; color:var(--primary-dark); font-weight:600; }
 .survey-form { display:grid; gap:14px; padding-top:10px; }
