@@ -109,7 +109,7 @@ test('issued workbooks have blank yellow school inputs and immutable gray defini
   const built = await templates.buildTemplate(surveys, 'wave-one', options('aggregateCount', ['ref-q1', 'ref-math', 'ref-q1-math']));
   assert.match(built.fileName, /学校調査_人数\.xlsx$/);
   const book = new ExcelJS.Workbook(); await book.xlsx.load(built.buffer);
-  assert.deepEqual(book.worksheets.map(s => s.name), ['書き方', '発行情報', '設問定義', '集計入力']);
+  assert.deepEqual(book.worksheets.map(s => s.name), ['集計入力', '書き方', '発行情報', '設問定義']);
   const sheet = book.getWorksheet(templates.names.aggregate);
   assert.equal(sheet.sheetProtection.sheet, true);
   for (const row of dataRows(sheet)) {

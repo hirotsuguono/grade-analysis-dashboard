@@ -41,19 +41,24 @@ module.exports = async (page, original) => {
   };
   const newWave = async (referenceIds, label, mode = 'count', scope = null) => {
     await go('school');
-    await page.locator('#surveyWaveBuilder').evaluate(el => { el.open = true; });
+    const choice = page.locator('[data-survey-input-kind="' + (mode === 'individual' ? 'individual' : 'aggregate') + '"]');
+    if (await choice.getAttribute('aria-expanded') !== 'true') await choice.click();
+    assert.equal(await choice.getAttribute('aria-expanded'), 'true');
     if (await page.locator('#surveyClearSelectionBtn').isEnabled()) await page.locator('#surveyClearSelectionBtn').click();
     for (const id of referenceIds) await page.locator(`#surveyWaveItems input[value="${id}"]`).check();
     await page.locator('#surveyWaveLabel').fill(label);
     await page.locator('#surveyWaveDate').fill('2026-05-20');
     await page.locator('#surveyAdministration').selectOption('official');
-    await page.locator('#surveyInputMode').selectOption(mode);
+    if (mode !== 'individual') await page.locator('#surveyAggregateMode').selectOption(mode);
     await page.locator('#surveyWaveOwnership').selectOption('public');
     if (scope) await page.locator('#surveyParticipantScope').selectOption(scope);
     const count = await page.evaluate(() => data.surveys.waves.length);
+    const event = page.waitForEvent('download');
     await page.locator('#surveyCreateWaveBtn').click();
+    const file = await readDownload(event);
     await page.waitForFunction(n => data.surveys.waves.length === n + 1, count);
-    return page.locator('#surveyWaveSelect').inputValue();
+    assert.equal(await page.locator('#surveyStepCompare').isVisible(), true);
+    return { id: await page.locator('#surveyWaveSelect').inputValue(), file };
   };
   const compareFields = async expected => {
     const actual = await page.evaluate(() => { const { surveys, ...rest } = data; return rest; });
@@ -95,8 +100,11 @@ module.exports = async (page, original) => {
     assert.equal(await page.locator('#surveyStepOfficial').isVisible(), true);
     await addOfficial([files[1]], 2);
     assert.match(await page.locator('#surveyStatus').textContent(), /版|補完|選択肢/);
+    assert.equal(await page.locator('#surveyWaveBuilder').isVisible(), false);
+    await page.locator('[data-survey-input-kind="aggregate"]').click();
     assert.equal(await page.locator(`#surveyWaveItems input[value="${unresolved.refId}"]`).count(), 0);
     assert.equal(await page.locator('#surveySelectedCount').textContent(), '0件選択');
+    await page.locator('[data-survey-input-kind="aggregate"]').click();
     assert.equal(await page.evaluate(id => JSON.stringify(data.surveys.references.find(r => r.id === id)), unresolved.refId), unresolved.ref);
     assert.equal(await page.evaluate(id => JSON.stringify(data.surveys.instruments.find(i => i.id === id)), unresolved.instrumentId), unresolved.item);
     await addOfficial([files[2]], 3);
@@ -110,8 +118,7 @@ module.exports = async (page, original) => {
     const ref = refs.find(r => r.type === 'distribution' && r.ownership === 'public' && r.code === '1');
     assert.ok(ref);
     assert.ok(refs.some(r => r.type === 'conditionalMean' && r.unit === 'unknown'));
-    const waveId = await newWave([ref.id], '架空の人数調査');
-    const blank = await issue();
+    const { id: waveId, file: blank } = await newWave([ref.id], '架空の人数調査');
     const filled = await edit(blank, book => {
       const sheet = book.getWorksheet('集計入力');
       for (let row = 2; row <= sheet.rowCount; row++) assert.ok(sheet.getCell(row, 6).value == null || sheet.getCell(row, 6).value === '');
@@ -169,12 +176,13 @@ module.exports = async (page, original) => {
     assert.equal(await page.locator('#surveyWaveSelect').inputValue(), '', 'national-only navigation must not retain a school wave');
     assert.equal(await text(), beforeNationalOnly);
     await go('school');
-    assert.equal(await page.locator('#surveyWaveBuilder').getAttribute('open'), '');
+    assert.equal(await page.locator('[data-survey-input-kind="individual"]').isVisible(), true);
     await go('compare');
     await page.locator('#surveyWaveSelect').selectOption(waveId);
 
     const secondRef = refs.find(r => r.type === 'distribution' && r.ownership === 'public' && r.code === '2');
-    const partialWave = await newWave([ref.id, secondRef.id], '架空の一部再発行');
+    const { id: partialWave } = await newWave([ref.id, secondRef.id], '架空の一部再発行');
+    await go('school');
     await page.locator('#surveyTemplateScope').selectOption('selected');
     await page.locator('#surveyTemplateReference').selectOption(secondRef.id);
     const partialFile = await issue();
@@ -207,11 +215,21 @@ module.exports = async (page, original) => {
     const mixed = structuredClone(saved);
     mixed.students[0].className = '3A'; mixed.students[1].className = '3B';
     await load(mixed);
-    const personal = await newWave([ref.id], '架空の固定対象', 'individual', 'class:3A');
+    const { id: personal, file: personalFile } = await newWave([ref.id], '架空の固定対象', 'individual', 'class:3A');
     const participants = await page.evaluate(id => data.surveys.waves.find(w => w.id === id).participants, personal);
     assert.deepEqual(participants.map(p => p.id), [mixed.students[0].id]);
     assert.equal(participants[0].grade, 3);
-    const individual = await edit(await issue(), book => { const sheet = book.getWorksheet('個人入力'); assert.equal(sheet.rowCount, 2); sheet.getCell('I2').value = '1'; });
+    const individual = await edit(personalFile, book => {
+      const sheet = book.getWorksheet('個人入力');
+      assert.equal(book.worksheets[0].name, '個人入力');
+      assert.equal(sheet.rowCount, 2);
+      assert.equal(sheet.getCell('A2').value, mixed.students[0].id);
+      assert.equal(sheet.getCell('B2').value, mixed.students[0].name);
+      assert.equal(sheet.getCell('D2').value, '3A');
+      assert.match(sheet.getCell('I2').dataValidation.prompt, /1：/);
+      assert.equal(sheet.getCell('I2').dataValidation.showInputMessage, true);
+      sheet.getCell('I2').value = '1';
+    });
     await page.evaluate(id => { data.students.find(s => s.id === id).className = '1A'; markDirty(); renderAll(); }, mixed.students[0].id);
     await go('compare');
     await upload(individual); await ready();
@@ -250,6 +268,11 @@ module.exports = async (page, original) => {
       assert.equal(await empty.locator('#panel-survey').isVisible(), true);
       assert.deepEqual(await empty.evaluate(() => [data.students.length, data.tests.length, data.scores.length]), [0, 0, 0]);
       assert.equal(await empty.evaluate(() => dirty && data.surveys.schemaVersion === 1), true);
+      await empty.locator('#surveyOfficialInput').setInputFiles(files.slice(0, 2));
+      await empty.locator('#surveyOfficialApplyBtn').click();
+      await empty.locator('[data-survey-input-kind="individual"]').click();
+      assert.match(await empty.locator('#surveyParticipantPreview').textContent(), /名簿入りのJSONを開く/);
+      assert.equal(await empty.locator('#surveyCreateWaveBtn').isDisabled(), true);
     } finally { await empty.close(); }
   } finally {
     await page.evaluate(() => { if (window.__surveyReadGate) { window.GD_SURVEY_TEMPLATES = window.__surveyReadGate.original; window.__surveyReadGate.release?.(); delete window.__surveyReadGate; } });

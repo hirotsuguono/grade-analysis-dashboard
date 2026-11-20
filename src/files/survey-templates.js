@@ -234,7 +234,9 @@
     manifest.integrity = await digest(stable(manifest));
     const specification = layout(ctx, manifest), book = new ExcelJS.Workbook(), instruments = new Map(ctx.instruments.map(i => [i.id, i]));
     book.creator = 'Grade Analysis Dashboard'; book.created = new Date(0); book.modified = new Date(0);
-    for (const spec of specification.sheets) {
+    const inputName = options.mode === 'individual' ? names.individual : names.aggregate;
+    const inputSheet = specification.sheets.find(spec => spec.name === inputName);
+    for (const spec of [inputSheet, ...specification.sheets.filter(spec => spec !== inputSheet)]) {
       const sheet = book.addWorksheet(spec.name, { views: [{ state: 'frozen', ySplit: 1 }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
       sheet.columns = spec.widths.map(width => ({ width }));
       for (const descriptor of spec.cells) {
@@ -256,7 +258,11 @@
         let rule = null;
         if (instrument?.scale.kind === 'response') {
           const codes = instrument.options.map(o => o.code);
-          if (codes.every(c => !/[",\r\n]/.test(c)) && codes.join(',').length <= 253) rule = { type: 'list', formulae: ['"' + codes.join(',') + '"'] };
+          if (codes.every(c => !/[",\r\n]/.test(c)) && codes.join(',').length <= 253) {
+            const choices = instrument.options.filter(option => option.responseStatus === 'answered').map(o => o.code + '：' + o.label).join('\n');
+            rule = { type: 'list', formulae: ['"' + codes.join(',') + '"'], showInputMessage: true, promptTitle: '回答番号を選ぶ',
+              prompt: choices && choices.length <= 240 ? choices : '「設問定義」シートで、番号に対応する選択肢を確認してください。' };
+          }
         } else if (instrument?.rawScoreMaximum) rule = { type: 'whole', operator: 'between', formulae: [0, instrument.rawScoreMaximum] };
         else if (field.kind === 'count') rule = { type: 'whole', operator: 'between', formulae: [0, 1000000000] };
         else if (field.kind === 'percent') rule = { type: 'decimal', operator: 'between', formulae: [0, 100] };

@@ -46,7 +46,12 @@
 .survey-download-guide details { border-top:1px solid var(--border); padding-top:4px; }
 .survey-small { color:var(--text-sub); font-size:12px; line-height:1.7; }
 .survey-step details > summary { cursor:pointer; padding:8px 0; color:var(--primary-dark); font-weight:600; }
-.survey-form { display:grid; gap:14px; padding-top:10px; }
+.survey-input-choices { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:16px 0; }
+.survey-input-choices .btn { display:grid; justify-items:start; gap:4px; width:100%; padding:13px 16px; text-align:left; white-space:normal; }
+.survey-input-choices .btn small { font-size:12px; color:var(--text-sub); }
+.survey-input-choices .btn[aria-expanded=true] { background:var(--primary-light); border-color:var(--primary); }
+#surveyWaveFields legend { font-size:15px; font-weight:700; padding:0; }
+.survey-form { display:grid; gap:14px; min-width:0; margin:0; border:0; padding:10px 0 0; }
 .survey-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 20px; }
 .survey-panel label { display:flex; flex-direction:column; gap:6px; min-width:0; font-size:13px; font-weight:600; color:var(--text); }
 .survey-panel input:not([type=checkbox]), .survey-panel select { width:100%; min-width:0; min-height:39px; padding:8px 10px; border:1px solid #a5b1c1; border-radius:6px; background:white; color:var(--text); font:inherit; font-size:13px; }
@@ -150,6 +155,7 @@
   .survey-question-sidebar { padding:16px; }
   .survey-step { padding:18px; }
   .survey-form-grid { grid-template-columns:1fr; }
+  .survey-input-choices { grid-template-columns:1fr; }
   .survey-workspace-toolbar > label { max-width:none; }
   .survey-workspace-toolbar > p { margin:0; }
   .survey-panel th, .survey-panel td { padding:9px; }
