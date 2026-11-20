@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright-core');
 const { pathToFileURL } = require('node:url');
+const { fixture: correlationFixture, noAxes } = require('./correlation-fixtures.cjs');
 const app = path.resolve(process.env.DASHBOARD_ROOT || path.join(__dirname, '..', 'src'));
 const output = path.resolve(process.env.QA_OUTPUT || path.join(__dirname, '..', 'test-results'));
 const baseline = false;
@@ -144,13 +145,12 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
           chi += (observed[i][j] - e) ** 2 / e;
         }
         const v = Math.sqrt(chi / (n * Math.min(observed.length - 1, observed[0].length - 1)));
-        assert.ok(result.includes('χ² = ' + chi.toFixed(2)));
-        assert.ok(result.includes('V = ' + v.toFixed(2)));
         assert.ok(smallExpected > observed.length * observed[0].length * 0.2);
-        assert.match(result, /人数の少ないマスが多いため、結果は参考程度/);
+        assert.match(result, /期待度数.*少なすぎます/);
+        assert.match(result, /カイ二乗検定の判定は表示しません/);
+        assert.doesNotMatch(result, /関連あり|統計的に確かな関連|χ² = |V = /);
         if (className === 'all') {
           assert.equal(n, 59);
-          assert.match(result, /関連あり（1%水準で有意）/);
           assert.ok(v > 0.45 && v < 0.75);
           await page.locator('#corrChiCard').screenshot({ path: path.join(output, `chi-${metric.id}.png`) });
         }
@@ -167,6 +167,29 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     assert.equal(await page.evaluate(() => metricById(ui.metricId).values[sortedStudents()[0].id]), 12);
     await page.locator('#deleteMetricBtn').click();
     check('相関・クロス集計・カイ二乗・指標追加入力削除');
+    const openAnalysis = value => page.evaluate(value =>
+      applyJsonText(JSON.stringify(value), 'synthetic-correlation.json', null), value);
+    assert.equal(await openAnalysis(correlationFixture([[1, 0], [0, 9]])), true);
+    assert.equal(await page.locator('#corrChiCard').isVisible(), true);
+    assert.deepEqual(await page.locator('#chiTableWrap tbody tr').evaluateAll(rows =>
+      rows.map(row => [...row.cells].map(cell => cell.textContent))), [['1', '1', '0', '1'], ['2', '0', '9', '9'], ['計', '1', '9', '10']]);
+    const sparseResult = await page.locator('#chiResult').textContent();
+    assert.match(sparseResult, /カイ二乗検定の判定は表示しません/);
+    assert.doesNotMatch(sparseResult, /関連あり|統計的に確かな関連|χ² = |V = /);
+    assert.equal(await openAnalysis(correlationFixture([[15, 1], [0, 16]])), true);
+    assert.equal(await page.locator('#corrOutlierCard').isVisible(), true);
+    assert.match(await page.locator('#corrOutliers').textContent(), /架空生徒fictional-16/);
+    assert.match(await page.locator('#chiResult').textContent(), /1%水準で有意/);
+    await tab('overview');
+    assert.equal(await openAnalysis(noAxes), true);
+    for (const id of ['corrBanner', 'corrOutliers', 'chiTableWrap', 'chiResult']) {
+      assert.equal(await page.locator('#' + id).textContent(), '');
+    }
+    await tab('metrics');
+    assert.equal(await page.locator('#corrOutlierCard').isVisible(), false);
+    assert.equal(await page.locator('#corrChiCard').isVisible(), false);
+    await reset();
+    check('期待度数が不足する場合は実人数のみ表示し、データを開き直すと相関表示を初期化する');
     await tab('rti');
     assert.equal(await page.locator('.rti-card').count(), await page.evaluate(() => data.students.filter(s => rtiRateFor(s.id).rate != null).length));
     await page.locator('.rti-card').first().click();
