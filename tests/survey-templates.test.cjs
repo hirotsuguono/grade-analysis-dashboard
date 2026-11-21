@@ -104,6 +104,31 @@ test('classic browser export and independent school template budgets are availab
   assert.equal(require(path.join(files, 'survey-import.js')).limits.sheets, 200);
 });
 
+test('individual workbooks label the requested entry types and accept the original fixed wording', async () => {
+  const surveys = fixture();
+  for (const [ref, heading] of [['ref-q1', '回答番号'], ['ref-math', '得点・正答数'], ['ref-q1-math', '回答番号・得点等']]) {
+    const built = await templates.buildTemplate(surveys, 'wave-one', options('individual', [ref]));
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(built.buffer);
+    assert.equal(book.getWorksheet(templates.names.individual).getCell('I1').value, heading);
+    assert.ok(book.getWorksheet(templates.names.help).getCell('B3').value.includes(heading));
+    assert.equal((await templates.parseTemplate(built.buffer, surveys, 'wave-one')).ok, true);
+  }
+
+  const built = await templates.buildTemplate(surveys, 'wave-one', options('individual'));
+  const legacy = await edit(built.buffer, book => {
+    const sheet = book.getWorksheet(templates.names.individual);
+    sheet.getCell('I1').value = '学校値';
+    for (const row of dataRows(sheet)) row.getCell(9).value = 1;
+    book.getWorksheet(templates.names.help).getCell('B3').value = '黄色い欄だけに学校値を入力します。灰色の定義・ID・対象者・入力方式は変更しません。';
+  });
+  const result = await templates.parseTemplate(legacy, surveys, 'wave-one');
+  assert.equal(result.ok, true, result.errors.join('\n'));
+  assert.equal(result.payload.results[0].values[0].value.value, 3);
+  const edited = await edit(legacy, book => { book.getWorksheet(templates.names.individual).getCell('I1').value = '改変された列名'; });
+  assertFailure(await templates.parseTemplate(edited, surveys, 'wave-one'), /変更|発行/);
+});
+
 test('issued workbooks have blank yellow school inputs and immutable gray definitions with fixed units', async () => {
   const surveys = fixture(true), original = JSON.stringify(surveys);
   const built = await templates.buildTemplate(surveys, 'wave-one', options('aggregateCount', ['ref-q1', 'ref-math', 'ref-q1-math']));

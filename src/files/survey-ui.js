@@ -386,7 +386,7 @@
     document.body.append(link); link.click(); link.remove(); root.setTimeout(() => URL.revokeObjectURL(url), 60000);
     waveModes.set(waveId, mode);
     issuedWaves.add(waveId); showStep('compare');
-    const sheet = mode === 'individual' ? '「個人入力」の黄色い「学校値」欄' : '「集計入力」の黄色い欄';
+    const sheet = mode === 'individual' ? '「個人入力」の黄色い欄' : '「集計入力」の黄色い欄';
     notify('自校用Excelを発行しました。' + sheet + 'に記入して保存し、「記入済みの自校用Excelを選ぶ」から読み込んでください。');
   }
   async function issueTemplate() {
@@ -426,7 +426,7 @@
       paragraph(preview, '調査回：' + wave.label + ' ／ ' + file.name);
       paragraph(preview, summaryText(plan.summary));
       paragraph(preview, '入力された数値 ' + (parsed.preview?.observedCount || 0) + '項目 ／ 空欄 ' + (parsed.preview?.blankCount || 0) + '項目 ／ 欠測状態 ' + (parsed.preview?.missingCount || 0) + '項目');
-      paragraph(preview, 'このExcelの入力対象範囲を反映します。対象範囲内で空欄にした学校値は未入力に戻ります。対象外の質問・教科は保持します。');
+      paragraph(preview, 'このExcelの入力対象範囲を反映します。対象範囲内で空欄にした項目は未入力に戻ります。対象外の質問・教科は保持します。');
       const before = root.GD_SURVEY_STATE.getLatest(surveys(), wave.id), changes = [];
       for (const value of parsed.payload.results || []) {
         const prior = before.find(item => item.instrumentId === value.instrumentId && item.type === value.type && item.subjectInstrumentId === value.subjectInstrumentId);

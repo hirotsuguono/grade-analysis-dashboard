@@ -172,10 +172,23 @@
     const sheets = [], make = (name, widths) => { const s = { name, widths, cells: [], inputs: [] }; sheets.push(s); return s; };
     const put = (s, row, col, value, input = false) => { s.cells.push({ row, col, value, input }); if (input) s.inputs.push({ row, col }); };
     const row = (s, r, values) => values.forEach((value, c) => put(s, r, c + 1, value));
+    const individual = manifest.mode === 'individual';
+    const oldHeading = '学校値';
+    const oldGuide = '黄色い欄だけに学校値を入力します。灰色の定義・ID・対象者・入力方式は変更しません。';
+    let valueHeading = oldHeading;
+    if (individual) {
+      if (ctx.instruments.every(item => item.scale.kind === 'response')) valueHeading = '回答番号';
+      else if (ctx.instruments.some(item => item.scale.kind === 'response')) valueHeading = '回答番号・得点等';
+      else valueHeading = '得点・正答数';
+    }
+    const entryGuide = individual
+      ? '「個人入力」シートで、生徒ごとの行の黄色い「' + valueHeading + '」欄に記入します。灰色の欄は変更しません。'
+      : oldGuide;
+    const legacyText = individual ? { [names.individual]: { I1: oldHeading }, [names.help]: { B3: oldGuide } } : {};
     const help = make(names.help, [29, 110]);
     [
       ['学校調査入力', ctx.wave.label], ['入力方式', { aggregateCount: '集計値・人数', aggregatePercent: '集計値・割合', individual: '個人別' }[manifest.mode]],
-      ['記入する場所', '黄色い欄だけに学校値を入力します。灰色の定義・ID・対象者・入力方式は変更しません。'],
+      ['記入する場所', entryGuide],
       ['空欄', '未入力として扱います。再取込では発行した範囲内の以前の値を空欄へ戻します。発行範囲外の値は保持します。'],
       ['無回答', '実際に無回答だった場合は、その選択肢コードを入力します。空欄を無回答へ置き換えません。'],
       ['欠測状態', '値を入力できない理由は欠測状態欄で選べます。数値と欠測状態を同時に入力できません。'],
@@ -203,9 +216,9 @@
         instrument.schoolAvailability === 'notReturned' ? '学校別には未提供' : instrument.schoolAvailability === 'returned' ? '学校へ提供' : '提供状況は出典を確認']);
     }
     let fields, results;
-    if (manifest.mode === 'individual') {
+    if (individual) {
       const sheet = make(names.individual, [25, 22, 10, 17, 14, 25, 70, 30, 20, 18]);
-      row(sheet, 1, ['対象者ID', '氏名（任意）', '学年', 'クラス', '出席番号', '設問・教科ID', '設問・教科', '入力単位', '学校値', '欠測状態']);
+      row(sheet, 1, ['対象者ID', '氏名（任意）', '学年', 'クラス', '出席番号', '設問・教科ID', '設問・教科', '入力単位', valueHeading, '欠測状態']);
       fields = [];
       for (const participant of ctx.wave.participants) for (const instrument of ctx.instruments) {
         const r = fields.length + 2;
@@ -225,7 +238,7 @@
     }
     const cells = sheets.reduce((n, s) => n + s.cells.length, 0);
     if (cells > limits.cells || sheets.some(s => s.cells.some(c => c.row > limits.rows || c.col > limits.columns))) throw new Error('学校用テンプレートの範囲が上限を超えます。質問・教科の選択を減らしてください。');
-    return { sheets, fields, results };
+    return { sheets, fields, results, valueHeading, legacyText };
   }
   async function buildTemplate(surveys, waveId, options = {}) {
     const { core, ExcelJS } = dependencies(options), ctx = context(surveys, waveId, options, core);
@@ -272,7 +285,7 @@
           if (Number.isFinite(scale?.minimum) && Number.isFinite(scale?.maximum)) rule = { type: scale.step === 1 ? 'whole' : 'decimal', operator: 'between', formulae: [scale.minimum, scale.maximum] };
         }
         if (rule) sheet.getCell(field.row, field.valueCol).dataValidation = { ...rule, allowBlank: true, showErrorMessage: true,
-          errorStyle: 'stop', errorTitle: '学校値', error: '表示した選択肢・単位・範囲に合わせて入力してください。' };
+          errorStyle: 'stop', errorTitle: specification.valueHeading, error: '表示した選択肢・単位・範囲に合わせて入力してください。' };
       }
       await sheet.protect(undefined, { selectLockedCells: true, selectUnlockedCells: true, formatColumns: true, formatRows: true });
     }
@@ -329,7 +342,9 @@
       for (const cell of expected.cells) {
         const address = X.utils.encode_cell({ r: cell.row - 1, c: cell.col - 1 }); addresses.add(address);
         const found = cellValue(actual, cell.row, cell.col, X);
-        if (!cell.input && !(cell.value === '' ? blank(found) : found === cell.value)) issues.push(issue(expected.name, cell.row, address, '発行時の定義・対象者・項目が変更されています。画面から再発行してください。'));
+        const legacy = spec.legacyText[expected.name]?.[address];
+        const matches = cell.value === '' ? blank(found) : found === cell.value || (legacy !== undefined && found === legacy);
+        if (!cell.input && !matches) issues.push(issue(expected.name, cell.row, address, '発行時の定義・対象者・項目が変更されています。画面から再発行してください。'));
       }
       for (const address of Object.keys(actual)) if (address[0] !== '!' && !addresses.has(address) && !blank(actual[address]?.v)) issues.push(issue(expected.name, X.utils.decode_cell(address).r + 1, address, '発行範囲外に値があります。'));
     }
@@ -379,7 +394,7 @@
   }
   function responseCell(value, statusValue, instrument) {
     const status = readStatus(statusValue), base = { instrumentId: instrument.id, value: null, status: status || 'unentered' };
-    if (status && !blank(value)) throw new Error('学校値と欠測状態を同時に入力できません。');
+    if (status && !blank(value)) throw new Error('回答・得点と欠測状態を同時に入力できません。');
     if (status || blank(value)) return base;
     if (instrument.scale.kind === 'response') {
       if (typeof value !== 'string' && !(typeof value === 'number' && Number.isFinite(value))) throw new Error('回答は選択肢コードで入力してください。');
@@ -440,7 +455,7 @@
           preview[cell.status === 'observed' ? 'observedCount' : cell.status === 'unentered' ? 'blankCount' : 'missingCount']++;
           if (manifest.mode === 'individual') byParticipant.get(field.participantId).values.push(cell);
           else assign(spec.results[field.resultIndex], field.path, cell);
-        } catch (error) { issues.push(issue(sheetName, field.row, '学校値・欠測状態', error.message)); }
+        } catch (error) { issues.push(issue(sheetName, field.row, spec.valueHeading + '・欠測状態', error.message)); }
       }
       if (issues.length) return failed(issues);
       if (manifest.mode === 'individual') {

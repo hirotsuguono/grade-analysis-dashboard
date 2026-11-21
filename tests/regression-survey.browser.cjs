@@ -222,6 +222,7 @@ module.exports = async (page, original) => {
     const individual = await edit(personalFile, book => {
       const sheet = book.getWorksheet('個人入力');
       assert.equal(book.worksheets[0].name, '個人入力');
+      assert.equal(sheet.getCell('I1').value, '回答番号');
       assert.equal(sheet.rowCount, 2);
       assert.equal(sheet.getCell('A2').value, mixed.students[0].id);
       assert.equal(sheet.getCell('B2').value, mixed.students[0].name);
