@@ -14,6 +14,15 @@ module.exports = async (page, original) => {
     await page.locator('[data-tab="survey"]').click();
   };
   const go = step => page.locator('.survey-workflow [data-survey-go="' + step + '"]').click();
+  const expand = async selector => {
+    const details = page.locator(selector);
+    if (!await details.evaluate(el => el.open)) await details.locator('summary').first().click();
+  };
+  const drop = (target, files) => target.evaluate((node, inputs) => {
+    const transfer = new DataTransfer();
+    for (const input of inputs) transfer.items.add(new File([Uint8Array.from(input.bytes)], input.name));
+    node.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  }, files.map(file => ({ name: file.name, bytes: [...file.buffer] })));
   const text = () => page.evaluate(() => JSON.stringify(data));
   const latest = waveId => page.evaluate(id => window.GD_SURVEY_STATE.getLatest(data.surveys, id), waveId);
   const readDownload = async event => {
@@ -23,6 +32,7 @@ module.exports = async (page, original) => {
   };
   const issue = async () => {
     await go('school');
+    await expand('#surveyTemplateCard');
     const event = page.waitForEvent('download');
     await page.locator('#surveyTemplateBtn').click();
     return readDownload(event);
@@ -42,10 +52,10 @@ module.exports = async (page, original) => {
   const newWave = async (referenceIds, label, mode = 'count', scope = null) => {
     await go('school');
     const choice = page.locator('[data-survey-input-kind="' + (mode === 'individual' ? 'individual' : 'aggregate') + '"]');
-    if (await choice.getAttribute('aria-expanded') !== 'true') await choice.click();
-    assert.equal(await choice.getAttribute('aria-expanded'), 'true');
     if (await page.locator('#surveyClearSelectionBtn').isEnabled()) await page.locator('#surveyClearSelectionBtn').click();
     for (const id of referenceIds) await page.locator(`#surveyWaveItems input[value="${id}"]`).check();
+    await choice.check();
+    await expand('#surveyWaveSettings');
     await page.locator('#surveyWaveLabel').fill(label);
     await page.locator('#surveyWaveDate').fill('2026-05-20');
     await page.locator('#surveyAdministration').selectOption('official');
@@ -100,11 +110,11 @@ module.exports = async (page, original) => {
     assert.equal(await page.locator('#surveyStepOfficial').isVisible(), true);
     await addOfficial([files[1]], 2);
     assert.match(await page.locator('#surveyStatus').textContent(), /版|補完|選択肢/);
-    assert.equal(await page.locator('#surveyWaveBuilder').isVisible(), false);
-    await page.locator('[data-survey-input-kind="aggregate"]').click();
+    assert.equal(await page.locator('#surveyWaveBuilder').isVisible(), true);
+    assert.equal(await page.locator('#surveyWaveSearch').isVisible(), true);
+    assert.equal(await page.locator('#surveyAdministration').inputValue(), 'local');
     assert.equal(await page.locator(`#surveyWaveItems input[value="${unresolved.refId}"]`).count(), 0);
     assert.equal(await page.locator('#surveySelectedCount').textContent(), '0件選択');
-    await page.locator('[data-survey-input-kind="aggregate"]').click();
     assert.equal(await page.evaluate(id => JSON.stringify(data.surveys.references.find(r => r.id === id)), unresolved.refId), unresolved.ref);
     assert.equal(await page.evaluate(id => JSON.stringify(data.surveys.instruments.find(i => i.id === id)), unresolved.instrumentId), unresolved.item);
     await addOfficial([files[2]], 3);
@@ -183,6 +193,7 @@ module.exports = async (page, original) => {
     const secondRef = refs.find(r => r.type === 'distribution' && r.ownership === 'public' && r.code === '2');
     const { id: partialWave } = await newWave([ref.id, secondRef.id], '架空の一部再発行');
     await go('school');
+    await expand('#surveyTemplateCard');
     await page.locator('#surveyTemplateScope').selectOption('selected');
     await page.locator('#surveyTemplateReference').selectOption(secondRef.id);
     const partialFile = await issue();
@@ -192,7 +203,13 @@ module.exports = async (page, original) => {
     }, { bytes: [...partialFile], id: partialWave });
     assert.deepEqual(partialScope, { ok: true, instruments: [secondRef.instrumentId] });
     await load(JSON.parse(await text()));
-    assert.equal(await page.locator('#surveyStepSchool').isVisible(), true, 'prepared school data reopen at Excel preparation');
+    assert.equal(await page.locator('#surveySchoolOpenBtn').isVisible(), true, 'a saved, issued workbook reopens at the return slot');
+    assert.equal(await page.locator('#surveyComparisonWorkspace').isVisible(), false);
+    await page.locator('#surveyNationalPreviewBtn').click();
+    await page.locator('#surveyQuestionSearch').fill('架空の一致しない検索語');
+    await upload(partialFile); await ready();
+    await page.locator('#surveySchoolApplyBtn').click();
+    assert.equal(await page.locator('#surveyReferenceSelect').inputValue(), secondRef.id, 'show the item returned by the partial workbook');
     await load(saved);
 
     const beforeStale = await text();
@@ -256,9 +273,13 @@ module.exports = async (page, original) => {
     await addOfficial([files[1]], 2);
     await go('compare');
     assert.equal(await page.locator('#surveyWaveSelect').inputValue(), 'fictional-old-definition');
+    assert.equal(await page.locator('#surveyComparisonWorkspace').isVisible(), false);
+    await page.locator('#surveyNationalPreviewBtn').click();
+    assert.equal(await page.locator('#surveyComparisonWorkspace').isVisible(), true);
     assert.equal(await page.locator(`#surveyReferenceSelect option[value="${unresolved.refId}"]`).count(), 1);
     assert.equal(await page.evaluate(() => JSON.stringify(data.surveys.waves[0])), beforePinned);
     await go('school');
+    await expand('#surveyTemplateCard');
     await page.locator('#surveyTemplateBtn').click();
     assert.match(await page.locator('#surveyStatus').textContent(), /元の版|確認する前の版/);
 
@@ -269,11 +290,45 @@ module.exports = async (page, original) => {
       assert.equal(await empty.locator('#panel-survey').isVisible(), true);
       assert.deepEqual(await empty.evaluate(() => [data.students.length, data.tests.length, data.scores.length]), [0, 0, 0]);
       assert.equal(await empty.evaluate(() => dirty && data.surveys.schemaVersion === 1), true);
-      await empty.locator('#surveyOfficialInput').setInputFiles(files.slice(0, 2));
+      const pristine = await empty.evaluate(() => JSON.stringify(data));
+      await drop(empty.locator('#surveyOfficialOpenBtn'), [files[1]]);
+      await empty.locator('[data-survey-reader="nier-2026-cross"].is-ready').waitFor();
+      assert.match(await empty.locator('#surveyOfficialPickerLabel').innerText(), /全国の回答割合/);
+      await drop(empty.locator('#surveyOfficialOpenBtn'), [{ name: 'fictional-bad.xlsx', buffer: Buffer.from('invalid') }]);
+      await empty.waitForFunction(() => document.getElementById('surveyStatus').classList.contains('is-error'));
+      assert.equal(await empty.locator('#surveyOfficialApplyBtn').isEnabled(), true, 'a bad addition preserves the previous verified file');
+      await empty.locator('#surveyOfficialInput').setInputFiles(files[0]);
+      await empty.locator('[data-survey-reader="nier-2026-distribution"].is-ready').waitFor();
+      assert.equal(await empty.evaluate(() => JSON.stringify(data)), pristine);
       await empty.locator('#surveyOfficialApplyBtn').click();
-      await empty.locator('[data-survey-input-kind="individual"]').click();
+      await empty.locator('#surveyWaveItems input').first().check();
+      await empty.locator('#surveyWaveSearch').fill('架空の一致しない検索語');
+      assert.equal(await empty.locator('#surveyWaveItems input').count(), 0);
+      await empty.locator('#surveyWaveSearch').fill('');
+      assert.equal(await empty.locator('#surveyWaveItems input:checked').count(), 1);
+      assert.equal(await empty.locator('#surveyWaveSelect').isVisible(), false);
+      assert.equal(await empty.locator('[data-survey-input-kind="aggregate"]').isChecked(), true);
+      assert.equal(await empty.locator('#surveyWaveSettings').evaluate(el => el.open), false);
+      await empty.locator('[data-survey-input-kind="individual"]').check();
       assert.match(await empty.locator('#surveyParticipantPreview').textContent(), /名簿入りのJSONを開く/);
       assert.equal(await empty.locator('#surveyCreateWaveBtn').isDisabled(), true);
+      await empty.locator('[data-survey-input-kind="aggregate"]').check();
+      assert.equal(await empty.locator('#surveyWaveItems input:checked').count(), 1);
+      await empty.locator('#surveyWaveDate').fill('2026-05-21');
+      const issued = empty.waitForEvent('download');
+      await empty.locator('#surveyCreateWaveBtn').click();
+      const blankLocal = await readDownload(issued);
+      const schoolFile = await edit(blankLocal, book => {
+        const sheet = book.getWorksheet('集計入力');
+        [10, 0, 8, 1, 1].forEach((count, i) => { sheet.getCell(i + 2, 6).value = count; });
+      });
+      assert.equal(await empty.locator('#surveyComparisonWorkspace').isVisible(), false);
+      await drop(empty.locator('#surveySchoolOpenBtn'), [{name: 'fictional-local.xlsx', buffer: schoolFile}]);
+      await empty.locator('#surveySchoolApplyBtn').click();
+      await empty.locator('#surveyChart').waitFor();
+      assert.equal(await empty.locator('#surveySchoolImport').evaluate(el => el.open), false);
+      assert.match(await empty.locator('#surveyComparisonDecision').textContent(), /独自実施/);
+      assert.match(await empty.locator('#surveyTable').textContent(), /80%/);
     } finally { await empty.close(); }
   } finally {
     await page.evaluate(() => { if (window.__surveyReadGate) { window.GD_SURVEY_TEMPLATES = window.__surveyReadGate.original; window.__surveyReadGate.release?.(); delete window.__surveyReadGate; } });

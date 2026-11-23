@@ -16,8 +16,6 @@
   let officialPending = null, schoolPending = null, undoToken = null, waveId = '', groupKey = '', referenceId = '';
   let selectedReferences = new Set(), waveModes = new Map(), instance = null, ready = false;
   let workflowStep = 'official', participantGrade = null;
-  let newInputKind = '';
-  let issuedWaves = new Set();
   const templateModes = { count: 'aggregateCount', percent: 'aggregatePercent', individual: 'individual' };
 
   function element(tag, text, className) {
@@ -37,6 +35,9 @@
   const stamp = () => new Date().toISOString();
   const freshId = prefix => prefix + '-' + (root.crypto?.randomUUID?.() || Date.now() + '-' + Math.random().toString(16).slice(2));
   const usable = (data, ref) => instrument(data, ref.instrumentId)?.definitionStatus !== 'codesOnly';
+  function hasPublicQuestions(data) {
+    return root.GD_SURVEY_STATE.getAvailableReferences(data).some(ref => ref.ownership === 'public' && ref.type === 'distribution' && usable(data, ref));
+  }
   const benchmarkKey = (data, ref) => {
     const item = instrument(data, ref.instrumentId);
     return JSON.stringify([item.year, item.schoolLevel, item.grade, item.respondent, ref.geography.level, ref.geography.code, ref.geography.label, ref.ownership]);
@@ -59,19 +60,49 @@
     document.querySelectorAll('[data-survey-go]').forEach(button => {
       button.disabled = !ready || !canVisit(button.dataset.surveyGo, available);
       if (button.closest('.survey-workflow')) {
+        const step = button.dataset.surveyGo;
+        const done = step !== workflowStep && (step === 'official' && complete || step === 'school' && !!wave);
+        button.classList.toggle('is-complete', done);
+        const marker = button.querySelector('.survey-step-number');
+        marker.setAttribute('aria-hidden', 'true');
+        marker.textContent = done ? '✓' : { official: '1', school: '2', compare: '3' }[step];
         if (button.dataset.surveyGo === workflowStep) button.setAttribute('aria-current', 'step');
         else button.removeAttribute('aria-current');
       }
     });
-    byId('surveyToCompareBtn').disabled = !wave;
-    byId('surveyProgressOfficial').textContent = complete ? '公式データ取込済み' : data.references.length ? '選択肢の資料を追加' : '公式Excelを取り込む';
-    byId('surveyProgressSchool').textContent = issuedWaves.has(waveId) ? 'Excel発行済み・記入する' : wave ? '発行・再発行できます' : '質問を選び、発行する';
-    byId('surveyProgressCompare').textContent = wave?.results.length ? '自校の結果を表示' : '記入済みExcelを取り込む';
-    byId('surveyOfficialSummary').textContent = complete ? '公式データを取り込みました。②で比較したい質問を選び、自校用Excelを準備できます。'
-      : data.references.length ? '選択肢の文言を確認する資料が必要です。上の「生徒質問と教科のクロス集計」も取り込んでください。' : '';
-    byId('surveySavedContext').hidden = !data.waves.length && !undoToken;
-    byId('surveyImportHelp').textContent = wave ? '対象：' + wave.label + '。②で発行・記入したExcelを選び、変更内容を確認して反映します。'
-      : '全国の数値だけを表示しています。自校の結果も比べる場合は、②で自校用Excelを準備してください。';
+    renderOfficialControls(complete);
+    byId('surveySavedContext').hidden = !data.waves.length && (!undoToken || workflowStep !== 'official');
+    byId('surveyWaveSelect').closest('label').hidden = !data.waves.length;
+    byId('surveyWaveContext').hidden = !data.waves.length;
+    byId('surveyImportTitle').textContent = !wave ? '全国の結果' : wave.results.length ? '自校と全国の結果' : '記入したExcelを読み込む';
+    const waiting = !!wave && !wave.results.length;
+    const schoolImport = byId('surveySchoolImport'), nationalPreview = byId('surveyNationalPreviewBtn');
+    schoolImport.hidden = !wave;
+    schoolImport.querySelector('summary').hidden = waiting;
+    if (waiting) schoolImport.open = true;
+    else nationalPreview.setAttribute('aria-expanded', 'false');
+    nationalPreview.hidden = !waiting;
+    const previewOpen = nationalPreview.getAttribute('aria-expanded') === 'true';
+    nationalPreview.textContent = previewOpen ? '全国値を閉じる' : '選んだ質問の全国値を見る';
+    byId('surveyComparisonWorkspace').hidden = !data.references.length || (waiting && !previewOpen);
+  }
+  function renderOfficialControls(complete) {
+    const data = surveys(), savedReaders = new Set(data.sources.map(s => s.reader?.id));
+    const pendingReaders = new Set(officialPending?.files.map(entry => entry.reader) || []);
+    const cards = document.querySelectorAll('[data-survey-reader]');
+    for (const card of cards) {
+      const reader = card.dataset.surveyReader;
+      const status = pendingReaders.has(reader) ? '読み取り済み' : savedReaders.has(reader) ? '追加済み' : '';
+      card.classList.toggle('is-ready', !!status);
+      card.querySelector('.survey-file-action').textContent = status ? '✓ ' + status : 'ダウンロード ↗';
+    }
+    const missing = [...cards].filter(card => !card.classList.contains('is-ready'));
+    byId('surveyOfficialPickerLabel').textContent = missing.length === 1 ? missing[0].querySelector('strong').textContent + 'のExcelを選ぶ' : '公式Excelを選ぶ';
+    byId('surveyOfficialClearBtn').hidden = !officialPending;
+    byId('surveyToSchoolBtn').hidden = !complete || !!officialPending;
+    byId('surveyViewOfficialBtn').hidden = !data.references.length || !!officialPending;
+    byId('surveyOfficialApplyBtn').textContent = missing.length ? '選択した資料を追加' : 'この資料で質問を選ぶ →';
+    return missing.length === 0;
   }
   const numeric = value => typeof value === 'number' && Number.isFinite(value);
   function number(value, signed) {
@@ -90,10 +121,6 @@
   function labelForReference(data, ref) {
     const item = instrument(data, ref.instrumentId), subject = instrument(data, ref.subjectInstrumentId);
     return [item?.code, item?.text, subject ? subject.text : null, display(ref.type), ref.geography.label, display(ref.ownership)].filter(Boolean).join(' ／ ');
-  }
-  function shortContext(data, ref) {
-    const item = instrument(data, ref.instrumentId);
-    return [(item?.year ? item.year + '年度' : '年度未確認'), display(item?.schoolLevel), ref.geography.label, display(ref.ownership), display(ref.type)].join(' ／ ');
   }
   function dataTable(parent, headers, rows, caption) {
     const table = element('table');
@@ -132,6 +159,7 @@
     request++;
     byId('surveyWaveFields').disabled = false;
     officialPending = null; schoolPending = null;
+    byId('surveyOfficialClearBtn').hidden = true;
     for (const prefix of ['Official', 'School']) {
       byId('survey' + prefix + 'Preview').replaceChildren();
       byId('survey' + prefix + 'Preview').hidden = true;
@@ -152,12 +180,18 @@
     knownToken = token; knownRole = role; knownData = data;
     clearPreviews();
     if (switched) {
-      undoToken = null; selectedReferences = new Set(); waveModes = new Map(); issuedWaves = new Set(); groupKey = ''; referenceId = ''; participantGrade = null; newInputKind = '';
+      undoToken = null; selectedReferences = new Set(); waveModes = new Map(); groupKey = ''; referenceId = ''; participantGrade = null;
       waveId = data?.surveys?.waves?.at(-1)?.id || '';
       const wave = data?.surveys?.waves?.at(-1);
-      workflowStep = wave?.results?.length ? 'compare' : wave || ready && canVisit('school') ? 'school' : 'official';
+      workflowStep = wave ? 'compare' : ready && hasPublicQuestions(surveys()) ? 'school' : 'official';
+      byId('surveyNationalPreviewBtn').setAttribute('aria-expanded', 'false');
+      byId('surveySchoolImport').open = !!wave && !wave.results.length;
+      byId('surveyWaveSettings').open = byId('surveyReferenceOptions').open = byId('surveyTemplateCard').open = false;
       byId('surveyWaveLabel').value = ''; byId('surveyWaveDate').value = '';
       byId('surveyWaveSchoolLabel').value = '自校'; byId('surveyWaveOwnership').value = 'public';
+      byId('surveyAdministration').value = 'local';
+      const inputKind = (data?.students || []).some(s => s.enrollmentStatus !== 'graduated') ? 'individual' : 'aggregate';
+      document.querySelector('[data-survey-input-kind="' + inputKind + '"]').checked = true;
       byId('surveyParticipantScope').replaceChildren();
       byId('surveyWaveSearch').value = ''; byId('surveyQuestionSearch').value = '';
       byId('surveyTypeFilter').value = 'all'; byId('surveySchoolLabel').value = '自校';
@@ -189,48 +223,57 @@
     return '追加 ' + (summary.added || 0) + '件 ／ 更新 ' + (summary.updated || 0) + '件 ／ 変更なし ' + (summary.unchanged || 0) + '件';
   }
   async function readOfficial(files) {
-    if (!ready || workflowStep !== 'official' || !host.getData() || !files.length) return;
-    clearPreviews(); const ticket = capture();
-    byId('surveyOfficialOpenBtn').disabled = true; notify('公式Excelを読み取り、年度・対象・表の内容を確認しています…');
+    if (!ready || workflowStep !== 'official' || !host.getData() || !files.length || byId('surveyOfficialOpenBtn').disabled) return;
+    const previous = officialPending, ticket = capture(), open = byId('surveyOfficialOpenBtn'), apply = byId('surveyOfficialApplyBtn');
+    open.disabled = apply.disabled = true;
+    notify('公式Excelを読み取っています…');
     try {
-      const parsed = await root.GD_SURVEY_IMPORT.parseOfficialFiles(files, { XLSX: root.XLSX, importedAt: stamp() });
+      const options = { XLSX: root.XLSX, importedAt: stamp() };
+      let parsed = await root.GD_SURVEY_IMPORT.parseOfficialFiles(files, options);
+      if (!stillCurrent(ticket)) return;
+      const incoming = parsed.candidate.sources.map((item, i) => ({ reader: item.reader.id, file: files[i] }));
+      const retained = (previous?.files || []).filter(entry => !incoming.some(next => next.reader === entry.reader));
+      const batch = retained.concat(incoming);
+      if (retained.length) parsed = await root.GD_SURVEY_IMPORT.parseOfficialFiles(batch.map(entry => entry.file), options);
       if (!stillCurrent(ticket)) return;
       const plan = root.GD_SURVEY_STATE.prepareReferences(surveys(), parsed.candidate);
-      const preview = byId('surveyOfficialPreview'); preview.replaceChildren(); preview.hidden = false; preview.classList.remove('is-error');
-      preview.append(element('h4', '読み取った資料を確認してください'));
-      paragraph(preview, summaryText(plan.summary));
-      if (plan.summary.promoted) paragraph(preview, '追加分のうち' + plan.summary.promoted + '件は、選択肢の文言を確認した新しい版です。作成済みの調査回は、元の版を使い続けます。');
+      const preview = byId('surveyOfficialPreview');
+      const details = element('details');
+      details.append(element('summary', '読み取った資料（' + batch.length + '件）'));
       const wrap = element('div', undefined, 'table-wrap');
-      dataTable(wrap, ['ファイル・資料', '年度・学校段階', '地域・設置者', '読み取った表'], parsed.candidate.sources.map(item => {
+      dataTable(wrap, ['ファイル', '対象', '表'], parsed.candidate.sources.map(item => {
         const refs = parsed.candidate.references.filter(ref => ref.sourceId === item.id);
-        return [item.fileName || item.title,
-          [...new Set(refs.map(ref => { const def = instrument(parsed.candidate, ref.instrumentId); return (def?.year || '未確認') + '年度・' + display(def?.schoolLevel); }))].join('、'),
-          [...new Set(refs.map(ref => ref.geography.label + '・' + display(ref.ownership)))].join('、'),
-          [...new Set(refs.map(ref => display(ref.type)))].join('、') + '（' + refs.length + '件）'];
+        const targets = refs.map(ref => {
+          const definition = instrument(parsed.candidate, ref.instrumentId);
+          return definition.year + '年度・' + display(definition.schoolLevel) + '・' + ref.geography.label + '・' + display(ref.ownership);
+        });
+        return [item.fileName || item.title, [...new Set(targets)].join('、'), refs.length + '件'];
       }));
-      preview.append(wrap); messages(preview, parsed.warnings.map(warning => warning.code === 'codesOnly'
-        ? { ...warning, message: '回答結果集計のExcelには、選択肢の文言が掲載されていません。取込済みの対応資料も含めて定義を確認します。文言を確認できない質問が残る場合は、同年度のクロス集計または選択肢別平均の公式Excelを追加してください。' }
-        : warning));
-      const details = element('details'); details.append(element('summary', '利用できる質問・教科を確認（' + parsed.candidate.references.length + '件）'));
-      const items = element('div', undefined, 'table-wrap');
-      dataTable(items, ['質問・教科', '表の種類', '対象'], parsed.candidate.references.map(ref => [instrument(parsed.candidate, ref.instrumentId)?.text || ref.instrumentId, display(ref.type), ref.geography.label + '・' + display(ref.ownership)]));
-      details.append(items); preview.append(details);
-      officialPending = { ticket, plan };
-      byId('surveyOfficialApplyBtn').hidden = false; byId('surveyOfficialApplyBtn').disabled = false;
-      notify('資料はまだ追加していません。対象と注意事項を確認してから反映してください。');
+      details.append(wrap);
+      messages(details, parsed.warnings);
+      preview.replaceChildren(details); preview.hidden = false; preview.classList.remove('is-error');
+      officialPending = { ticket, plan, files: batch };
+      apply.hidden = false; apply.disabled = false;
+      notify('');
+      if (renderOfficialControls()) apply.focus();
     } catch (error) {
       if (!stillCurrent(ticket)) return;
-      previewError(byId('surveyOfficialPreview'), error); notify('公式Excelを追加できませんでした。作業中のデータは保持しています。', true);
-    } finally { if (stillCurrent(ticket)) byId('surveyOfficialOpenBtn').disabled = false; }
+      if (previous) {
+        officialPending = { ...previous, ticket };
+        apply.disabled = false;
+        notify('追加できませんでした。' + error.message + ' 先に選んだ資料は読み取り済みです。', true);
+      } else {
+        previewError(byId('surveyOfficialPreview'), error); notify('公式Excelを追加できませんでした。', true);
+      }
+    } finally { if (stillCurrent(ticket)) open.disabled = false; }
   }
   function applyOfficial() {
-    if (!officialPending || !stillCurrent(officialPending.ticket)) { clearPreviews(); notify('表示が切り替わったため、公式Excelを選び直してください。', true); return; }
+    if (!officialPending || !stillCurrent(officialPending.ticket)) { clearPreviews(); render(); notify('公式Excelを選び直してください。', true); return; }
     try {
       const result = root.GD_SURVEY_STATE.apply(surveys(), officialPending.plan);
-      const promoted = result.summary.promoted || 0;
       commit(result.surveys, result.undo);
-      if (canVisit('school')) showStep('school');
-      notify('公式資料を追加しました。' + (promoted ? '選択肢を確認した新しい版' + promoted + '件を、新しい調査回の候補に表示しています。' : '') + '学校用Excelを作る場合は、使う質問・教科と実施日を選んでください。');
+      if (hasPublicQuestions(surveys())) showStep('school');
+      notify('公式資料を追加しました。' + (result.summary.promoted ? '選択肢の文言を補いました。' : ''));
     } catch (error) { notify(error.message, true); }
   }
   function renderWaveGroups(available) {
@@ -261,21 +304,22 @@
     const availableIds = new Set(available.filter(ref => usable(data, ref)).map(ref => ref.id));
     selectedReferences = new Set([...selectedReferences].filter(id => availableIds.has(id)));
     const refs = filteredWaveReferences(available);
+    const purpose = byId('surveyWavePurpose');
+    byId('surveyReferenceSummary').textContent = (byId('surveyBenchmarkGroup').selectedOptions[0]?.textContent || '比較先') + ' ・ ' + (purpose.selectedOptions[0]?.textContent || '表示する項目');
     refs.forEach(ref => {
       const item = instrument(data, ref.instrumentId), label = element('label'), check = element('input'); check.type = 'checkbox';
       check.value = ref.id; check.checked = selectedReferences.has(ref.id);
       check.disabled = !usable(data, ref);
       for (const [key, value] of [['autocomplete', 'off'], ['spellcheck', 'false'], ['translate', 'no']]) check.setAttribute(key, value);
       const text = element('span', (item?.code ? item.code + '　' : '') + (item?.text || '質問・教科'));
-      text.append(element('small', shortContext(data, ref) + (ref.subjectInstrumentId ? ' ／ ' + instrument(data, ref.subjectInstrumentId)?.text : '')));
-      if (item?.schoolAvailability === 'notReturned') text.append(element('small', '学校への返却対象外。公式実施の学校値は「未提供」で扱います。'));
+      if (ref.subjectInstrumentId || purpose.value === 'all') text.append(element('small', [display(ref.type), instrument(data, ref.subjectInstrumentId)?.text].filter(Boolean).join(' ／ ')));
+      if (item?.schoolAvailability === 'notReturned' && byId('surveyAdministration').value === 'official') text.append(element('small', '公式実施では学校への返却対象外です。'));
       if (check.disabled) text.append(element('small', '選択肢を未確認です。①で対応する公式資料を追加してください。'));
       label.append(check, text); list.append(label);
       check.addEventListener('change', () => { if (check.checked) selectedReferences.add(ref.id); else selectedReferences.delete(ref.id); updateSelectionCount(); });
     });
     if (!refs.length) paragraph(list, data.references.length ? '条件に合う質問・教科はありません。' : '公式資料を追加すると、ここから選べます。', 'survey-small');
     byId('surveySelectVisibleBtn').disabled = !refs.some(ref => usable(data, ref));
-    byId('surveyWaveAvailability').textContent = 'この一覧から比較したい質問を選びます。' + (available.some(ref => !usable(data, ref)) ? '選択肢が未確認の質問は、①で対応する資料を追加すると選べます。' : '');
     updateSelectionCount();
   }
   function updateSelectionCount() {
@@ -307,15 +351,16 @@
     return [];
   }
   function updateModeNote() {
-    const individual = newInputKind === 'individual';
+    const individual = byId('surveyIndividualMode').checked;
     byId('surveyParticipantControls').hidden = !individual;
     byId('surveyAggregateModeLabel').hidden = individual;
+    byId('surveyCreateWaveBtn').textContent = individual ? '名簿入りExcelを作成' : '集計用Excelを作成';
     byId('surveyCreateWaveBtn').disabled = !ready || !selectedReferences.size;
     if (!individual) return;
     const values = rosterParticipants(), grade = selectedGrade(), select = byId('surveyParticipantScope'), previous = select.value;
     select.replaceChildren();
     const choice = (value, label) => { const option = element('option', label); option.value = value; select.append(option); };
-    choice('', '人数・所属を確認して対象を選択してください');
+    choice('', '学年またはクラスを選ぶ');
     if (grade !== null) choice('matching', '資料と同じ学年：' + grade + '年（' + values.filter(person => person.grade === grade).length + '名）');
     if (values.length) choice('all', '全在籍者（' + values.length + '名）');
     const classes = [...new Set(values.map(person => person.className || ''))].sort((a, b) => a.localeCompare(b, 'ja', { numeric: true }));
@@ -332,17 +377,17 @@
       paragraph(target, '開いているデータに在籍者の名簿がありません。名簿入りのJSONを開くか、名簿を登録してから発行してください。');
       return;
     }
-    if (!byId('surveyParticipantScope').value) { paragraph(target, '学年かクラスを選ぶと、その生徒のID・氏名・クラスをExcelに入れます。'); return; }
+    if (!byId('surveyParticipantScope').value) return;
     if (!participants.length) { paragraph(target, 'この条件に当てはまる在籍者がいません。学年やクラスを選び直してください。'); return; }
-    paragraph(target, 'Excelに入る生徒：' + participants.length + '名');
+    const details = element('details'); details.append(element('summary', '名簿に入る生徒 ' + participants.length + '名'));
     const counts = new Map();
     participants.forEach(person => { const label = person.className || '所属未設定'; counts.set(label, (counts.get(label) || 0) + 1); });
-    const wrap = element('div', undefined, 'table-wrap'); dataTable(wrap, ['対象の所属', '人数'], [...counts].map(([label, count]) => [label, count + '名'])); target.append(wrap);
+    const wrap = element('div', undefined, 'table-wrap'); dataTable(wrap, ['対象の所属', '人数'], [...counts].map(([label, count]) => [label, count + '名'])); details.append(wrap); target.append(details);
     if (grade === null || participants.some(person => person.grade !== grade)) paragraph(target, '資料と異なる学年、または学年未確認の対象を含みます。結果は参考表示となり、差を計算できない場合があります。');
   }
   async function createWave(event) {
     event.preventDefault();
-    if (!ready || workflowStep !== 'school' || !newInputKind || byId('surveyWaveFields').disabled || byId('surveyCreateWaveBtn').disabled) return;
+    if (!ready || workflowStep !== 'school' || byId('surveyWaveFields').disabled || byId('surveyCreateWaveBtn').disabled) return;
     clearPreviews();
     const ticket = capture();
     byId('surveyWaveFields').disabled = true;
@@ -351,7 +396,7 @@
       const incomplete = [...selectedReferences].map(id => surveys().references.find(ref => ref.id === id))
         .some(ref => instrument(surveys(), ref.instrumentId)?.definitionStatus === 'codesOnly');
       if (incomplete) throw new Error('選択肢の文言が未確認の質問が含まれています。同年度のクロス集計または選択肢別平均の公式Excelを追加してください。定義を確認できた質問は、新しい版を選んで調査回を作成できます。');
-      const mode = newInputKind === 'individual' ? 'individual' : byId('surveyAggregateMode').value;
+      const mode = byId('surveyIndividualMode').checked ? 'individual' : byId('surveyAggregateMode').value;
       const selected = surveys().references.find(ref => selectedReferences.has(ref.id)), year = instrument(surveys(), selected.instrumentId)?.year;
       const input = { id: freshId('survey-wave'), label: byId('surveyWaveLabel').value.trim() || [year && year + '年度', '全国学力・学習状況調査', byId('surveyWaveDate').value].filter(Boolean).join(' '), administeredOn: byId('surveyWaveDate').value,
         administration: byId('surveyAdministration').value, referenceIds: [...selectedReferences],
@@ -370,7 +415,7 @@
       try { commit(result.surveys, undoToken); }
       catch (error) { notify(error.message, true); return; }
       waveId = result.waveId;
-      groupKey = ''; referenceId = ''; newInputKind = ''; selectedReferences.clear();
+      groupKey = ''; referenceId = ''; selectedReferences.clear();
       byId('surveyTemplateMode').value = mode;
       byId('surveyTemplateScope').value = 'all';
       downloadTemplate(file, mode);
@@ -385,9 +430,10 @@
     const url = URL.createObjectURL(blob), link = element('a'); link.href = url; link.download = result.fileName;
     document.body.append(link); link.click(); link.remove(); root.setTimeout(() => URL.revokeObjectURL(url), 60000);
     waveModes.set(waveId, mode);
-    issuedWaves.add(waveId); showStep('compare');
-    const sheet = mode === 'individual' ? '「個人入力」の黄色い欄' : '「集計入力」の黄色い欄';
-    notify('自校用Excelを発行しました。' + sheet + 'に記入して保存し、「記入済みの自校用Excelを選ぶ」から読み込んでください。');
+    byId('surveyNationalPreviewBtn').setAttribute('aria-expanded', 'false');
+    byId('surveySchoolImport').open = true;
+    showStep('compare');
+    notify('Excelを作成しました。「' + (mode === 'individual' ? '個人入力' : '集計入力') + '」の黄色い欄に記入して保存してください。');
   }
   async function issueTemplate() {
     const wave = currentWave(); if (!wave || !ready) return;
@@ -411,6 +457,7 @@
   async function readSchool(file) {
     const wave = currentWave(); if (!ready || workflowStep !== 'compare' || !wave) return;
     clearPreviews(); const ticket = capture();
+    byId('surveySchoolImport').open = true;
     byId('surveySchoolOpenBtn').disabled = true; notify('学校用Excelの対象範囲と変更内容を確認しています…');
     try {
       if (!Number.isFinite(file.size) || file.size <= 0 || file.size > root.GD_SURVEY_TEMPLATES.limits.fileBytes) throw new Error('学校用Excelの容量が上限を超えているか、ファイルが空です。発行した学校用Excelを選んでください。');
@@ -446,7 +493,7 @@
         messages(preview, switches.map(change => (change.key || '学校結果') + '：' + display(change.from) + ' → ' + display(change.to)));
       }
       byId('surveyModeSwitchLabel').hidden = !switches.length;
-      schoolPending = { ticket, plan, requiresSwitch: !!switches.length };
+      schoolPending = { ticket, plan, requiresSwitch: !!switches.length, resultKeys: parsed.payload.results.map(keyFor) };
       byId('surveySchoolApplyBtn').hidden = false; byId('surveySchoolApplyBtn').disabled = !!switches.length;
       notify('学校結果はまだ反映していません。変更する値と空欄に戻る項目を確認してください。');
     } catch (error) {
@@ -459,7 +506,14 @@
     if (schoolPending.requiresSwitch && !byId('surveyModeSwitch').checked) return;
     try {
       const result = root.GD_SURVEY_STATE.apply(surveys(), schoolPending.plan, { allowModeSwitch: byId('surveyModeSwitch').checked });
+      const keys = schoolPending.resultKeys;
       commit(result.surveys, result.undo);
+      if (keys.length && !keys.includes(groupKey)) {
+        groupKey = keys[0];
+        if (!groups().has(groupKey)) { byId('surveyQuestionSearch').value = ''; byId('surveyTypeFilter').value = 'all'; }
+        renderQuestions(); renderResult();
+      }
+      byId('surveySchoolImport').open = false;
       notify('学校結果を反映しました。図と表で確認し、右上の「保存」でJSONを保存してください。');
       byId('surveyResultTitle').focus();
     } catch (error) { notify(error.message, true); }
@@ -518,9 +572,6 @@
     const available = root.GD_SURVEY_STATE.getAvailableReferences(data);
     const referenceOnly = element('option', '全国のデータだけを見る'); referenceOnly.value = ''; select.append(referenceOnly);
     data.waves.forEach(item => { const option = element('option', item.label + '（' + item.administeredOn + '）'); option.value = item.id; select.append(option); }); select.value = waveId;
-    byId('surveyPreparationSummary').textContent = '公式資料 ' + data.sources.filter(item => item.kind === 'official').length + '件 ／ 学校データ ' + data.waves.length + '回';
-    byId('surveyNoReferences').hidden = !!data.references.length;
-    byId('surveyComparisonWorkspace').hidden = !data.references.length;
     byId('surveyUndoBtn').hidden = !undoToken;
     byId('surveyWaveContext').textContent = wave ? wave.administeredOn + '実施 ／ ' + (wave.administration === 'official' ? '公式実施' : '自校で独自に実施') + (wave.participants ? ' ／ 対象者 ' + wave.participants.length + '名を固定' : ' ／ 集計値を入力') : '全国のデータを表示します。';
     byId('surveyTemplateBtn').disabled = !wave;
@@ -532,19 +583,10 @@
     if (wave?.ownership) byId('surveySchoolOwnership').value = wave.ownership;
     if (wave?.schoolLabel) byId('surveySchoolLabel').value = wave.schoolLabel;
     byId('surveyTemplateMode').querySelector('option[value="individual"]').disabled = !wave?.participants?.length;
-    byId('surveyTemplateNote').textContent = wave ? '発行対象：' + wave.label + '。' + (wave.participants?.length ? '個人別入力では、ここで固定した対象者を使います。' : '質問・選択肢は記入済みで、自校の入力欄は空欄です。') : '比較する質問と実施日を設定してください。';
-    byId('surveyTemplateCard').hidden = !wave || !!newInputKind;
-    byId('surveyWaveBuilder').hidden = !newInputKind;
-    const individual = newInputKind === 'individual';
-    byId('surveyWaveBuilderLabel').textContent = individual ? '対象の生徒と質問を選ぶ' : '質問と集計方法を選ぶ';
-    byId('surveyCreateWaveBtn').textContent = individual ? '名簿入りExcelを発行' : '集計用Excelを発行';
-    const canCreate = available.some(ref => usable(data, ref));
-    document.querySelectorAll('[data-survey-input-kind]').forEach(button => {
-      button.disabled = !canCreate;
-      button.setAttribute('aria-expanded', String(button.dataset.surveyInputKind === newInputKind));
-    });
-    byId('surveyRosterChoiceHelp').textContent = (host.getData().students || []).some(student => student.enrollmentStatus !== 'graduated')
-      ? '生徒ID・氏名・クラス入りのExcel' : '名簿入りのデータが必要です';
+    byId('surveyTemplateNote').textContent = wave?.label || '';
+    byId('surveyTemplateCard').hidden = !wave;
+    byId('surveyWaveBuilder').hidden = !available.some(ref => usable(data, ref));
+    byId('surveySettingsSummary').textContent = byId('surveyAdministration').selectedOptions[0].textContent + ' ・ 設定';
     const referenceSelect = byId('surveyTemplateReference'), previousReference = referenceSelect.value;
     referenceSelect.replaceChildren();
     (wave?.referenceIds || []).forEach(id => {
@@ -553,8 +595,8 @@
     referenceSelect.value = wave?.referenceIds.includes(previousReference) ? previousReference : wave?.referenceIds.includes(referenceId) ? referenceId : wave?.referenceIds[0] || '';
     byId('surveyTemplateReferenceLabel').hidden = byId('surveyTemplateScope').value !== 'selected';
     renderWorkflow(available);
-    if (workflowStep === 'school' && newInputKind) renderWaveItems(available);
-    if (workflowStep === 'compare') { renderQuestions(); renderResult(); }
+    if (workflowStep === 'school' && !byId('surveyWaveBuilder').hidden) renderWaveItems(available);
+    if (workflowStep === 'compare' && !byId('surveyComparisonWorkspace').hidden) { renderQuestions(); renderResult(); }
     else clearChart();
   }
   function percent(stat, code) {
@@ -724,6 +766,27 @@
     }
     if (wave) paragraph(details, 'この調査回の質問・比較先は作成時の版に固定しています。通常の名簿の進級・卒業・削除では、保存済みの学校結果は変わりません。');
   }
+  function bindFilePicker(buttonId, inputId, read) {
+    const button = byId(buttonId), input = byId(inputId);
+    button.onclick = () => input.click();
+    const select = files => {
+      if (!files.length || button.disabled) return;
+      if (!input.multiple && files.length > 1) { notify('記入済みの自校用Excelを1つ選んでください。', true); return; }
+      read(files);
+    };
+    input.onchange = () => { const files = Array.from(input.files); input.value = ''; select(files); };
+    button.ondragover = event => {
+      if (!event.dataTransfer.types.includes('Files')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = button.disabled ? 'none' : 'copy';
+      button.classList.toggle('is-dragging', !button.disabled);
+    };
+    button.ondragleave = () => button.classList.remove('is-dragging');
+    button.ondrop = event => {
+      event.preventDefault(); button.classList.remove('is-dragging');
+      select(Array.from(event.dataTransfer.files));
+    };
+  }
   function attach(api) {
     if (host) return;
     host = api;
@@ -732,20 +795,22 @@
     byId('surveyStartBtn').disabled = !ready;
     byId('surveyOfficialOpenBtn').disabled = !ready;
     byId('surveyStartBtn').onclick = () => { if (ready) host.startAggregate(); };
-    byId('surveyOfficialOpenBtn').onclick = () => byId('surveyOfficialInput').click();
-    byId('surveyOfficialInput').onchange = event => { const files = [...event.target.files]; event.target.value = ''; if (files.length) readOfficial(files); };
-    byId('surveyOfficialApplyBtn').onclick = applyOfficial;
-    byId('surveyWaveBuilder').onsubmit = createWave;
-    document.querySelectorAll('[data-survey-input-kind]').forEach(button => {
-      button.onclick = () => {
-        clearPreviews(); notify('');
-        const kind = button.dataset.surveyInputKind;
-        newInputKind = kind === newInputKind ? '' : kind;
-        byId('surveyParticipantScope').value = '';
-        render();
-        if (newInputKind) byId(kind === 'individual' ? 'surveyParticipantScope' : 'surveyAggregateMode').focus();
-      };
+    bindFilePicker('surveyOfficialOpenBtn', 'surveyOfficialInput', readOfficial);
+    bindFilePicker('surveySchoolOpenBtn', 'surveySchoolInput', files => readSchool(files[0]));
+    for (const type of ['dragover', 'drop']) byId('panel-survey').addEventListener(type, event => {
+      if (event.dataTransfer.types.includes('Files')) event.preventDefault();
     });
+    byId('surveyOfficialApplyBtn').onclick = applyOfficial;
+    byId('surveyOfficialClearBtn').onclick = () => { clearPreviews(); render(); notify(''); byId('surveyOfficialOpenBtn').focus(); };
+    byId('surveyWaveBuilder').onsubmit = createWave;
+    byId('surveyWaveBuilder').addEventListener('invalid', event => {
+      const details = event.target.closest('details'); if (details) details.open = true;
+    }, true);
+    document.querySelectorAll('[data-survey-input-kind]').forEach(radio => { radio.onchange = updateModeNote; });
+    byId('surveyAdministration').onchange = () => {
+      byId('surveySettingsSummary').textContent = byId('surveyAdministration').selectedOptions[0].textContent + ' ・ 設定';
+      renderWaveItems();
+    };
     document.querySelectorAll('[data-survey-go]').forEach(button => { button.onclick = () => showStep(button.dataset.surveyGo); });
     byId('surveyViewOfficialBtn').onclick = () => {
       waveId = ''; groupKey = ''; referenceId = ''; showStep('compare');
@@ -759,14 +824,19 @@
     byId('surveyTemplateScope').onchange = () => { clearPreviews(); byId('surveyTemplateReferenceLabel').hidden = byId('surveyTemplateScope').value !== 'selected'; };
     byId('surveyTemplateReference').onchange = clearPreviews;
     byId('surveyTemplateBtn').onclick = issueTemplate;
-    byId('surveySchoolOpenBtn').onclick = () => byId('surveySchoolInput').click();
-    byId('surveySchoolInput').onchange = event => { const file = event.target.files[0]; event.target.value = ''; if (file) readSchool(file); };
     byId('surveySchoolApplyBtn').onclick = applySchool;
+    byId('surveyNationalPreviewBtn').onclick = event => {
+      const button = event.currentTarget;
+      button.setAttribute('aria-expanded', String(button.getAttribute('aria-expanded') !== 'true'));
+      render();
+    };
     byId('surveyModeSwitch').onchange = () => { byId('surveySchoolApplyBtn').disabled = !schoolPending || schoolPending.requiresSwitch && !byId('surveyModeSwitch').checked; };
     for (const id of ['surveySchoolLabel', 'surveySchoolOwnership']) byId(id).addEventListener('input', clearPreviews);
     byId('surveyWaveSelect').onchange = event => {
       clearPreviews(); waveId = event.target.value; groupKey = ''; referenceId = '';
-      newInputKind = ''; selectedReferences.clear();
+      selectedReferences.clear();
+      byId('surveyNationalPreviewBtn').setAttribute('aria-expanded', 'false');
+      byId('surveySchoolImport').open = !!currentWave() && !currentWave().results.length;
       byId('surveyTemplateMode').value = waveModes.get(waveId) || (currentWave()?.participants?.length ? 'individual' : 'count'); render();
     };
     byId('surveyQuestionSearch').oninput = () => { renderQuestions(); renderResult(); };
