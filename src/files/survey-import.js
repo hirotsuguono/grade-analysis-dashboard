@@ -107,13 +107,15 @@
     return { entries: count, expandedBytes: total };
   }
 
-  function validateWorkbook(wb, X, customLimits) {
+  function validateWorkbook(wb, X, customLimits, columnsBySheet) {
     const lim = budget(customLimits);
     if (!wb || !X?.utils || !Array.isArray(wb.SheetNames) || !wb.Sheets || !wb.SheetNames.length || wb.SheetNames.length > lim.sheets ||
         new Set(wb.SheetNames).size !== wb.SheetNames.length) throw capacity();
     let area = 0, actual = 0, characters = 0;
     for (const name of wb.SheetNames) {
       const sheet = wb.Sheets[name];
+      const columns = columnsBySheet?.get(name) ?? lim.columns;
+      if (!Number.isSafeInteger(columns) || columns <= 0) throw capacity();
       if (typeof name !== 'string' || !name || name.length > 100 || !sheet || typeof sheet !== 'object') throw capacity();
       const ref = sheet['!ref'];
       if (typeof ref !== 'string' || !/^[A-Z]+[1-9]\d*(?::[A-Z]+[1-9]\d*)?$/.test(ref)) throw capacity();
@@ -121,7 +123,7 @@
       for (const address of [ref, sheet['!fullref']].filter(Boolean)) {
         if (typeof address !== 'string' || !/^[A-Z]+[1-9]\d*(?::[A-Z]+[1-9]\d*)?$/.test(address)) throw capacity();
         const bounds = X.utils.decode_range(address);
-        if (bounds.s.r > bounds.e.r || bounds.s.c > bounds.e.c || bounds.e.r >= lim.rows || bounds.e.c >= lim.columns) throw capacity();
+        if (bounds.s.r > bounds.e.r || bounds.s.c > bounds.e.c || bounds.e.r >= lim.rows || bounds.e.c >= columns) throw capacity();
         if (address !== ref && (bounds.s.r !== range.s.r || bounds.s.c !== range.s.c || bounds.e.r !== range.e.r || bounds.e.c !== range.e.c)) throw capacity();
       }
       area += (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1);
@@ -130,7 +132,7 @@
         if (address.startsWith('!')) continue;
         if (!/^[A-Z]+[1-9]\d*$/.test(address) || ++actual > lim.cells) throw capacity();
         const pos = X.utils.decode_cell(address);
-        if (pos.r < range.s.r || pos.c < range.s.c || pos.r > range.e.r || pos.c > range.e.c || pos.r >= lim.rows || pos.c >= lim.columns) throw capacity();
+        if (pos.r < range.s.r || pos.c < range.s.c || pos.r > range.e.r || pos.c > range.e.c || pos.r >= lim.rows || pos.c >= columns) throw capacity();
         if (!cell || typeof cell !== 'object' || Object.hasOwn(cell, 'f') || Object.hasOwn(cell, 'F') || cell.t === 'e') throw fail('「' + name + '」' + address + 'に数式またはExcelのエラー値があります。数式の保存値は使用できません。');
         if (cell.v != null && typeof cell.v !== 'string' && (typeof cell.v !== 'number' || !Number.isFinite(cell.v))) throw fail('「' + name + '」' + address + 'は有限の数値または文字列ではありません。');
         if (typeof cell.v === 'string') { characters += cell.v.length; if (cell.v.length > 20000 || characters > 4000000) throw capacity(); }

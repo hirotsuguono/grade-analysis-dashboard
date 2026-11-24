@@ -6,12 +6,14 @@
   else root.GD_SURVEY_TEMPLATES = api;
 })(typeof window !== 'undefined' ? window : globalThis, function (root, requireLocal) {
   'use strict';
-  const version = 1;
+  const version = 2;
   // These budgets belong to school templates, independently of official and ordinary imports.
   const limits = Object.freeze({ fileBytes: 5 * 1024 * 1024, expandedBytes: 24 * 1024 * 1024,
     entryBytes: 12 * 1024 * 1024, entries: 256, sheets: 8, rows: 50000, columns: 32, cells: 500000 });
   const modes = Object.freeze(['aggregateCount', 'aggregatePercent', 'individual']);
-  const names = Object.freeze({ help: '書き方', manifest: '発行情報', definitions: '設問定義', aggregate: '集計入力', individual: '個人入力' });
+  const names = Object.freeze({ help: '書き方', manifest: '発行情報', definitions: '設問定義', aggregate: '集計入力', individual: '個人入力', status: '欠測状態' });
+  const rosterHeaders = ['対象者ID', '氏名（任意）', '学年', 'クラス', '出席番号'];
+  const rosterValues = p => [p.id, p.name ?? '', p.grade ?? '', p.className ?? '', p.number ?? ''];
   const missingLabels = Object.freeze({ 未入力: 'unentered', 無回答: 'noResponse', 対象外: 'notApplicable',
     未出題: 'notAssigned', 無効回答: 'invalid', 調査不参加: 'notParticipating', 未提供: 'notProvided', 秘匿: 'suppressed', 不明: 'unknown' });
   const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -77,7 +79,7 @@
           throw new Error(instrument.text + '：個人別の入力には対応していません。IRTは公式に返却された平均を集計値用Excelへ転記してください。');
         }
       }
-      if (wave.participants.length * instruments.length + 7 > limits.rows) throw new Error('個人別テンプレートの行数上限を超えます。発行する質問・教科を減らしてください。');
+      if (wave.participants.length * instruments.length + 7 > limits.rows) throw new Error('個人別テンプレートの入力件数の上限を超えます。対象の生徒または質問・教科を減らしてください。');
     }
     const statistics = [...new Map(references.map(r => [keyOf(r), r])).values()];
     return { wave, references, instruments, statistics, school: schoolOptions(options.school, wave),
@@ -169,10 +171,11 @@
     return { fields, results };
   }
   function layout(ctx, manifest) {
-    const sheets = [], make = (name, widths) => { const s = { name, widths, cells: [], inputs: [] }; sheets.push(s); return s; };
-    const put = (s, row, col, value, input = false) => { s.cells.push({ row, col, value, input }); if (input) s.inputs.push({ row, col }); };
+    const sheets = [], make = (name, widths) => { const s = { name, widths, cells: [] }; sheets.push(s); return s; };
+    const put = (s, row, col, value, input = false) => { s.cells.push({ row, col, value, input }); };
     const row = (s, r, values) => values.forEach((value, c) => put(s, r, c + 1, value));
     const individual = manifest.mode === 'individual';
+    const matrix = individual && manifest.templateVersion === 2;
     const oldHeading = '学校値';
     const oldGuide = '黄色い欄だけに学校値を入力します。灰色の定義・ID・対象者・入力方式は変更しません。';
     let valueHeading = oldHeading;
@@ -181,17 +184,17 @@
       else if (ctx.instruments.some(item => item.scale.kind === 'response')) valueHeading = '回答番号・得点等';
       else valueHeading = '得点・正答数';
     }
-    const entryGuide = individual
-      ? '「個人入力」シートで、生徒ごとの行の黄色い「' + valueHeading + '」欄に記入します。灰色の欄は変更しません。'
-      : oldGuide;
-    const legacyText = individual ? { [names.individual]: { I1: oldHeading }, [names.help]: { B3: oldGuide } } : {};
+    let entryGuide = oldGuide;
+    if (matrix) entryGuide = '「個人入力」は生徒1人につき1行です。各列の見出しを確認し、黄色い欄に回答番号や得点を記入してください。';
+    else if (individual) entryGuide = '「個人入力」シートで、生徒ごとの行の黄色い「' + valueHeading + '」欄に記入します。灰色の欄は変更しません。';
+    const legacyText = individual && !matrix ? { [names.individual]: { I1: oldHeading }, [names.help]: { B3: oldGuide } } : {};
     const help = make(names.help, [29, 110]);
     [
       ['学校調査入力', ctx.wave.label], ['入力方式', { aggregateCount: '集計値・人数', aggregatePercent: '集計値・割合', individual: '個人別' }[manifest.mode]],
       ['記入する場所', entryGuide],
       ['空欄', '未入力として扱います。再取込では発行した範囲内の以前の値を空欄へ戻します。発行範囲外の値は保持します。'],
       ['無回答', '実際に無回答だった場合は、その選択肢コードを入力します。空欄を無回答へ置き換えません。'],
-      ['欠測状態', '値を入力できない理由は欠測状態欄で選べます。数値と欠測状態を同時に入力できません。'],
+      ['欠測状態', matrix ? '未出題・調査不参加などを記録するときは「個人入力」を空欄にし、「欠測状態」シートの同じ生徒・質問の欄で理由を選びます。' : '値を入力できない理由は欠測状態欄で選べます。数値と欠測状態を同時に入力できません。'],
       ['対象人数', '質問・統計ごとの人数を記入します。全問へ名簿人数を一律に記入しません。不明な人数は空欄または「未提供」。'],
       ['割合と単位', '割合は0〜100（例：25.5）で入力します。25.5%のExcel形式や0〜1への変更はしません。'],
       ['個人別の正答数', '対応する教科では正答数を入力します。固定した満点を使って正答率に変換し、元の正答数も保存します。'],
@@ -202,7 +205,7 @@
     ].forEach((values, i) => row(help, i + 1, values));
     const info = make(names.manifest, [26, 110]);
     const encoded = stable(manifest), chunks = encoded.match(/[\s\S]{1,20000}/g) || [];
-    [['形式', 'GD_SURVEY_TEMPLATE'], ['テンプレート版', version], ['調査回ID', ctx.wave.id], ['調査回', ctx.wave.label],
+    [['形式', 'GD_SURVEY_TEMPLATE'], ['テンプレート版', manifest.templateVersion], ['調査回ID', ctx.wave.id], ['調査回', ctx.wave.label],
       ['実施日', ctx.wave.administeredOn], ['メタデータ行数', chunks.length]].forEach((values, i) => row(info, i + 1, values));
     chunks.forEach((chunk, i) => row(info, i + 7, ['固定情報' + (i + 1), chunk]));
     const definitions = make(names.definitions, [25, 15, 74, 12, 19, 18, 18, 58, 17, 55, 28]);
@@ -216,13 +219,34 @@
         instrument.schoolAvailability === 'notReturned' ? '学校別には未提供' : instrument.schoolAvailability === 'returned' ? '学校へ提供' : '提供状況は出典を確認']);
     }
     let fields, results;
-    if (individual) {
+    if (matrix) {
+      const widths = [24, 18, 8, 14, 11, ...ctx.instruments.map(() => 32)];
+      const answers = make(names.individual, widths), statuses = make(names.status, widths);
+      for (const sheet of [answers, statuses]) {
+        const headings = ctx.instruments.map(item => {
+          const unit = sheet === statuses ? '欠測状態' : item.scale.kind === 'response' ? '回答番号' : inputUnit(item);
+          return item.code + '　' + unit + '\n' + item.text.slice(0, 1800);
+        });
+        row(sheet, 1, [...rosterHeaders, ...headings]);
+        ctx.instruments.forEach((item, i) => put(sheet, 2, rosterHeaders.length + i + 1, item.id));
+      }
+      fields = [];
+      ctx.wave.participants.forEach((participant, i) => {
+        const r = i + 3, fixed = rosterValues(participant);
+        row(answers, r, fixed); row(statuses, r, fixed);
+        ctx.instruments.forEach((item, j) => {
+          const col = rosterHeaders.length + j + 1;
+          put(answers, r, col, '', true); put(statuses, r, col, '', true);
+          fields.push({ row: r, participantId: participant.id, instrumentId: item.id, valueCol: col, statusCol: col });
+        });
+      });
+    } else if (individual) {
       const sheet = make(names.individual, [25, 22, 10, 17, 14, 25, 70, 30, 20, 18]);
-      row(sheet, 1, ['対象者ID', '氏名（任意）', '学年', 'クラス', '出席番号', '設問・教科ID', '設問・教科', '入力単位', valueHeading, '欠測状態']);
+      row(sheet, 1, [...rosterHeaders, '設問・教科ID', '設問・教科', '入力単位', valueHeading, '欠測状態']);
       fields = [];
       for (const participant of ctx.wave.participants) for (const instrument of ctx.instruments) {
         const r = fields.length + 2;
-        row(sheet, r, [participant.id, participant.name ?? '', participant.grade ?? '', participant.className ?? '', participant.number ?? '',
+        row(sheet, r, [...rosterValues(participant),
           instrument.id, (instrument.code + ' ' + instrument.text).slice(0, 1800), inputUnit(instrument)]);
         put(sheet, r, 9, '', true); put(sheet, r, 10, '', true);
         fields.push({ row: r, participantId: participant.id, instrumentId: instrument.id, valueCol: 9, statusCol: 10 });
@@ -237,20 +261,24 @@
       });
     }
     const cells = sheets.reduce((n, s) => n + s.cells.length, 0);
-    if (cells > limits.cells || sheets.some(s => s.cells.some(c => c.row > limits.rows || c.col > limits.columns))) throw new Error('学校用テンプレートの範囲が上限を超えます。質問・教科の選択を減らしてください。');
-    return { sheets, fields, results, valueHeading, legacyText };
+    if (cells > limits.cells || sheets.some(s => s.cells.some(c => c.row > limits.rows || c.col > s.widths.length))) throw new Error('学校用テンプレートの範囲が上限を超えます。質問・教科の選択を減らしてください。');
+    return { sheets, fields, results, valueHeading, legacyText, statusSheet: matrix ? names.status : null };
   }
   async function buildTemplate(surveys, waveId, options = {}) {
     const { core, ExcelJS } = dependencies(options), ctx = context(surveys, waveId, options, core);
-    const manifest = { templateVersion: version, schemaVersion: surveys.schemaVersion, waveId, mode: options.mode,
+    const manifest = { templateVersion: options.mode === 'individual' ? version : 1, schemaVersion: surveys.schemaVersion, waveId, mode: options.mode,
       scope: ctx.scope, school: ctx.school, ...await signatures(surveys, ctx, options.mode) };
     manifest.integrity = await digest(stable(manifest));
     const specification = layout(ctx, manifest), book = new ExcelJS.Workbook(), instruments = new Map(ctx.instruments.map(i => [i.id, i]));
     book.creator = 'Grade Analysis Dashboard'; book.created = new Date(0); book.modified = new Date(0);
     const inputName = options.mode === 'individual' ? names.individual : names.aggregate;
     const inputSheet = specification.sheets.find(spec => spec.name === inputName);
-    for (const spec of [inputSheet, ...specification.sheets.filter(spec => spec !== inputSheet)]) {
-      const sheet = book.addWorksheet(spec.name, { views: [{ state: 'frozen', ySplit: 1 }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+    const statusSheet = specification.sheets.find(spec => spec.name === specification.statusSheet);
+    const sheetOrder = [inputSheet, statusSheet, ...specification.sheets.filter(spec => spec !== inputSheet && spec !== statusSheet)].filter(Boolean);
+    for (const spec of sheetOrder) {
+      const roster = statusSheet && (spec === inputSheet || spec === statusSheet);
+      const view = roster ? { state: 'frozen', xSplit: rosterHeaders.length, ySplit: 2, topLeftCell: 'F3' } : { state: 'frozen', ySplit: 1 };
+      const sheet = book.addWorksheet(spec.name, { views: [view], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
       sheet.columns = spec.widths.map(width => ({ width }));
       for (const descriptor of spec.cells) {
         const cell = sheet.getCell(descriptor.row, descriptor.col);
@@ -262,11 +290,18 @@
         cell.border = { bottom: { style: 'hair', color: { argb: 'FFCFD8E3' } } };
         cell.protection = { locked: !descriptor.input };
         if (descriptor.input) cell.numFmt = 'General';
-        sheet.getRow(descriptor.row).height = descriptor.row === 1 ? 30 : spec.name === names.manifest ? 24 : 48;
       }
-      if (spec.name === names.aggregate || spec.name === names.individual) for (const field of specification.fields) {
-        sheet.getCell(field.row, field.statusCol).dataValidation = { type: 'list', allowBlank: true,
-          formulae: ['"' + Object.keys(missingLabels).join(',') + '"'], showErrorMessage: true, errorStyle: 'stop', errorTitle: '欠測状態', error: '候補から選ぶか空欄にしてください。' };
+      const longestQuestion = roster ? Math.max(...ctx.instruments.map(item => item.text.length)) : 0;
+      sheet.getRow(1).height = roster ? Math.min(132, Math.max(48, 20 + 16 * Math.ceil(longestQuestion / 15))) : 30;
+      const bodyHeight = roster || spec.name === names.manifest ? 24 : 48;
+      for (let r = 2; r <= sheet.rowCount; r++) sheet.getRow(r).height = bodyHeight;
+      if (roster) { sheet.getColumn(1).hidden = true; sheet.getRow(2).hidden = true; }
+      if (spec === (statusSheet || inputSheet)) {
+        const rule = { type: 'list', allowBlank: true, formulae: ['"' + Object.keys(missingLabels).join(',') + '"'],
+          showErrorMessage: true, errorStyle: 'stop', errorTitle: '欠測状態', error: '候補から選ぶか空欄にしてください。' };
+        for (const field of specification.fields) sheet.getCell(field.row, field.statusCol).dataValidation = rule;
+      }
+      if (spec === inputSheet) for (const field of specification.fields) {
         const instrument = instruments.get(field.instrumentId);
         let rule = null;
         if (instrument?.scale.kind === 'response') {
@@ -315,7 +350,8 @@
   }
   function readManifest(book, X) {
     const sheet = book.Sheets[names.manifest];
-    if (!sheet || cellValue(sheet, 1, 2, X) !== 'GD_SURVEY_TEMPLATE' || cellValue(sheet, 2, 2, X) !== version) throw new Error('対応する学校用テンプレートではありません。画面から発行してください。');
+    const issuedVersion = sheet && cellValue(sheet, 2, 2, X);
+    if (!sheet || cellValue(sheet, 1, 2, X) !== 'GD_SURVEY_TEMPLATE' || ![1, version].includes(issuedVersion)) throw new Error('対応する学校用テンプレートではありません。画面から発行してください。');
     const count = cellValue(sheet, 6, 2, X);
     if (!Number.isSafeInteger(count) || count < 1 || count > 8) throw new Error('テンプレートの固定情報が不正です。再発行してください。');
     let encoded = '';
@@ -327,7 +363,7 @@
     const manifest = JSON.parse(encoded);
     const keys = ['templateVersion', 'schemaVersion', 'waveId', 'mode', 'scope', 'school', 'datasetSignature', 'resultSignature', 'participantSignature', 'integrity'];
     if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest) || Object.keys(manifest).length !== keys.length || keys.some(k => !own(manifest, k)) ||
-        manifest.templateVersion !== version || manifest.schemaVersion !== 1 || !modes.includes(manifest.mode) ||
+        manifest.templateVersion !== issuedVersion || (issuedVersion === 2 && manifest.mode !== 'individual') || manifest.schemaVersion !== 1 || !modes.includes(manifest.mode) ||
         !manifest.scope || typeof manifest.scope !== 'object' || Object.keys(manifest.scope).sort().join(',') !== 'instrumentIds,referenceIds' ||
         !Array.isArray(manifest.scope.instrumentIds) || !Array.isArray(manifest.scope.referenceIds) ||
         ['datasetSignature', 'resultSignature', 'participantSignature', 'integrity'].some(k => typeof manifest[k] !== 'string' || !/^[a-f0-9]{64}$/.test(manifest[k]))) throw new Error('テンプレートの固定情報が不正です。再発行してください。');
@@ -338,6 +374,10 @@
     if (book.SheetNames.length !== expectedNames.length || book.SheetNames.some(name => !expectedNames.includes(name))) return [issue(null, null, 'シート', '発行時のシート名とシート数を保持してください。')];
     for (const expected of spec.sheets) {
       const actual = book.Sheets[expected.name], addresses = new Set();
+      if (spec.statusSheet && (expected.name === names.individual || expected.name === spec.statusSheet) &&
+          X.utils.decode_range(actual['!ref']).e.c >= expected.widths.length) {
+        return [issue(expected.name, 1, '列の範囲', '発行した質問・教科の列を保持してください。')];
+      }
       if (actual['!merges']?.length) issues.push(issue(expected.name, 1, 'セルの結合', '発行時のセルを結合しないでください。'));
       for (const cell of expected.cells) {
         const address = X.utils.encode_cell({ r: cell.row - 1, c: cell.col - 1 }); addresses.add(address);
@@ -419,7 +459,15 @@
       if (!bytes || !bytes.length || bytes.byteLength > limits.fileBytes || bytes[0] !== 0x50 || bytes[1] !== 0x4b) return failed([issue(null, null, 'ファイル', '画面から発行した5MB以内の.xlsxファイルを使用してください。')]);
       await safety.inspectZip(bytes, limits);
       const book = X.read(bytes, { type: 'array', cellFormula: true, cellHTML: false, cellStyles: false, cellDates: false, cellNF: true, sheetRows: limits.rows + 1 });
-      try { safety.validateWorkbook(book, X, limits); }
+      try {
+        const info = book.Sheets[names.manifest];
+        let columnsBySheet;
+        if (info && cellValue(info, 2, 2, X) === 2) {
+          const columns = rosterHeaders.length + core.limits.instruments;
+          columnsBySheet = new Map([[names.individual, columns], [names.status, columns]]);
+        }
+        safety.validateWorkbook(book, X, limits, columnsBySheet);
+      }
       catch (error) {
         const location = /「([^」]+)」([A-Z]+[1-9]\d*)/.exec(error.message || '');
         if (location) return failed([issue(location[1], X.utils.decode_cell(location[2]).r + 1, location[2],
@@ -436,26 +484,31 @@
       if (current.resultSignature !== manifest.resultSignature) return failed([issue(names.manifest, 7, '学校結果の版', '発行範囲の学校結果が更新されています。最新の状態から発行し直してください。')]);
       const spec = layout(ctx, manifest), layoutIssues = checkLayout(book, spec, X); if (layoutIssues.length) return failed(layoutIssues);
       sheetName = manifest.mode === 'individual' ? names.individual : names.aggregate;
-      const sheet = book.Sheets[sheetName], issues = [], preview = { mode: manifest.mode, fieldCount: spec.fields.length,
+      const sheet = book.Sheets[sheetName], statusSheet = spec.statusSheet ? book.Sheets[spec.statusSheet] : sheet;
+      const issues = [], preview = { mode: manifest.mode, fieldCount: spec.fields.length,
         observedCount: 0, blankCount: 0, missingCount: 0, scope: clone(ctx.scope), warnings: [] };
       const source = { id: uniqueId('school-source'), kind: manifest.mode === 'individual' ? 'schoolIndividual' : 'schoolAggregate',
         title: ctx.wave.label + ' 学校用Excel', publisher: ctx.school.label, url: null,
         fileName: typeof options.fileName === 'string' ? options.fileName : null, importedAt: new Date().toISOString(),
-        fingerprint: { algorithm: 'sha256', value: await digest(bytes) }, reader: { id: 'school-survey-template', version: String(version) },
-        locations: [{ sheet: sheetName, range: 'A1:' + X.utils.encode_cell({ r: spec.fields.length, c: manifest.mode === 'individual' ? 9 : 7 }) }],
+        fingerprint: { algorithm: 'sha256', value: await digest(bytes) }, reader: { id: 'school-survey-template', version: String(manifest.templateVersion) },
+        locations: [sheetName, spec.statusSheet].filter(Boolean).map(name => ({ sheet: name, range: book.Sheets[name]['!ref'] })),
         notes: ['学校用Excel。発行した入力範囲内の空欄は未入力として差し替えます。'] };
       const payload = { waveId, source, results: [] }, byParticipant = new Map(), instrumentById = new Map(ctx.instruments.map(i => [i.id, i]));
       if (manifest.mode === 'individual') ctx.wave.participants.forEach(p => byParticipant.set(p.id, { participantId: p.id, values: [] }));
       for (const field of spec.fields) {
+        const address = X.utils.encode_cell({ r: field.row - 1, c: field.valueCol - 1 });
+        const status = cellValue(statusSheet, field.row, field.statusCol, X);
         try {
-          const value = cellValue(sheet, field.row, field.valueCol, X), status = cellValue(sheet, field.row, field.statusCol, X);
-          const originalCell = sheet[X.utils.encode_cell({ r: field.row - 1, c: field.valueCol - 1 })];
+          const originalCell = sheet[address], value = originalCell?.v;
           if (!blank(value) && typeof originalCell?.z === 'string' && /%/.test(originalCell.z)) throw new Error('Excelのパーセント表示は使用せず、0〜100の数値を通常の数値形式で入力してください。');
           const cell = manifest.mode === 'individual' ? responseCell(value, status, instrumentById.get(field.instrumentId)) : numericCell(value, status, field);
           preview[cell.status === 'observed' ? 'observedCount' : cell.status === 'unentered' ? 'blankCount' : 'missingCount']++;
           if (manifest.mode === 'individual') byParticipant.get(field.participantId).values.push(cell);
           else assign(spec.results[field.resultIndex], field.path, cell);
-        } catch (error) { issues.push(issue(sheetName, field.row, spec.valueHeading + '・欠測状態', error.message)); }
+        } catch (error) {
+          const location = spec.statusSheet && !blank(status) ? spec.statusSheet : sheetName;
+          issues.push(issue(location, field.row, spec.statusSheet ? address + '（' + instrumentById.get(field.instrumentId).code + '）' : spec.valueHeading + '・欠測状態', error.message));
+        }
       }
       if (issues.length) return failed(issues);
       if (manifest.mode === 'individual') {

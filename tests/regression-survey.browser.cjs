@@ -230,32 +230,33 @@ module.exports = async (page, original) => {
     await compareFields(original);
 
     const mixed = structuredClone(saved);
-    mixed.students[0].className = '3A'; mixed.students[1].className = '3B';
+    mixed.students[0].className = '3A'; mixed.students[1].className = '3B'; mixed.students[2].className = '3A';
     await load(mixed);
-    const { id: personal, file: personalFile } = await newWave([ref.id], '架空の固定対象', 'individual', 'class:3A');
+    const thirdRef = refs.find(r => r.type === 'distribution' && r.ownership === 'public' && r.code === '3');
+    const { id: personal, file: personalFile } = await newWave([ref.id, secondRef.id, thirdRef.id], '架空の固定対象', 'individual', 'class:3A');
     const participants = await page.evaluate(id => data.surveys.waves.find(w => w.id === id).participants, personal);
-    assert.deepEqual(participants.map(p => p.id), [mixed.students[0].id]);
+    assert.deepEqual(participants.map(p => p.id), [mixed.students[0].id, mixed.students[2].id]);
     assert.equal(participants[0].grade, 3);
     const individual = await edit(personalFile, book => {
       const sheet = book.getWorksheet('個人入力');
       assert.equal(book.worksheets[0].name, '個人入力');
-      assert.equal(sheet.getCell('I1').value, '回答番号');
-      assert.equal(sheet.rowCount, 2);
-      assert.equal(sheet.getCell('A2').value, mixed.students[0].id);
-      assert.equal(sheet.getCell('B2').value, mixed.students[0].name);
-      assert.equal(sheet.getCell('D2').value, '3A');
-      assert.match(sheet.getCell('I2').dataValidation.prompt, /1：/);
-      assert.equal(sheet.getCell('I2').dataValidation.showInputMessage, true);
-      sheet.getCell('I2').value = '1';
+      assert.match(sheet.getCell('F1').value, /回答番号/);
+      assert.equal(sheet.rowCount, 4); assert.equal(sheet.columnCount, 8);
+      assert.equal(sheet.getCell('A3').value, mixed.students[0].id);
+      assert.equal(sheet.getCell('B4').value, mixed.students[2].name);
+      assert.equal(sheet.getCell('D3').value, '3A');
+      assert.match(sheet.getCell('F3').dataValidation.prompt, /1：/);
+      assert.equal(sheet.getCell('F3').dataValidation.showInputMessage, true);
+      [1, 2, 2].forEach((v, i) => { sheet.getCell(3, 6 + i).value = v; });
+      [2, 2, 1].forEach((v, i) => { sheet.getCell(4, 6 + i).value = v; });
     });
     await page.evaluate(id => { data.students.find(s => s.id === id).className = '1A'; markDirty(); renderAll(); }, mixed.students[0].id);
     await go('compare');
     await upload(individual); await ready();
     await page.locator('#surveySchoolApplyBtn').click();
-    await page.waitForFunction(id => window.GD_SURVEY_STATE.getLatest(data.surveys, id).length === 1, personal);
-    result = (await latest(personal))[0];
-    assert.equal(result.denominator.count.value, 1);
-    assert.equal(result.values[0].value.value, 1);
+    await page.waitForFunction(id => window.GD_SURVEY_STATE.getLatest(data.surveys, id).length === 3, personal);
+    const counts = (await latest(personal)).map(r => [r.denominator.count.value, ...r.values.slice(0, 2).map(v => v.value.value)]);
+    assert.deepEqual(counts, [[2, 1, 1], [2, 0, 2], [2, 1, 1]]);
     assert.equal(await page.evaluate(id => data.surveys.waves.find(w => w.id === id).participants[0].className, personal), '3A');
     assert.deepEqual((await latest(waveId))[0].values.map(v => v.value.value), [0, 8, 1, 1]);
 

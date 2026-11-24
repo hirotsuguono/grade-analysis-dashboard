@@ -104,27 +104,57 @@ test('classic browser export and independent school template budgets are availab
   assert.equal(require(path.join(files, 'survey-import.js')).limits.sheets, 200);
 });
 
-test('individual workbooks label the requested entry types and accept the original fixed wording', async () => {
+test('individual workbooks issue one student per row with adjacent labeled, validated answer columns', async () => {
   const surveys = fixture();
-  for (const [ref, heading] of [['ref-q1', '回答番号'], ['ref-math', '得点・正答数'], ['ref-q1-math', '回答番号・得点等']]) {
-    const built = await templates.buildTemplate(surveys, 'wave-one', options('individual', [ref]));
-    const book = new ExcelJS.Workbook();
-    await book.xlsx.load(built.buffer);
-    assert.equal(book.getWorksheet(templates.names.individual).getCell('I1').value, heading);
-    assert.ok(book.getWorksheet(templates.names.help).getCell('B3').value.includes(heading));
-    assert.equal((await templates.parseTemplate(built.buffer, surveys, 'wave-one')).ok, true);
+  const built = await templates.buildTemplate(surveys, 'wave-one', options('individual', ['ref-q1', 'ref-q2', 'ref-q1-math']));
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(built.buffer);
+  const sheet = book.worksheets[0], status = book.getWorksheet(templates.names.status);
+  assert.equal(sheet.name, '個人入力');
+  assert.equal(sheet.rowCount, 5);
+  assert.equal(sheet.columnCount, 8);
+  assert.deepEqual([3, 4, 5].map(r => sheet.getCell(r, 1).value), ['p1', 'p2', 'p3']);
+  assert.deepEqual([6, 7, 8].map(c => sheet.getCell(2, c).value), ['q1', 'q2', 'fictional-math']);
+  assert.match(sheet.getCell('F1').value, /回答番号\n架空の質問/);
+  assert.match(sheet.getCell('H1').value, /正答数（0〜4問）/);
+  assert.equal(sheet.getCell('F3').dataValidation.type, 'list');
+  assert.equal(sheet.getCell('H3').dataValidation.type, 'whole');
+  assert.match(status.getCell('F3').dataValidation.formulae[0], /未出題/);
+  for (const ws of [sheet, status]) {
+    assert.equal(ws.getRow(2).hidden, true); assert.equal(ws.getColumn(1).hidden, true);
+    assert.equal(ws.views[0].xSplit, 5); assert.equal(ws.views[0].ySplit, 2);
+    assert.equal(ws.getCell('F3').protection.locked, false); assert.equal(ws.getCell('F3').value, '');
   }
+  assert.equal((await templates.parseTemplate(built.buffer, surveys, 'wave-one')).ok, true);
+});
 
+test('previously issued vertical workbooks accept both original header wordings and reject edited definitions', async () => {
+  const surveys = fixture(), people = surveys.waves[0].participants;
   const built = await templates.buildTemplate(surveys, 'wave-one', options('individual'));
   const legacy = await edit(built.buffer, book => {
-    const sheet = book.getWorksheet(templates.names.individual);
-    sheet.getCell('I1').value = '学校値';
-    for (const row of dataRows(sheet)) row.getCell(9).value = 1;
-    book.getWorksheet(templates.names.help).getCell('B3').value = '黄色い欄だけに学校値を入力します。灰色の定義・ID・対象者・入力方式は変更しません。';
+    book.removeWorksheet(book.getWorksheet(templates.names.individual).id);
+    book.removeWorksheet(book.getWorksheet(templates.names.status).id);
+    const sheet = book.addWorksheet(templates.names.individual);
+    sheet.addRow(['対象者ID', '氏名（任意）', '学年', 'クラス', '出席番号', '設問・教科ID', '設問・教科', '入力単位', '回答番号', '欠測状態']);
+    people.forEach(p => sheet.addRow([p.id, p.name, p.grade, p.className, p.number, 'q1', '架空Q1 架空の質問です。', '選択肢コード', 1]));
+    const help = book.getWorksheet(templates.names.help);
+    help.getCell('B3').value = '「個人入力」シートで、生徒ごとの行の黄色い「回答番号」欄に記入します。灰色の欄は変更しません。';
+    help.getCell('B6').value = '値を入力できない理由は欠測状態欄で選べます。数値と欠測状態を同時に入力できません。';
+    const meta = book.getWorksheet(templates.names.manifest);
+    const fixed = JSON.parse(meta.getCell('B7').value);
+    fixed.templateVersion = 1;
+    // Digest produced by the v1 writer for this fictional roster and question.
+    fixed.integrity = '12b36a8e6a125818ced2d82e1182bc0c7e9876654042081f5eb1b4357af65e1e';
+    meta.getCell('B2').value = 1; meta.getCell('B7').value = JSON.stringify(fixed);
   });
   const result = await templates.parseTemplate(legacy, surveys, 'wave-one');
   assert.equal(result.ok, true, result.errors.join('\n'));
   assert.equal(result.payload.results[0].values[0].value.value, 3);
+  assert.equal(result.payload.source.reader.version, '1');
+  const original = await edit(legacy, book => {
+    book.getWorksheet(templates.names.individual).getCell('I1').value = '学校値';
+    book.getWorksheet(templates.names.help).getCell('B3').value = '黄色い欄だけに学校値を入力します。灰色の定義・ID・対象者・入力方式は変更しません。';
+  });
+  assert.equal((await templates.parseTemplate(original, surveys, 'wave-one')).ok, true);
   const edited = await edit(legacy, book => { book.getWorksheet(templates.names.individual).getCell('I1').value = '改変された列名'; });
   assertFailure(await templates.parseTemplate(edited, surveys, 'wave-one'), /変更|発行/);
 });
@@ -297,10 +327,9 @@ test('issued plan remains anchored after parsing and cannot overwrite a later sa
 
 test('individual rows retain stable IDs, raw correct counts and distinguish blanks from actual no-response choices', async () => {
   const surveys = fixture(), result = await parsed(surveys, options('individual', ['ref-q1', 'ref-math', 'ref-q1-math']), book => {
-    for (const row of dataRows(book.getWorksheet(templates.names.individual))) {
-      const participant = row.getCell(1).value, instrument = row.getCell(6).value;
-      row.getCell(9).value = instrument === 'q1' ? ({ p1: 1, p2: 9, p3: null })[participant] : ({ p1: 4, p2: 0, p3: 2 })[participant];
-    }
+    const sheet = book.getWorksheet(templates.names.individual);
+    [1, 9, null].forEach((answer, i) => { sheet.getCell(i + 3, 6).value = answer; });
+    [4, 0, 2].forEach((score, i) => { sheet.getCell(i + 3, 7).value = score; });
   });
   assert.equal(result.ok, true, result.errors.join('\n'));
   const records = result.payload.responseSet.records;
@@ -313,12 +342,36 @@ test('individual rows retain stable IDs, raw correct counts and distinguish blan
 });
 
 test('individual out-of-range scores, undefined codes, changed IDs and duplicate rows produce no candidate', async () => {
-  for (const change of [sheet => { sheet.getCell('I2').value = 'absent-code'; },
-    sheet => { sheet.getCell('I3').value = 5; }, sheet => { sheet.getCell('I3').value = 2.5; },
-    sheet => { sheet.getCell('A2').value = 'p2'; }, sheet => { sheet.addRow(sheet.getRow(2).values); }]) {
+  for (const change of [sheet => { sheet.getCell('F3').value = 'absent-code'; },
+    sheet => { sheet.getCell('G3').value = 5; }, sheet => { sheet.getCell('G4').value = 2.5; },
+    sheet => { sheet.getCell('A3').value = 'p2'; }, sheet => { sheet.getCell('F2').value = 'q2'; },
+    sheet => { sheet.addRow(sheet.getRow(3).values); }]) {
     const result = await parsed(fixture(), options('individual', ['ref-q1', 'ref-math']), book => change(book.getWorksheet(templates.names.individual)));
     assertFailure(result, /選択肢|正答数|整数|変更|範囲/);
   }
+});
+
+test('individual answers and missing reasons stay with their own question and student', async () => {
+  const surveys = fixture(), settings = options('individual', ['ref-q1', 'ref-q2']);
+  const built = await templates.buildTemplate(surveys, 'wave-one', settings);
+  const filled = await edit(built.buffer, book => {
+    const answers = book.getWorksheet(templates.names.individual), status = book.getWorksheet(templates.names.status);
+    answers.getCell('F3').value = 1; answers.getCell('G4').value = 2;
+    status.getCell('G3').value = '未出題'; status.getCell('F4').value = '調査不参加';
+  });
+  const result = await templates.parseTemplate(filled, surveys, 'wave-one');
+  assert.equal(result.ok, true, result.errors.join('\n'));
+  assert.deepEqual(result.payload.responseSet.records.map(row => row.values.map(v => [v.instrumentId, v.value, v.status])), [
+    [['q1', '1', 'observed'], ['q2', null, 'notAssigned']],
+    [['q1', null, 'notParticipating'], ['q2', '2', 'observed']],
+    [['q1', null, 'unentered'], ['q2', null, 'unentered']],
+  ]);
+  assert.deepEqual(result.payload.source.locations, [{ sheet: '個人入力', range: 'A1:G5' }, { sheet: '欠測状態', range: 'A1:G5' }]);
+  const conflict = await edit(filled, book => { book.getWorksheet(templates.names.status).getCell('G4').value = '未出題'; });
+  const invalid = await templates.parseTemplate(conflict, surveys, 'wave-one');
+  assertFailure(invalid, /同時/); assert.equal(invalid.issues[0].sheet, '欠測状態'); assert.match(invalid.issues[0].field, /G4/);
+  const wrongId = await edit(filled, book => { book.getWorksheet(templates.names.status).getCell('A3').value = 'p3'; });
+  assertFailure(await templates.parseTemplate(wrongId, surveys, 'wave-one'), /再発行/);
 });
 
 test('incomplete definitions and unsupported individual IRT means cannot be issued', async () => {
@@ -341,4 +394,23 @@ test('truncated ZIP, oversized files, expanded workbooks and extra cells cannot 
   const outOfRange = XLSX.read(built.buffer, { type: 'array' });
   outOfRange.Sheets['集計入力'].AG2 = { t: 'n', v: 1 }; outOfRange.Sheets['集計入力']['!ref'] = 'A1:AG5';
   assertFailure(await templates.parseTemplate(XLSX.write(outOfRange, { type: 'buffer', bookType: 'xlsx' }), surveys, 'wave-one'), /範囲|容量/);
+});
+
+test('wide personal sheets retain every question while metadata and the issued scope keep their own column limits', async () => {
+  const surveys = fixture(), wave = surveys.waves[0], refs = [];
+  for (let n = 0; n < 35; n++) {
+    const question = { ...clone(surveys.instruments[0]), id: 'wide-q-' + n, code: String(n), text: '架空の設問' + n };
+    const ref = { ...clone(surveys.references[0]), id: 'wide-ref-' + n, instrumentId: question.id };
+    surveys.instruments.push(question); surveys.references.push(ref);
+    wave.instrumentIds.push(question.id); wave.referenceIds.push(ref.id); refs.push(ref.id);
+  }
+  const built = await templates.buildTemplate(surveys, wave.id, options('individual', refs));
+  const filled = await edit(built.buffer, book => { book.getWorksheet('個人入力').getCell(5, 40).value = 2; });
+  const result = await templates.parseTemplate(filled, surveys, wave.id);
+  assert.equal(result.ok, true, result.errors.join('\n'));
+  assert.deepEqual(result.payload.responseSet.records[2].values.at(-1), { instrumentId: 'wide-q-34', status: 'observed', value: '2' });
+  const badMeta = await edit(filled, book => { book.getWorksheet('発行情報').getCell(2, 33).value = '範囲外'; });
+  assertFailure(await templates.parseTemplate(badMeta, surveys, wave.id), /範囲|容量/);
+  const extraQuestion = await edit(filled, book => { book.getWorksheet('個人入力').getCell(3, 41).value = 1; });
+  assertFailure(await templates.parseTemplate(extraQuestion, surveys, wave.id), /発行した質問/);
 });
