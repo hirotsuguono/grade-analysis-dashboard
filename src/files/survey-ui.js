@@ -105,11 +105,18 @@
     return missing.length === 0;
   }
   const numeric = value => typeof value === 'number' && Number.isFinite(value);
-  function number(value, signed) {
+  function number(value, signed, digits = 2, fixed = false) {
     if (!numeric(value)) return '—';
-    const rounded = Math.round((value + Number.EPSILON) * 100) / 100;
-    return (signed && rounded > 0 ? '+' : '') + (Object.is(rounded, -0) ? 0 : rounded).toLocaleString('ja-JP', { maximumFractionDigits: 2 });
+    const rounded = roundTo(value, digits);
+    return (signed && rounded > 0 ? '+' : '') + (Object.is(rounded, -0) ? 0 : rounded).toLocaleString('ja-JP', { minimumFractionDigits: fixed ? digits : 0, maximumFractionDigits: digits });
   }
+  // 割合は自校・比較先とも小数第1位（四捨五入）でそろえ、グラフの値・ツールチップ・表を一致させる。
+  function roundTo(value, digits) { const scale = 10 ** digits; return Math.round((value + Math.sign(value) * Number.EPSILON) * scale) / scale; }
+  const percentDigits = 1;
+  const percentText = (value, signed) => number(value, signed, percentDigits, true);
+  const chartPercent = value => numeric(value) ? roundTo(value, percentDigits) : null;
+  const legendStyle = { bottom: 4, type: 'scroll', itemGap: 18, textStyle: { width: 240, overflow: 'truncate' } };
+  const percentTooltip = { valueFormatter: value => numeric(value) ? percentText(value) + '%' : '—' };
   function cellText(cell, suffix) {
     return cell?.status === 'observed' && numeric(cell.value) ? number(cell.value) + (suffix || '') : display(cell?.status || 'notProvided');
   }
@@ -474,18 +481,24 @@
       paragraph(preview, summaryText(plan.summary));
       paragraph(preview, '入力された数値 ' + (parsed.preview?.observedCount || 0) + '項目 ／ 空欄 ' + (parsed.preview?.blankCount || 0) + '項目 ／ 欠測状態 ' + (parsed.preview?.missingCount || 0) + '項目');
       paragraph(preview, 'このExcelの入力対象範囲を反映します。対象範囲内で空欄にした項目は未入力に戻ります。対象外の質問・教科は保持します。');
-      const before = root.GD_SURVEY_STATE.getLatest(surveys(), wave.id), changes = [];
+      const before = root.GD_SURVEY_STATE.getLatest(surveys(), wave.id), changes = new Map();
       for (const value of parsed.payload.results || []) {
         const prior = before.find(item => item.instrumentId === value.instrumentId && item.type === value.type && item.subjectInstrumentId === value.subjectInstrumentId);
-        const oldFields = rawFields(prior), fields = rawFields(value);
-        for (const [key, cell] of fields) {
-          const old = oldFields.get(key);
+        const oldFields = rawFields(prior), fields = rawFields(value), title = resultTitle(surveys(), value);
+        for (const [key, { label, cell }] of fields) {
+          const old = oldFields.get(key)?.cell;
           if (JSON.stringify(old) === JSON.stringify(cell)) continue;
-          changes.push([(instrument(surveys(), value.instrumentId)?.code || '') + ' ' + key, old ? cellText(old) : '未登録', cellText(cell)]);
+          if (!changes.has(title)) changes.set(title, []);
+          changes.get(title).push([label, old ? cellText(old) : '未登録', cellText(cell)]);
         }
       }
-      const wrap = element('div', undefined, 'table-wrap');
-      dataTable(wrap, ['対象・項目', '反映前', '反映後'], changes.length ? changes : [['変更する数値はありません', '—', '—']], '入力対象範囲の変更（' + changes.length + '項目）'); preview.append(wrap);
+      const changeCount = [...changes.values()].reduce((sum, rows) => sum + rows.length, 0);
+      preview.append(element('h5', '変更される値（' + changeCount + '項目）'));
+      if (!changes.size) paragraph(preview, '変更する数値はありません。');
+      for (const [title, rows] of changes) {
+        const wrap = element('div', undefined, 'table-wrap');
+        dataTable(wrap, ['入力した内容', '反映前', '反映後'], rows, title); preview.append(wrap);
+      }
       messages(preview, parsed.preview?.warnings);
       const switches = plan.summary.modeChanges || [];
       if (switches.length) {
@@ -518,22 +531,48 @@
       byId('surveyResultTitle').focus();
     } catch (error) { notify(error.message, true); }
   }
-  function rawFields(stat) {
+  // 学校結果の各入力欄を、利用者が読める名前（「選択肢A」の人数 など）で列挙する。キーは新旧比較用の内部識別子。
+  function rawFields(stat, data = surveys()) {
     const fields = new Map(); if (!stat) return fields;
-    fields.set('対象人数', stat.denominator.count);
-    if (stat.type === 'summary') { fields.set('平均', stat.mean); fields.set('標準偏差', stat.standardDeviation); }
-    else if (stat.type === 'distribution') stat.values.forEach(row => { fields.set(row.code, row.value); if (row.publishedPercent) fields.set(row.code + '・掲載割合', row.publishedPercent); });
+    const item = instrument(data, stat.instrumentId), quote = code => '「' + categoryLabel(item, code) + '」';
+    const unitWord = stat.observationUnit === 'school' ? '学校数' : '人数', share = stat.basis === 'percent' ? '割合（%）' : unitWord;
+    const put = (key, label, cell) => fields.set(key, { label, cell });
+    put('denominator', stat.type === 'distribution' ? '回答した' + unitWord + '（割合の分母）' : '集計した' + unitWord, stat.denominator.count);
+    if (stat.type === 'summary') { put('mean', '平均', stat.mean); put('sd', '標準偏差', stat.standardDeviation); }
+    else if (stat.type === 'distribution') stat.values.forEach(row => {
+      put('v:' + row.code, quote(row.code) + 'の' + share, row.value);
+      if (row.publishedPercent) put('vp:' + row.code, quote(row.code) + 'の割合（公表値）', row.publishedPercent);
+    });
     else if (stat.type === 'conditionalMean') {
-      stat.values.forEach(row => { fields.set(row.code + '・人数', row.count); fields.set(row.code + '・平均', row.mean); fields.set(row.code + '・標準偏差', row.standardDeviation); });
-      if (stat.total) { fields.set('合計・人数', stat.total.count); fields.set('合計・平均', stat.total.mean); fields.set('合計・標準偏差', stat.total.standardDeviation); }
+      stat.values.forEach(row => {
+        put('c:' + row.code, quote(row.code) + 'と回答した' + unitWord, row.count);
+        put('m:' + row.code, quote(row.code) + 'と回答した群の平均', row.mean);
+        put('s:' + row.code, quote(row.code) + 'と回答した群の標準偏差', row.standardDeviation);
+      });
+      if (stat.total) { put('tc', '全体の' + unitWord, stat.total.count); put('tm', '全体の平均', stat.total.mean); put('ts', '全体の標準偏差', stat.total.standardDeviation); }
     } else if (stat.type === 'crossTab') {
-      stat.groups.forEach(group => { fields.set('群' + group.code + '・人数', group.count); if (group.publishedPercent) fields.set('群' + group.code + '・掲載割合', group.publishedPercent); });
+      const groupLabel = code => stat.groups.find(group => group.code === code)?.label || code;
+      stat.groups.forEach(group => {
+        put('g:' + group.code, '教科の' + group.label + 'の' + unitWord, group.count);
+        if (group.publishedPercent) put('gp:' + group.code, '教科の' + group.label + 'の割合（公表値）', group.publishedPercent);
+      });
       stat.rows.forEach(row => {
-        fields.set(row.code + '・人数', row.count); if (row.publishedPercent) fields.set(row.code + '・掲載割合', row.publishedPercent);
-        row.values.forEach(value => { fields.set(row.code + ' × ' + value.code, value.value); if (value.publishedPercent) fields.set(row.code + ' × ' + value.code + '・掲載割合', value.publishedPercent); });
+        put('r:' + row.code, quote(row.code) + 'と回答した' + unitWord, row.count);
+        if (row.publishedPercent) put('rp:' + row.code, quote(row.code) + 'の割合（公表値）', row.publishedPercent);
+        row.values.forEach(value => {
+          put('x:' + row.code + ':' + value.code, quote(row.code) + ' × ' + groupLabel(value.code) + 'の' + share, value.value);
+          if (value.publishedPercent) put('xp:' + row.code + ':' + value.code, quote(row.code) + ' × ' + groupLabel(value.code) + 'の割合（公表値）', value.publishedPercent);
+        });
       });
     }
     return fields;
+  }
+  // 取込確認の表で、どの質問・教科の値かを番号だけでなく文言と表の種類で示す。
+  function resultTitle(data, stat) {
+    const item = instrument(data, stat.instrumentId), subject = instrument(data, stat.subjectInstrumentId);
+    const code = item?.code ? (/^[0-9０-９]/.test(item.code) ? '質問' + item.code : item.code) : '';
+    const text = item?.text ? (item.text.length > 40 ? item.text.slice(0, 40) + '…' : item.text) : '';
+    return [code, text].filter(Boolean).join('　') + (subject ? ' × ' + subject.text : '') + '（' + display(stat.type) + '）';
   }
   function availableReferences() {
     const data = surveys(), wave = currentWave();
@@ -610,7 +649,7 @@
   function formatPercent(stat, code) {
     if (!stat) return '未入力';
     const value = percent(stat, code), cell = stat.values.find(row => row.code === code)?.value;
-    return value === null ? (cell?.status === 'observed' ? '割合を算出できません' : cellText(cell)) : number(value) + '%';
+    return value === null ? (cell?.status === 'observed' ? '割合を算出できません' : cellText(cell)) : percentText(value) + '%';
   }
   function setChart(option, height) {
     const node = byId('surveyChart'); node.hidden = false; node.style.height = (height || 290) + 'px';
@@ -618,7 +657,7 @@
     instance ||= root.echarts.init(node, 'gd');
     option.animation = false; option.aria = { enabled: true, decal: { show: true } };
     option.tooltip = { trigger: 'axis', renderMode: 'richText', ...option.tooltip };
-    option.textStyle = { fontFamily: "-apple-system, BlinkMacSystemFont, 'Yu Gothic UI', sans-serif", color: '#536276' };
+    // フォントは共通テーマ（gd）に任せる。ここで別のフォントを指定すると凡例の文字幅の計測がずれ、色見本と文字が重なる。
     instance.setOption(option, true); instance.resize();
   }
   function meanUnit(item) { return display(item?.scale?.unit); }
@@ -665,23 +704,23 @@
       const cell = school.values.find(row => row.code === code)?.value;
       return observed(cell) === null ? cellText(cell) : cell.value > 0 ? '自校の回答' : '—';
     };
-    dataTable(table, ['選択肢', '自校', ref.geography.label, '差（ポイント）'], options.map(option => [option.label, schoolValue(option.code), formatPercent(ref, option.code), number(diffs?.find(row => row.code === option.code)?.difference, true)]), singleSchool ? '自校の回答と、比較先で同じ回答をした学校の割合。' : '回答・得点の割合。差は割合の差（ポイント）です。');
+    dataTable(table, ['選択肢', '自校', ref.geography.label, '差（ポイント）'], options.map(option => [option.label, schoolValue(option.code), formatPercent(ref, option.code), percentText(diffs?.find(row => row.code === option.code)?.difference, true)]), singleSchool ? '自校の回答と、比較先で同じ回答をした学校の割合。' : '回答・得点の割合。差は割合の差（ポイント）です。');
     byId('surveyChartNote').textContent = singleSchool ? '学校質問では、自校の回答を表に示し、グラフには比較先の学校割合を表示します。' : '公表値の丸めは補正していません。人数から割合を求めるときは、この表の対象人数を使います。';
     if (comparison.status === 'blocked') return;
     const seriesRows = [[singleSchool ? null : school, school?.geography.label || '自校'], [ref, ref.geography.label]].filter(([stat]) => stat && options.every(option => percent(stat, option.code) !== null));
     if (!seriesRows.length) { byId('surveyChartNote').textContent += ' 欠測を含むため、グラフは表示せず表で確認できます。'; return; }
     if (seriesRows.length < (school && !singleSchool ? 2 : 1)) byId('surveyChartNote').textContent += ' 一部が欠測の系列はグラフに表示していません。';
     if (!ref.partition || school && !school.partition) {
-      setChart({ color: colors, legend: { bottom: 0 }, grid: { left: 10, right: 30, top: 25, bottom: 65, containLabel: true },
+      setChart({ color: colors, tooltip: percentTooltip, legend: { bottom: 4, itemGap: 18 }, grid: { left: 10, right: 30, top: 25, bottom: 65, containLabel: true },
         xAxis: { type: 'value', min: 0, max: 100, name: '%' }, yAxis: { type: 'category', data: options.map(option => option.label), axisLabel: { width: 200, overflow: 'truncate' } },
-        series: seriesRows.map(([stat, label]) => ({ name: label, type: 'bar', data: options.map(option => percent(stat, option.code)), barMaxWidth: 24 })) }, Math.max(280, options.length * 52));
+        series: seriesRows.map(([stat, label]) => ({ name: label, type: 'bar', data: options.map(option => chartPercent(percent(stat, option.code))), barMaxWidth: 24 })) }, Math.max(280, options.length * 52));
     } else {
-      setChart({ color: colors, legend: { bottom: 0, type: 'scroll', data: options.map(option => option.label) },
+      setChart({ color: colors, tooltip: percentTooltip, legend: { ...legendStyle, data: options.map(option => option.label) },
         grid: { left: 12, right: 28, top: 25, bottom: 90, containLabel: true },
         xAxis: { type: 'value', min: 0, max: 100, name: '%' }, yAxis: { type: 'category', data: seriesRows.map(row => row[1]), inverse: true },
         series: options.map((option, index) => ({ name: option.label, type: 'bar', stack: 'response', barMaxWidth: 42, itemStyle: { color: colors[index % colors.length] },
-          label: { show: true, position: 'inside', formatter: params => params.value >= 7 ? number(params.value) + '%' : '', color: '#fff', fontSize: 11 },
-          data: seriesRows.map(([stat]) => percent(stat, option.code)) })) }, 260);
+          label: { show: true, position: 'inside', formatter: params => params.value >= 7 ? percentText(params.value) + '%' : '', color: '#fff', fontSize: 11 }, labelLayout: { hideOverlap: true },
+          data: seriesRows.map(([stat]) => chartPercent(percent(stat, option.code))) })) }, 260);
     }
   }
   function renderSummary(table, item, school, ref, comparison) {
@@ -703,7 +742,7 @@
     if (comparison.status === 'blocked') return;
     if (!subject || subject.scale.unit === 'unknown' || subject.scale.kind === 'unknown') { byId('surveyChartNote').textContent += ' 尺度の単位を確認できないためグラフは表示しません。'; return; }
     const values = [[school, school?.geography.label || '自校'], [ref, ref.geography.label]].filter(([stat]) => stat && stat.values.some(value => observed(value.mean) !== null));
-    if (values.length) setChart({ color: colors, legend: { bottom: 0 }, grid: { left: 12, right: 35, top: 40, bottom: 80, containLabel: true },
+    if (values.length) setChart({ color: colors, legend: { bottom: 4, itemGap: 18 }, grid: { left: 12, right: 35, top: 40, bottom: 80, containLabel: true },
       xAxis: { type: 'category', data: ref.values.map(value => categoryLabel(item, value.code)), axisLabel: { width: 100, overflow: 'break', interval: 0 } },
       yAxis: { type: 'value', name: unit, min: subject.scale.minimum ?? undefined, max: subject.scale.kind === 'percentCorrect' ? 100 : undefined },
       series: values.map(([stat, label]) => ({ name: label, type: 'bar', barMaxWidth: 35, data: ref.values.map(value => observed(stat.values.find(row => row.code === value.code)?.mean)) })) }, 340);
@@ -724,16 +763,16 @@
       const left = crossPercent(school, row.code, group.code), right = crossPercent(ref, row.code, group.code);
       const raw = row.values.find(value => value.code === group.code);
       const delta = comparison.status === 'comparable' ? comparison.differences?.rows?.find(value => value.code === row.code)?.values?.find(value => value.code === group.code)?.difference : null;
-      rows.push([categoryLabel(item, row.code), group.label, left === null ? (school ? '未提供' : '未入力') : number(left) + '%', right === null ? cellText(raw?.value) : number(right) + '%', number(delta, true)]);
+      rows.push([categoryLabel(item, row.code), group.label, left === null ? (school ? '未提供' : '未入力') : percentText(left) + '%', right === null ? cellText(raw?.value) : percentText(right) + '%', percentText(delta, true)]);
     }));
     dataTable(table, ['回答', '教科の群', '自校', ref.geography.label, '差（ポイント）'], rows, (subject?.text || '教科') + ' ／ ' + normalization);
     byId('surveyChartNote').textContent = normalization + '。実際に対応付けられた公開クロス表を表示しています。学校の回答分布だけからクロス表は作成しません。';
     if (comparison.status === 'blocked' || ref.normalization !== 'column') return;
     const options = ref.rows.filter(row => ref.groups.every(group => crossPercent(ref, row.code, group.code) !== null));
     if (options.length !== ref.rows.length) return;
-    setChart({ color: colors, legend: { bottom: 0, type: 'scroll' }, grid: { left: 10, right: 30, top: 25, bottom: 85, containLabel: true },
+    setChart({ color: colors, tooltip: percentTooltip, legend: legendStyle, grid: { left: 10, right: 30, top: 25, bottom: 85, containLabel: true },
       xAxis: { type: 'value', min: 0, max: 100, name: '%' }, yAxis: { type: 'category', data: ref.groups.map(group => ref.geography.label + ' ' + group.label), inverse: true },
-      series: options.map(row => ({ name: categoryLabel(item, row.code), type: 'bar', stack: 'cross', barMaxWidth: 30, data: ref.groups.map(group => crossPercent(ref, row.code, group.code)) })) }, Math.max(280, ref.groups.length * 45 + 120));
+      series: options.map(row => ({ name: categoryLabel(item, row.code), type: 'bar', stack: 'cross', barMaxWidth: 30, data: ref.groups.map(group => chartPercent(crossPercent(ref, row.code, group.code))) })) }, Math.max(280, ref.groups.length * 45 + 120));
   }
   function renderDetails(data, school, ref, wave) {
     const details = byId('surveySourceDetails'); details.replaceChildren();
@@ -759,7 +798,7 @@
       if (origin?.fingerprint) paragraph(details, 'ファイル指紋：' + (typeof origin.fingerprint === 'string' ? origin.fingerprint : JSON.stringify(origin.fingerprint)) + '（内容の識別用です）');
       messages(details, [...(origin?.notes || []), ...stat.notes]);
       const wrap = element('div', undefined, 'table-wrap');
-      dataTable(wrap, ['項目', '元の値', '欠測状態', '掲載箇所'], [...rawFields(stat)].map(([key, cell]) => [key,
+      dataTable(wrap, ['項目', '元の値', '欠測状態', '掲載箇所'], [...rawFields(stat, data).values()].map(({ label: key, cell }) => [key,
         cell?.provenance?.raw !== undefined && cell.provenance.raw !== null ? String(cell.provenance.raw) : cell?.status === 'observed' ? String(cell.value) : '—',
         cell?.status === 'observed' ? '掲載・入力あり' : display(cell?.status || 'notProvided'),
         cell?.provenance ? cell.provenance.sheet + ' ' + cell.provenance.range + (cell.provenance.derivation === 'sum' ? '（掲載人数の合計）' : '') : '—']), label + 'の元の掲載値・入力値'); details.append(wrap);

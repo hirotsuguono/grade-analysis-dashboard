@@ -159,15 +159,25 @@ module.exports = async (page, original) => {
     assert.equal(await page.locator('#surveySchoolApplyBtn').isVisible(), false, 'leaving a step discards its preview');
     assert.equal(await text(), beforeSchool);
     await upload(filled); await ready();
+    const previewText = await page.locator('#surveySchoolPreview').textContent();
+    assert.match(previewText, /質問1　架空の質問1について確認しますか/);
+    assert.match(previewText, /回答した人数（割合の分母）/);
+    assert.match(previewText, /「架空の選択肢B」の人数/);
+    assert.doesNotMatch(previewText, /1 対象人数|対象・項目/);
     await page.locator('#surveySchoolApplyBtn').click();
     await page.waitForFunction(id => window.GD_SURVEY_STATE.getLatest(data.surveys, id).length === 1, waveId);
     let result = (await latest(waveId))[0];
     assert.deepEqual(result.values.map(v => v.value.value), [0, 8, 1, 1]);
     assert.equal(result.denominator.count.value, 10);
     assert.equal(await page.locator('#surveyChart').isVisible(), true);
-    assert.match(await page.locator('#surveyTable').textContent(), /0%/);
-    assert.match(await page.locator('#surveyTable').textContent(), /80%/);
-    assert.match(await page.locator('#surveyTable').textContent(), /-30/);
+    assert.match(await page.locator('#surveyTable').textContent(), /0\.0%/);
+    assert.match(await page.locator('#surveyTable').textContent(), /80\.0%/);
+    assert.match(await page.locator('#surveyTable').textContent(), /-30\.0/);
+    const chartFormat = await page.evaluate(() => {
+      const option = echarts.getInstanceByDom(document.getElementById('surveyChart')).getOption();
+      return { tooltip: option.tooltip[0].valueFormatter(100 / 3), label: option.series[0].label.formatter({ value: 200 / 3 }) };
+    });
+    assert.deepEqual(chartFormat, { tooltip: '33.3%', label: '66.7%' }, 'percentages are shown to one decimal place');
     await compareFields(original);
     const saved = await saveJson(page);
     assert.deepEqual(saved.surveys.waves[0].results[0].values.map(v => v.value.value), [0, 8, 1, 1]);
@@ -329,7 +339,7 @@ module.exports = async (page, original) => {
       await empty.locator('#surveyChart').waitFor();
       assert.equal(await empty.locator('#surveySchoolImport').evaluate(el => el.open), false);
       assert.match(await empty.locator('#surveyComparisonDecision').textContent(), /独自実施/);
-      assert.match(await empty.locator('#surveyTable').textContent(), /80%/);
+      assert.match(await empty.locator('#surveyTable').textContent(), /80\.0%/);
     } finally { await empty.close(); }
   } finally {
     await page.evaluate(() => { if (window.__surveyReadGate) { window.GD_SURVEY_TEMPLATES = window.__surveyReadGate.original; window.__surveyReadGate.release?.(); delete window.__surveyReadGate; } });
