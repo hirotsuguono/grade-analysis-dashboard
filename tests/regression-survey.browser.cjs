@@ -175,9 +175,10 @@ module.exports = async (page, original) => {
     assert.match(await page.locator('#surveyTable').textContent(), /-30\.0/);
     const chartFormat = await page.evaluate(() => {
       const option = echarts.getInstanceByDom(document.getElementById('surveyChart')).getOption();
-      return { tooltip: option.tooltip[0].valueFormatter(100 / 3), label: option.series[0].label.formatter({ value: 200 / 3 }) };
+      return { tooltip: option.tooltip[0].valueFormatter(100 / 3), label: option.series[0].label.formatter({ value: 200 / 3 }),
+        axis: [option.xAxis[0].max({ min: 0, max: 100.2 }), option.xAxis[0].max({ min: 0, max: 99.9 })] };
     });
-    assert.deepEqual(chartFormat, { tooltip: '33.3%', label: '66.7%' }, 'percentages are shown to one decimal place');
+    assert.deepEqual(chartFormat, { tooltip: '33.3%', label: '66.7%', axis: [100.2, 100] }, 'percentages are shown to one decimal place and rounded stacks are not clipped');
     await compareFields(original);
     const saved = await saveJson(page);
     assert.deepEqual(saved.surveys.waves[0].results[0].values.map(v => v.value.value), [0, 8, 1, 1]);

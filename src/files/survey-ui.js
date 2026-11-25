@@ -117,8 +117,19 @@
   const chartPercent = value => numeric(value) ? roundTo(value, percentDigits) : null;
   const legendStyle = { bottom: 4, type: 'scroll', itemGap: 18, textStyle: { width: 240, overflow: 'truncate' } };
   const percentTooltip = { valueFormatter: value => numeric(value) ? percentText(value) + '%' : '—' };
-  function cellText(cell, suffix) {
-    return cell?.status === 'observed' && numeric(cell.value) ? number(cell.value) + (suffix || '') : display(cell?.status || 'notProvided');
+  // 平均正答率（%）は割合と同じ小数第1位、IRTスコアなど他の尺度は小数第2位で表示する。
+  const meanDigits = scale => scale?.kind === 'percentCorrect' ? percentDigits : 2;
+  const meanText = (value, digits, signed) => number(value, signed, digits, digits === percentDigits);
+  const meanTooltip = digits => ({ valueFormatter: value => numeric(value) ? meanText(value, digits) : '—' });
+  // 差は、表に並べた丸め後の2つの値から求め、見えている数字同士の差と一致させる。比較できない（計算済みの差がない）ときは表示しない。
+  function shownDifference(left, right, digits, computed) {
+    if (!numeric(computed)) return null;
+    return numeric(left) && numeric(right) ? roundTo(roundTo(left, digits) - roundTo(right, digits), digits) : computed;
+  }
+  // 区間ごとに丸めた積み上げ棒は合計が100を少し超えることがあるため、軸の上限を合計に合わせ、目盛りは整数だけ表示する。
+  const stackedPercentAxis = { type: 'value', min: 0, max: value => Math.max(100, value.max), name: '%', axisLabel: { formatter: value => Number.isInteger(value) ? String(value) : '' } };
+  function cellText(cell, suffix, digits = 2) {
+    return cell?.status === 'observed' && numeric(cell.value) ? meanText(cell.value, digits) + (suffix || '') : display(cell?.status || 'notProvided');
   }
   const observed = cell => cell?.status === 'observed' && numeric(cell.value) ? cell.value : null;
   const instrument = (data, id) => data.instruments.find(item => item.id === id);
@@ -484,18 +495,18 @@
       const before = root.GD_SURVEY_STATE.getLatest(surveys(), wave.id), changes = new Map();
       for (const value of parsed.payload.results || []) {
         const prior = before.find(item => item.instrumentId === value.instrumentId && item.type === value.type && item.subjectInstrumentId === value.subjectInstrumentId);
-        const oldFields = rawFields(prior), fields = rawFields(value), title = resultTitle(surveys(), value);
+        const oldFields = rawFields(prior), fields = rawFields(value), group = keyFor(value);
         for (const [key, { label, cell }] of fields) {
           const old = oldFields.get(key)?.cell;
           if (JSON.stringify(old) === JSON.stringify(cell)) continue;
-          if (!changes.has(title)) changes.set(title, []);
-          changes.get(title).push([label, old ? cellText(old) : '未登録', cellText(cell)]);
+          if (!changes.has(group)) changes.set(group, { title: resultTitle(surveys(), value), rows: [] });
+          changes.get(group).rows.push([label, old ? cellText(old) : '未登録', cellText(cell)]);
         }
       }
-      const changeCount = [...changes.values()].reduce((sum, rows) => sum + rows.length, 0);
+      const changeCount = [...changes.values()].reduce((sum, entry) => sum + entry.rows.length, 0);
       preview.append(element('h5', '変更される値（' + changeCount + '項目）'));
       if (!changes.size) paragraph(preview, '変更する数値はありません。');
-      for (const [title, rows] of changes) {
+      for (const { title, rows } of changes.values()) {
         const wrap = element('div', undefined, 'table-wrap');
         dataTable(wrap, ['入力した内容', '反映前', '反映後'], rows, title); preview.append(wrap);
       }
@@ -704,7 +715,7 @@
       const cell = school.values.find(row => row.code === code)?.value;
       return observed(cell) === null ? cellText(cell) : cell.value > 0 ? '自校の回答' : '—';
     };
-    dataTable(table, ['選択肢', '自校', ref.geography.label, '差（ポイント）'], options.map(option => [option.label, schoolValue(option.code), formatPercent(ref, option.code), percentText(diffs?.find(row => row.code === option.code)?.difference, true)]), singleSchool ? '自校の回答と、比較先で同じ回答をした学校の割合。' : '回答・得点の割合。差は割合の差（ポイント）です。');
+    dataTable(table, ['選択肢', '自校', ref.geography.label, '差（ポイント）'], options.map(option => [option.label, schoolValue(option.code), formatPercent(ref, option.code), percentText(shownDifference(singleSchool ? null : percent(school, option.code), percent(ref, option.code), percentDigits, diffs?.find(row => row.code === option.code)?.difference), true)]), singleSchool ? '自校の回答と、比較先で同じ回答をした学校の割合。' : '回答・得点の割合。差は割合の差（ポイント）です。');
     byId('surveyChartNote').textContent = singleSchool ? '学校質問では、自校の回答を表に示し、グラフには比較先の学校割合を表示します。' : '公表値の丸めは補正していません。人数から割合を求めるときは、この表の対象人数を使います。';
     if (comparison.status === 'blocked') return;
     const seriesRows = [[singleSchool ? null : school, school?.geography.label || '自校'], [ref, ref.geography.label]].filter(([stat]) => stat && options.every(option => percent(stat, option.code) !== null));
@@ -717,35 +728,35 @@
     } else {
       setChart({ color: colors, tooltip: percentTooltip, legend: { ...legendStyle, data: options.map(option => option.label) },
         grid: { left: 12, right: 28, top: 25, bottom: 90, containLabel: true },
-        xAxis: { type: 'value', min: 0, max: 100, name: '%' }, yAxis: { type: 'category', data: seriesRows.map(row => row[1]), inverse: true },
+        xAxis: stackedPercentAxis, yAxis: { type: 'category', data: seriesRows.map(row => row[1]), inverse: true },
         series: options.map((option, index) => ({ name: option.label, type: 'bar', stack: 'response', barMaxWidth: 42, itemStyle: { color: colors[index % colors.length] },
           label: { show: true, position: 'inside', formatter: params => params.value >= 7 ? percentText(params.value) + '%' : '', color: '#fff', fontSize: 11 }, labelLayout: { hideOverlap: true },
           data: seriesRows.map(([stat]) => chartPercent(percent(stat, option.code))) })) }, 260);
     }
   }
   function renderSummary(table, item, school, ref, comparison) {
-    const unit = meanUnit(item), difference = comparison.status === 'comparable' ? comparison.differences?.difference : null;
+    const unit = meanUnit(item), digits = meanDigits(item?.scale), difference = comparison.status === 'comparable' ? comparison.differences?.difference : null;
     dataTable(table, ['項目', '自校', ref.geography.label, '差（' + (comparison.differences ? display(comparison.differences.unit) : unit) + '）'],
-      [['平均', school ? cellText(school.mean, ' ' + unit) : '未入力', cellText(ref.mean, ' ' + unit), number(difference, true)]], '同じ尺度の学校平均と公開平均');
+      [['平均', school ? cellText(school.mean, ' ' + unit, digits) : '未入力', cellText(ref.mean, ' ' + unit, digits), meanText(shownDifference(observed(school?.mean), observed(ref.mean), digits, difference), digits, true)]], '同じ尺度の学校平均と公開平均');
     byId('surveyChartNote').textContent = '平均は掲載された尺度で表示しています。IRTスコアと平均正答率は別の尺度です。';
     if (comparison.status === 'blocked') return;
     const rows = [[school, school?.geography.label || '自校'], [ref, ref.geography.label]].filter(([stat]) => observed(stat?.mean) !== null);
-    if (rows.length) setChart({ color: colors, grid: { left: 12, right: 35, top: 40, bottom: 20, containLabel: true },
+    if (rows.length) setChart({ color: colors, tooltip: meanTooltip(digits), grid: { left: 12, right: 35, top: 40, bottom: 20, containLabel: true },
       xAxis: { type: 'category', data: rows.map(row => row[1]) }, yAxis: { type: 'value', name: unit, min: item.scale.minimum ?? undefined, max: item.scale.kind === 'percentCorrect' ? 100 : undefined },
-      series: [{ name: '平均', type: 'bar', barMaxWidth: 70, data: rows.map(([stat], index) => ({ value: observed(stat.mean), itemStyle: { color: colors[index] } })), label: { show: true, position: 'top', formatter: params => number(params.value) } }] });
+      series: [{ name: '平均', type: 'bar', barMaxWidth: 70, data: rows.map(([stat], index) => ({ value: roundTo(observed(stat.mean), digits), itemStyle: { color: colors[index] } })), label: { show: true, position: 'top', formatter: params => meanText(params.value, digits) } }] });
   }
   function renderConditional(table, item, subject, school, ref, comparison) {
-    const unit = meanUnit(subject), diffs = comparison.status === 'comparable' ? comparison.differences?.values : null;
-    const rows = ref.values.map(value => { const ownRow = school?.values.find(row => row.code === value.code); return [categoryLabel(item, value.code), ownRow ? cellText(ownRow.mean) : '未入力', cellText(value.mean), number(diffs?.find(row => row.code === value.code)?.difference, true), ownRow ? cellText(ownRow.count, '人') : '未入力', cellText(value.count, '人')]; });
+    const unit = meanUnit(subject), digits = meanDigits(subject?.scale), diffs = comparison.status === 'comparable' ? comparison.differences?.values : null;
+    const rows = ref.values.map(value => { const ownRow = school?.values.find(row => row.code === value.code); return [categoryLabel(item, value.code), ownRow ? cellText(ownRow.mean, '', digits) : '未入力', cellText(value.mean, '', digits), meanText(shownDifference(observed(ownRow?.mean), observed(value.mean), digits, diffs?.find(row => row.code === value.code)?.difference), digits, true), ownRow ? cellText(ownRow.count, '人') : '未入力', cellText(value.count, '人')]; });
     dataTable(table, ['回答', '自校平均', ref.geography.label + '平均', '差（' + (comparison.differences ? display(comparison.differences.unit) : unit) + '）', '自校人数', '比較先人数'], rows, '回答ごとの教科平均（' + unit + '）。人数が未掲載の場合は「未提供」と表示します。');
     byId('surveyChartNote').textContent = '回答した群ごとの平均です。回答と教科結果の関連を示すもので、因果関係を示しません。';
     if (comparison.status === 'blocked') return;
     if (!subject || subject.scale.unit === 'unknown' || subject.scale.kind === 'unknown') { byId('surveyChartNote').textContent += ' 尺度の単位を確認できないためグラフは表示しません。'; return; }
     const values = [[school, school?.geography.label || '自校'], [ref, ref.geography.label]].filter(([stat]) => stat && stat.values.some(value => observed(value.mean) !== null));
-    if (values.length) setChart({ color: colors, legend: { bottom: 4, itemGap: 18 }, grid: { left: 12, right: 35, top: 40, bottom: 80, containLabel: true },
+    if (values.length) setChart({ color: colors, tooltip: meanTooltip(digits), legend: { bottom: 4, itemGap: 18 }, grid: { left: 12, right: 35, top: 40, bottom: 80, containLabel: true },
       xAxis: { type: 'category', data: ref.values.map(value => categoryLabel(item, value.code)), axisLabel: { width: 100, overflow: 'break', interval: 0 } },
       yAxis: { type: 'value', name: unit, min: subject.scale.minimum ?? undefined, max: subject.scale.kind === 'percentCorrect' ? 100 : undefined },
-      series: values.map(([stat, label]) => ({ name: label, type: 'bar', barMaxWidth: 35, data: ref.values.map(value => observed(stat.values.find(row => row.code === value.code)?.mean)) })) }, 340);
+      series: values.map(([stat, label]) => ({ name: label, type: 'bar', barMaxWidth: 35, data: ref.values.map(value => { const mean = observed(stat.values.find(row => row.code === value.code)?.mean); return mean === null ? null : roundTo(mean, digits); }) })) }, 340);
   }
   function crossPercent(stat, rowCode, groupCode) {
     if (!stat) return null;
@@ -763,7 +774,7 @@
       const left = crossPercent(school, row.code, group.code), right = crossPercent(ref, row.code, group.code);
       const raw = row.values.find(value => value.code === group.code);
       const delta = comparison.status === 'comparable' ? comparison.differences?.rows?.find(value => value.code === row.code)?.values?.find(value => value.code === group.code)?.difference : null;
-      rows.push([categoryLabel(item, row.code), group.label, left === null ? (school ? '未提供' : '未入力') : percentText(left) + '%', right === null ? cellText(raw?.value) : percentText(right) + '%', percentText(delta, true)]);
+      rows.push([categoryLabel(item, row.code), group.label, left === null ? (school ? '未提供' : '未入力') : percentText(left) + '%', right === null ? cellText(raw?.value) : percentText(right) + '%', percentText(shownDifference(left, right, percentDigits, delta), true)]);
     }));
     dataTable(table, ['回答', '教科の群', '自校', ref.geography.label, '差（ポイント）'], rows, (subject?.text || '教科') + ' ／ ' + normalization);
     byId('surveyChartNote').textContent = normalization + '。実際に対応付けられた公開クロス表を表示しています。学校の回答分布だけからクロス表は作成しません。';
@@ -771,7 +782,7 @@
     const options = ref.rows.filter(row => ref.groups.every(group => crossPercent(ref, row.code, group.code) !== null));
     if (options.length !== ref.rows.length) return;
     setChart({ color: colors, tooltip: percentTooltip, legend: legendStyle, grid: { left: 10, right: 30, top: 25, bottom: 85, containLabel: true },
-      xAxis: { type: 'value', min: 0, max: 100, name: '%' }, yAxis: { type: 'category', data: ref.groups.map(group => ref.geography.label + ' ' + group.label), inverse: true },
+      xAxis: stackedPercentAxis, yAxis: { type: 'category', data: ref.groups.map(group => ref.geography.label + ' ' + group.label), inverse: true },
       series: options.map(row => ({ name: categoryLabel(item, row.code), type: 'bar', stack: 'cross', barMaxWidth: 30, data: ref.groups.map(group => chartPercent(crossPercent(ref, row.code, group.code))) })) }, Math.max(280, ref.groups.length * 45 + 120));
   }
   function renderDetails(data, school, ref, wave) {
