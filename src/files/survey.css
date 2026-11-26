@@ -86,7 +86,8 @@
 .survey-preview h4 { font-size:15px; margin-bottom:10px; }
 .survey-preview p { margin:8px 0; overflow-wrap:anywhere; }
 .survey-preview ul { padding-left:20px; margin:8px 0; }
-.survey-preview .table-wrap { max-height:260px; }
+.survey-preview .table-wrap { max-height:260px; margin-top:8px; }
+.survey-preview h5 { font-size:14px; margin:14px 0 4px; }
 .survey-preview details > summary { padding:8px 0; }
 .survey-preview.is-error { border-color:#bd807b; background:#fff4f2; }
 .survey-preview.is-error li { color:#8f2e24; }
