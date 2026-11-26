@@ -746,6 +746,7 @@ function applyJsonText(text, name, handle) {
     updateRoleUI(); // ロールに応じたUI（admin-onlyの表示制御）を反映
     $('datasetName').textContent = `${data.name || ''}（${fileName}）`;
     updateSaveStatus();
+    clearCorrelation();
     renderAll();
     if (removedOrphanInterventions) {
       alert(`削除済みの生徒に紐づいていた支援記録 ${removedOrphanInterventions}件を整理しました。右上の「保存」でデータファイルへ反映してください。`);
@@ -2411,13 +2412,31 @@ function renderMetricsTab() {
   renderCorrelation();
 }
 
+function clearCorrOutliers() {
+  $('corrOutlierCard').hidden = true;
+  $('corrOutliers').innerHTML = '';
+}
+
+function clearChiSquare() {
+  $('corrChiCard').hidden = true;
+  $('chiTableWrap').innerHTML = '';
+  $('chiResult').innerHTML = '';
+}
+
+function clearCorrelation() {
+  $('corrBanner').hidden = true;
+  $('corrBanner').innerHTML = '';
+  if (typeof echarts !== 'undefined') echarts.getInstanceByDom($('corrChart'))?.clear();
+  clearCorrOutliers();
+  clearChiSquare();
+}
+
 function renderCorrelation() {
   const x = axisInfo(ui.corrX);
   const y = axisInfo(ui.corrY);
   const banner = $('corrBanner');
   if (!x || !y) {
-    banner.hidden = true;
-    chart('corrChart').clear();
+    clearCorrelation();
     return;
   }
 
@@ -2517,7 +2536,7 @@ function renderCorrOutliers(points, x, y, r, mx, my, slope) {
   const card = $('corrOutlierCard');
   // 明確な傾向があるときだけ意味を持つ
   if (r == null || Math.abs(r) < 0.2 || points.length < 5) {
-    card.hidden = true;
+    clearCorrOutliers();
     return;
   }
   const withRes = points.map((p) => ({ ...p, res: p.y - (my + slope * (p.x - mx)) }));
@@ -2527,7 +2546,7 @@ function renderCorrOutliers(points, x, y, r, mx, my, slope) {
   const above = withRes.filter((p) => p.res >= thr).sort((a, b) => b.res - a.res).slice(0, 6);
 
   if (!below.length && !above.length) {
-    card.hidden = true;
+    clearCorrOutliers();
     return;
   }
   const chip = (p) => `<span class="outlier-chip">${esc(p.name)}<small>${esc(p.className)}</small></span>`;
@@ -3814,12 +3833,12 @@ const CHI2_CRIT = {
 // X=5段階アンケート × Y=テスト のとき、回答×成績帯のクロス表とχ²検定を表示
 function renderChiSquare(points, x, y) {
   const card = $('corrChiCard');
-  if (!x || !y || !x.isScale || !ui.corrY.startsWith('t:') || points.length < 10) {
-    card.hidden = true;
+  if (!x || !y || !x.isScale || !ui.corrY.startsWith('t:')) {
+    clearChiSquare();
     return;
   }
   const test = testById(ui.corrY.slice(2));
-  if (!test) { card.hidden = true; return; }
+  if (!test) { clearChiSquare(); return; }
   const { tier2, tier3 } = data.settings.rti;
   const bandOf = (total) => {
     const rate = total / test.maxScore * 100;
@@ -3835,27 +3854,42 @@ function renderChiSquare(points, x, y) {
   const colKeep = [0, 1, 2].filter((c) => table.some((row) => row[c] > 0));
   table = table.map((row) => colKeep.map((c) => row[c]));
   const nRows = table.length, nCols = colKeep.length;
-  if (nRows < 2 || nCols < 2) { card.hidden = true; return; }
+  if (nRows < 2 || nCols < 2) { clearChiSquare(); return; }
 
   const n = points.length;
   const rowSum = table.map((r) => r.reduce((a, b) => a + b, 0));
   const colSum = colKeep.map((_, ci) => table.reduce((a, r) => a + r[ci], 0));
-  let chi2 = 0, smallE = 0;
+  let chi2 = 0, smallE = 0, minE = Infinity;
   for (let i = 0; i < nRows; i++) {
     for (let j = 0; j < nCols; j++) {
       const E = rowSum[i] * colSum[j] / n;
+      minE = Math.min(minE, E);
       if (E < 5) smallE++;
       if (E > 0) chi2 += (table[i][j] - E) ** 2 / E;
     }
   }
   const df = (nRows - 1) * (nCols - 1);
   const crit = CHI2_CRIT[df];
-  let verdict, verdictClass;
-  if (crit && chi2 >= crit[1]) { verdict = '関連あり（1%水準で有意）'; verdictClass = 'sig'; }
-  else if (crit && chi2 >= crit[0]) { verdict = '関連あり（5%水準で有意）'; verdictClass = 'sig'; }
-  else { verdict = '統計的に確かな関連は見られません'; verdictClass = 'ns'; }
-  const V = Math.sqrt(chi2 / (n * Math.min(nRows - 1, nCols - 1)));
-  const vLabel = V < 0.1 ? 'ごく弱い' : V < 0.3 ? '弱い' : V < 0.5 ? '中程度の' : '強い';
+  // Cochranの目安：1未満の期待度数なし、5未満は全体の2割以下。
+  const canTest = minE >= 1 && smallE * 5 <= nRows * nCols && !!crit;
+  let testHtml;
+  if (canTest) {
+    let verdict = '統計的に確かな関連は見られません';
+    let verdictClass = 'ns';
+    if (chi2 >= crit[0]) {
+      verdict = `関連あり（${chi2 >= crit[1] ? '1' : '5'}%水準で有意）`;
+      verdictClass = 'sig';
+    }
+    const V = Math.sqrt(chi2 / (n * Math.min(nRows - 1, nCols - 1)));
+    const vLabel = V < 0.1 ? 'ごく弱い' : V < 0.3 ? '弱い' : V < 0.5 ? '中程度の' : '強い';
+    testHtml = `<div class="chi-verdict ${verdictClass}">${verdict}</div>` +
+      `<div class="chi-stats">χ² = ${chi2.toFixed(2)}（自由度 ${df}）<br>` +
+      `関連の強さ Cramér&#39;s V = ${V.toFixed(2)}（${vLabel}関連）</div>`;
+  } else {
+    testHtml = '<div class="chi-verdict ns">カイ二乗検定の判定は表示しません</div>' +
+      '<div class="chi-stats">回答と成績帯に関連がないと仮定したときに見込まれる人数（期待度数）が、一部の組み合わせで少なすぎます。' +
+      '表では実際の人数の内訳を確認できますが、この表だけで関連があるかどうかは判断できません。</div>';
+  }
 
   let html = `<table class="score-table chi-table"><thead><tr><th>${esc(x.label)}</th>` +
     colKeep.map((c) => `<th>${bandLabels[c]}</th>`).join('') + '<th>計</th></tr></thead><tbody>';
@@ -3883,13 +3917,8 @@ function renderChiSquare(points, x, y) {
     }
   }
 
-  $('chiResult').innerHTML =
-    `<div class="chi-verdict ${verdictClass}">${verdict}</div>` +
-    `<div class="chi-stats">χ² = ${(Math.round(chi2 * 100) / 100).toFixed(2)}（自由度 ${df}）<br>` +
-    `関連の強さ Cramér&#39;s V = ${(Math.round(V * 100) / 100).toFixed(2)}（${vLabel}関連）</div>` +
-    groupHtml +
-    `<div class="chi-note">成績帯はRTIしきい値（${tier3}% / ${tier2}%）で区切っています` +
-    (smallE > nRows * nCols * 0.2 ? '<br>※ 人数の少ないマスが多いため、結果は参考程度に見てください' : '') + '</div>';
+  $('chiResult').innerHTML = testHtml + groupHtml +
+    `<div class="chi-note">成績帯はRTIしきい値（${tier3}% / ${tier2}%）で区切っています</div>`;
   card.hidden = false;
 }
 
@@ -4056,7 +4085,7 @@ async function issueMetricTemplate() {
 // テンプレートから指標を取込（複数列対応）
 async function importMetricTemplate(file) {
   const wb = await window.GD_IMPORT.readWorkbook(file, XLSX);
-  const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['指標']);
+  const { rows } = window.GD_IMPORT.selectSheet(wb, XLSX, ['指標'], { rejectCellErrors: true });
   const { plans, errors } = window.GD_IMPORT.parseMetricRows(rows, data.students, data.metrics);
   if (errors.length) {
     alert('取込は反映していません。\n\n' + errors.slice(0, 8).join('\n'));
@@ -4078,12 +4107,18 @@ async function importMetricTemplate(file) {
     `　種類は取込後、指標名の横の表示で確認できます。`);
   if (!ok) return;
 
+  // Look at existing IDs as well as this batch; an ID must survive JSON validation.
+  const occupiedIds = new Set(data.metrics.map(m => m.id));
+  let sequence = 1;
   for (const p of plans) {
     if (p.existing) {
       Object.assign(p.existing.values, p.values);
     } else {
+      let id;
+      do { id = 'm-excel-' + sequence++; } while (occupiedIds.has(id));
+      occupiedIds.add(id);
       data.metrics.push({
-        id: 'm' + Date.now() + Math.floor(Math.random() * 1000),
+        id,
         label: p.label,
         type: p.isScale ? 'scale' : 'number',
         values: p.values,

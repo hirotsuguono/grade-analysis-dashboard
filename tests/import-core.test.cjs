@@ -18,21 +18,27 @@ function harness() {
   const alerts = [], confirms = [], downloads = [], elements = {};
   const context = vm.createContext({ Blob, DecompressionStream,
     console, crypto: webcrypto, TextEncoder,
+    URL: { createObjectURL(blob) { downloads.push({ blob }); return 'blob:fixture'; } },
+    setTimeout() {},
     XLSX: { ...xlsx, writeFile(wb, name) { downloads.push({ wb, name }); } },
     alert(message) { alerts.push(message); }, confirm(message) { confirms.push(message); return context.confirmResult; },
     window: { addEventListener() {} },
-    document: { addEventListener() {}, getElementById(id) { return elements[id] || null; } },
+    document: { addEventListener() {}, getElementById(id) { return elements[id] || null; },
+      createElement() { return { click() {} }; } },
   });
   context.confirmResult = true;
   vm.runInContext(importSource, context);
   vm.runInContext(fs.readFileSync(path.join(root, 'excel-templates.js'), 'utf8'), context);
   context.window.GD_EXCEL.download = (wb, name) => downloads.push({ wb, name });
-  vm.runInContext(scriptSource + `\nrebuildIndex = function() {}; markDirty = function() {}; renderAll = function() {}; fillAxisSelects = function() {}; fillMetricSelect = function() {}; renderMetricsTab = function() {};\n globalThis.api = { importTestTemplate, importMetricTemplate, issueNewTestTemplate, issueMetricTemplate, exportTemplate, submitNewDialog, setData(d) {data=d;}, getData() {return data;}, setUI(v) {Object.assign(ui,v);} };`, context);
+  vm.runInContext(scriptSource + `\nrebuildIndex = function() {}; markDirty = function() {}; renderAll = function() {}; fillAxisSelects = function() {}; fillMetricSelect = function() {}; renderMetricsTab = function() {}; updateRoleUI = function() {}; updateSaveStatus = function() {};\n globalThis.api = { importTestTemplate, importMetricTemplate, issueNewTestTemplate, issueMetricTemplate, saveJson, applyJsonText, exportTemplate, submitNewDialog, setData(d) {data=d;}, getData() {return data;}, setUI(v) {Object.assign(ui,v);} };`, context);
   return { api: context.api, core: context.window.GD_IMPORT, alerts, confirms, downloads, elements, context };
 }
 function fileFromSheets(sheets) {
   const wb = xlsx.utils.book_new();
-  for (const [name, rows] of sheets) xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(rows), name);
+  for (const [name, rows, cells] of sheets) {
+    const sheet = Object.assign(xlsx.utils.aoa_to_sheet(rows), cells);
+    xlsx.utils.book_append_sheet(wb, sheet, name);
+  }
   const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
   return new Blob([buf]);
 }
@@ -293,4 +299,56 @@ test('metric template IDs round-trip and all examples are explicit synthetic nam
   const examples = xlsx.utils.sheet_to_json(wb.Sheets['記入例'], {header: 1, defval: ''});
   assert.equal(examples.slice(9).length, 4);
   assert.ok(examples.slice(9).every(r => /^架空生徒/.test(r[4])));
+});
+test('150 new Excel metrics coexist with existing IDs and survive saving and reopening JSON', async () => {
+  const h = harness(), d = dataset();
+  d.metrics.push({ id: 'm-excel-1', label: '既存指標', type: 'number', values: { s1: 7 } });
+  h.api.setData(d);
+  // Force the inputs to the former timestamp/random generator to collide deterministically.
+  vm.runInContext('Date.now = () => 100000; Math.random = () => 0;', h.context);
+  const rows = metricRows(), labels = Array.from({ length: 150 }, (_, i) => '架空指標' + (i + 1));
+  rows[1].push(...labels);
+  rows[2].push(...labels.map((_, i) => i));
+  await h.api.importMetricTemplate(fileFromSheets([['指標', rows]]));
+  assert.equal(d.metrics.length, 152);
+  assert.equal(new Set(d.metrics.map(m => m.id)).size, 152);
+  assert.equal(d.metrics[1].values.s1, 7);
+  assert.deepEqual(d.metrics.slice(2).map(m => m.label), labels);
+
+  for (const id of ['saveResult', 'saveStatus', 'downloadConfirmBtn', 'emptyState', 'appMain', 'saveBtn', 'rosterBtn', 'backupBtn', 'roleBtn', 'datasetName', 'corrBanner', 'corrOutlierCard', 'corrOutliers', 'corrChiCard', 'chiTableWrap', 'chiResult', 'corrChart']) h.elements[id] = {};
+  h.elements.saveDownloadName = { value: 'synthetic-metrics.json' };
+  await h.api.saveJson();
+  assert.equal(h.downloads.length, 1);
+  const json = await h.downloads[0].blob.text();
+  assert.equal(h.api.applyJsonText(json, 'synthetic-metrics.json', null), true);
+  const reopened = JSON.parse(JSON.stringify(h.api.getData()));
+  assert.deepEqual(reopened.metrics, JSON.parse(JSON.stringify(d.metrics)));
+  assert.equal(reopened.metrics[2].values.s1, 0);
+  assert.equal(Object.hasOwn(reopened.metrics[2].values, 's2'), false);
+});
+
+test('a real metric formula error rejects the entire workbook before any confirmation or write', async () => {
+  const h = harness(), d = dataset(), rows = metricRows();
+  rows[1].push('別の架空指標');
+  rows[2].push(12); // A valid new column must not be committed.
+  h.api.setData(d);
+  const before = JSON.stringify(d);
+  for (const sheet of ['指標', '架空の入力']) {
+    const file = fileFromSheets([[sheet, rows, { D3: { t: 'e', v: 7, f: '1/0' } }]]);
+    const cell = xlsx.read(await file.arrayBuffer()).Sheets[sheet].D3;
+    assert.equal(cell.t, 'e');
+    assert.equal(cell.f, '1/0');
+    await assert.rejects(h.api.importMetricTemplate(file), error => error.message.includes(sheet) && /D3セル.*Excelのエラー値.*取込は反映していません/.test(error.message));
+    assert.equal(h.confirms.length, 0);
+    assert.equal(JSON.stringify(d), before);
+  }
+  const fixed = fileFromSheets([
+    ['記入例', rows, { D3: { t: 'e', v: 7, f: '1/0' } }],
+    ['指標', rows, { D3: { t: 'n', v: 0, f: '0/1' } }],
+  ]);
+  await h.api.importMetricTemplate(fixed);
+  assert.equal(h.confirms.length, 1);
+  assert.equal(d.metrics[0].values.s1, 0);
+  assert.equal(d.metrics[0].values.s2, 20); // Update blanks must not erase prior values.
+  assert.equal(d.metrics[1].values.s1, 12);
 });
