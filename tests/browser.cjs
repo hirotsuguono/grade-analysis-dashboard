@@ -57,11 +57,11 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     assert.ok(average > 0);
     assert.ok((await page.locator('#kpiGrid').textContent()).includes(String(Math.round(average * 10) / 10)));
     check('JSON読込・概要KPI・グラフ', `60名 / 平均 ${average}`);
-    for (const name of ['input', 'trend', 'analysis', 'metrics', 'rti', 'list', 'overview']) {
+    for (const name of ['input', 'trend', 'analysis', 'metrics', 'rti', 'list', 'survey', 'overview']) {
       await tab(name);
       assert.equal(await page.locator('#panel-' + name).isVisible(), true);
     }
-    check('7タブの表示切替');
+    check('8タブの表示切替');
     await page.locator('#ovClass').selectOption(firstClass);
     assert.equal(await page.evaluate(() => studentsOf(ui.ovClass).length), 20);
     await page.locator('#ovSubject').selectOption('英語');
@@ -326,7 +326,7 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     check('タグ入りクラス名の安全な表示・開始時基準値の境界値と不正入力拒否・現在データ保持');
     await require('./intervention-validation.cjs')(page, fixture);
     check('支援記録の日付・状態・メモの検証・不正入力時の未保存データ保持・日付順表示と保存再開');
-    for (const file of fs.readdirSync(__dirname).filter(name => /^regression-(?:issue-\d+|v041|pin-compat|roster-reassign|whole-roster-promotion|promotion-classification|teaching-notes|group-comparison|effect-guidance|individual-comparison|individual-reference|individual-position|trend-support|update-check|assessment-classification|assessment-excel|assessment-editor)\.browser\.cjs$/.test(name)).sort()) {
+    for (const file of fs.readdirSync(__dirname).filter(name => /^regression-(?:issue-\d+|v041|pin-compat|roster-reassign|whole-roster-promotion|promotion-classification|teaching-notes|group-comparison|effect-guidance|individual-comparison|individual-reference|individual-position|trend-support|update-check|assessment-classification|assessment-excel|assessment-editor|survey)\.browser\.cjs$/.test(name)).sort()) {
       await require(path.join(__dirname, file))(page, fixture);
       check(file);
     }
@@ -374,14 +374,14 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     await page.screenshot({ path: path.join(output, '02-overview-desktop.png'), fullPage: true });
     for (const width of [320, 390, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const name of ['overview', 'input', 'trend', 'analysis', 'metrics', 'rti', 'list']) {
+      for (const name of ['overview', 'input', 'trend', 'analysis', 'metrics', 'rti', 'list', 'survey']) {
         await tab(name);
         if (!baseline) assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${width}px ${name} horizontal overflow`);
       }
       await tab('overview');
       await page.screenshot({ path: path.join(output, `03-overview-${width}.png`), fullPage: true });
     }
-    check('320/390/768/1280pxで全7画面の表示', baseline ? '元版の比較記録' : 'ページ横はみ出しなし');
+    check('320/390/768/1280pxで全8画面の表示', baseline ? '元版の比較記録' : 'ページ横はみ出しなし');
     if (!baseline) {
       const demoPage = await context.newPage();
       demoPage.on('pageerror', err => errors.push(err.message));
