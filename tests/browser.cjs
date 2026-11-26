@@ -189,6 +189,12 @@ function check(name, details = '') { checks.push({ name, status: 'pass', details
     assert.equal(await page.locator('#corrOutlierCard').isVisible(), false);
     assert.equal(await page.locator('#corrChiCard').isVisible(), false);
     await reset();
+    // ファイルを開き直すと教員モードへ戻る仕様のため、後続の管理者操作に備えて再度切り替える
+    assert.equal(await page.evaluate(() => isAdmin), false);
+    await page.locator('#roleBtn').click();
+    await page.locator('#adminPinInput').fill('1357');
+    await page.locator('#adminSubmit').click();
+    await page.waitForFunction(() => isAdmin);
     check('期待度数が不足する場合は実人数のみ表示し、データを開き直すと相関表示を初期化する');
     await tab('rti');
     assert.equal(await page.locator('.rti-card').count(), await page.evaluate(() => data.students.filter(s => rtiRateFor(s.id).rate != null).length));

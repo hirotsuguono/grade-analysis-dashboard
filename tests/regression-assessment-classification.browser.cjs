@@ -22,7 +22,8 @@ module.exports = async (page, original) => {
     await page.locator('#anClass').selectOption('all');
     for (const width of [320, 390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
-      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      // グラフは resize イベント後の requestAnimationFrame で再描画されるため、反映を待ってから幅を確かめる
+      await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth + 1, null, { timeout: 5000 });
     }
     assert.equal(await page.evaluate(() => JSON.stringify(data)), saved);
     const aggregateOnly = structuredClone(d);
